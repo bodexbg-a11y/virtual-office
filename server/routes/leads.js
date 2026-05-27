@@ -3,31 +3,42 @@ const router = express.Router();
 const db = require('../db');
 const googleSheets = require('../services/googleSheets');
 
-function ensureLeadSheetColumns() {
-  const cols = db.raw.prepare('PRAGMA table_info(leads)').all().map(col => col.name);
+async function ensureLeadSheetColumns() {
+  const result = await db.query(`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_name = 'leads'
+  `);
+
+  const cols = result.rows.map(col => col.column_name);
+
   if (!cols.includes('google_sheet_name')) {
-    db.raw.exec('ALTER TABLE leads ADD COLUMN google_sheet_name TEXT');
+    await db.query(`ALTER TABLE leads ADD COLUMN google_sheet_name TEXT`);
+  }
+
+  if (!cols.includes('google_sheet_row')) {
+    await db.query(`ALTER TABLE leads ADD COLUMN google_sheet_row INTEGER`);
   }
 }
 
-function ensureDealOverrides() {
-  db.raw.exec(`
+async function ensureDealOverrides() {
+  await db.query(`
     CREATE TABLE IF NOT EXISTS deal_status_overrides (
       sheet_name TEXT NOT NULL,
       row_number INTEGER NOT NULL,
       stage_id TEXT NOT NULL,
-      updated_at TEXT DEFAULT (datetime('now')),
+      updated_at TIMESTAMP DEFAULT NOW(),
       PRIMARY KEY (sheet_name, row_number)
     );
   `);
 }
 
-function ensureIgnoredFacebookLeads() {
-  db.raw.exec(`
+async function ensureIgnoredFacebookLeads() {
+  await db.query(`
     CREATE TABLE IF NOT EXISTS ignored_fb_leads (
       fb_lead_id TEXT PRIMARY KEY,
       reason TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW()
     );
   `);
 }
@@ -53,22 +64,22 @@ function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
 }
 
-function findSheetMatchForLead(lead) {
+async function findSheetMatchForLead(lead) {
   const phone = normalizePhone(lead.phone);
   const email = normalizeEmail(lead.email);
   if (!phone && !email) return null;
 
-  const rows = db.raw.prepare(`
+  const { rows } = await db.query(`
     SELECT sheet_name, row_number, company_name, contact_name, phone, email, status, action_needed, problem, interest, notes
     FROM sheet_clients
     WHERE sheet_name IN ('МАТЕРИАЛЫ', 'УСЛУГИ')
       AND (
-        (? != '' AND replace(replace(replace(replace(replace(COALESCE(phone, ''), ' ', ''), '+', ''), '-', ''), '(', ''), ')', '') = ?)
+        (? != '' AND regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = ?)
         OR (? != '' AND lower(COALESCE(email, '')) = ?)
       )
     ORDER BY CASE sheet_name WHEN 'МАТЕРИАЛЫ' THEN 1 WHEN 'УСЛУГИ' THEN 2 ELSE 3 END, row_number
     LIMIT 1
-  `).all(phone, phone, email, email);
+  `, [phone, phone, email, email]);
 
   return rows[0] || null;
 }
@@ -80,11 +91,13 @@ function sheetHasManagerWork(row) {
     row.problem,
     row.notes,
   ].filter(Boolean).join(' ')).trim();
+
   return text.length > 0;
 }
 
 function inferStatusFromSheet(row) {
   if (!sheetHasManagerWork(row)) return 'new';
+
   const text = String([
     row.status,
     row.action_needed,
@@ -97,12 +110,15 @@ function inferStatusFromSheet(row) {
   if (/договор|закуп|готов/.test(text)) return 'negotiation';
   if (/коммерческ|оферт|предложен|\bкп\b/.test(text)) return 'offer_sent';
   if (/встреч|срещ|дума|цена|жд[уе]т|ответит/.test(text)) return 'negotiation';
+
   return 'contacted';
 }
 
-function syncFacebookLeadsWithSheets() {
-  ensureLeadSheetColumns();
-  const leads = db.raw.prepare("SELECT * FROM leads WHERE source = 'facebook'").all();
+async function syncFacebookLeadsWithSheets() {
+  await ensureLeadSheetColumns();
+
+  const { rows: leads } = await db.query(`SELECT * FROM leads WHERE source = 'facebook'`);
+
   let matched = 0;
   let movedFromNew = 0;
   let materials = 0;
@@ -114,127 +130,215 @@ function syncFacebookLeadsWithSheets() {
       skippedExisting += 1;
       continue;
     }
-    const match = findSheetMatchForLead(lead);
+
+    const match = await findSheetMatchForLead(lead);
     if (!match) continue;
+
     matched += 1;
     if (match.sheet_name === 'МАТЕРИАЛЫ') materials += 1;
     if (match.sheet_name === 'УСЛУГИ') services += 1;
 
     const nextStatus = inferStatusFromSheet(match);
+
     const sheetNote = `Google Sheets ${match.sheet_name} row ${match.row_number}: ${[
       match.status,
       match.action_needed,
       match.problem,
     ].filter(Boolean).join(' / ')}`;
+
     const notes = String(lead.notes || '').includes(`Google Sheets ${match.sheet_name} row ${match.row_number}`)
       ? lead.notes
       : [lead.notes, sheetNote].filter(Boolean).join(' | ');
+
     const interest = match.sheet_name === 'МАТЕРИАЛЫ'
       ? (lead.interest_products || match.interest || 'Materials')
       : (lead.interest_products || match.problem || 'Services');
 
-    db.raw.prepare(`
+    await db.query(`
       UPDATE leads
       SET status = CASE WHEN status = 'new' THEN ? ELSE status END,
           google_sheet_name = ?,
           google_sheet_row = ?,
           interest_products = COALESCE(NULLIF(?, ''), interest_products),
           notes = ?,
-          updated_at = datetime('now')
+          updated_at = NOW()
       WHERE id = ?
-    `).run(nextStatus, match.sheet_name, match.row_number, interest, notes, lead.id);
+    `, [nextStatus, match.sheet_name, match.row_number, interest, notes, lead.id]);
 
     if (lead.status === 'new' && nextStatus !== 'new') {
       movedFromNew += 1;
-      db.raw.prepare(`
+
+      await db.query(`
         INSERT INTO lead_activities (lead_id, action, description, old_value, new_value, performed_by)
         VALUES (?, 'status_change', ?, 'new', ?, 'google_sheets')
-      `).run(lead.id, `Статус обновлён по листу ${match.sheet_name}`, nextStatus);
+      `, [lead.id, `Статус обновлён по листу ${match.sheet_name}`, nextStatus]);
     }
   }
 
-  return { checked: leads.length, matched, moved_from_new: movedFromNew, materials, services, skipped_existing: skippedExisting };
+  return {
+    checked: leads.length,
+    matched,
+    moved_from_new: movedFromNew,
+    materials,
+    services,
+    skipped_existing: skippedExisting,
+  };
 }
 
-ensureLeadSheetColumns();
+ensureLeadSheetColumns().catch(err => {
+  console.error('❌ ensureLeadSheetColumns error:', err.message);
+});
 
 // GET all leads
 router.get('/', async (req, res) => {
   try {
-    const { status, source, priority, search, view, date_range, sort = 'date_desc', limit = 50, offset = 0 } = req.query;
-    let where = [];
-    let params = [];
+    const {
+      status,
+      source,
+      priority,
+      search,
+      view,
+      date_range,
+      sort = 'date_desc',
+      limit = 50,
+      offset = 0,
+    } = req.query;
 
-    if (status) { where.push('status = ?'); params.push(status); }
-    if (source) { where.push('source = ?'); params.push(source); }
-    if (priority) { where.push('priority = ?'); params.push(priority); }
+    const where = [];
+    const params = [];
+
+    if (status) {
+      where.push('status = ?');
+      params.push(status);
+    }
+
+    if (source) {
+      where.push('source = ?');
+      params.push(source);
+    }
+
+    if (priority) {
+      where.push('priority = ?');
+      params.push(priority);
+    }
+
     if (view === 'facebook') {
       where.push('source = ?');
       params.push('facebook');
     }
+
     if (view === 'materials') {
       where.push("google_sheet_name = 'МАТЕРИАЛЫ'");
     }
+
     if (view === 'services') {
       where.push("google_sheet_name = 'УСЛУГИ'");
     }
+
     if (search) {
-      where.push("(company_name LIKE ? OR contact_name LIKE ? OR email LIKE ? OR phone LIKE ? OR city LIKE ? OR notes LIKE ? OR interest_products LIKE ?)");
+      where.push(`(
+        company_name ILIKE ?
+        OR contact_name ILIKE ?
+        OR email ILIKE ?
+        OR phone ILIKE ?
+        OR city ILIKE ?
+        OR notes ILIKE ?
+        OR interest_products ILIKE ?
+      )`);
+
       const s = `%${search}%`;
       params.push(s, s, s, s, s, s, s);
     }
+
     if (date_range === 'today') {
-      where.push("date(created_at) = date('now')");
+      where.push('DATE(created_at) = CURRENT_DATE');
     }
+
     if (date_range === 'week') {
-      where.push("datetime(created_at) >= datetime('now', '-7 days')");
+      where.push("created_at >= NOW() - INTERVAL '7 days'");
     }
 
     const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
-    const orderBy = sort === 'date_asc'
-      ? 'datetime(created_at) ASC'
-      : sort === 'status'
-        ? "CASE status WHEN 'new' THEN 1 WHEN 'contacted' THEN 2 WHEN 'qualified' THEN 3 WHEN 'offer_sent' THEN 4 WHEN 'negotiation' THEN 5 WHEN 'won' THEN 6 WHEN 'lost' THEN 7 ELSE 8 END, datetime(created_at) DESC"
-        : "datetime(created_at) DESC, CASE priority WHEN 'hot' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END";
 
-    const { rows } = db.query(`
+    const orderBy = sort === 'date_asc'
+      ? 'created_at ASC'
+      : sort === 'status'
+        ? `CASE status
+            WHEN 'new' THEN 1
+            WHEN 'contacted' THEN 2
+            WHEN 'qualified' THEN 3
+            WHEN 'offer_sent' THEN 4
+            WHEN 'negotiation' THEN 5
+            WHEN 'won' THEN 6
+            WHEN 'lost' THEN 7
+            ELSE 8
+          END, created_at DESC`
+        : `created_at DESC,
+          CASE priority
+            WHEN 'hot' THEN 0
+            WHEN 'high' THEN 1
+            WHEN 'medium' THEN 2
+            ELSE 3
+          END`;
+
+    const { rows } = await db.query(`
       SELECT * FROM leads ${whereClause}
       ORDER BY ${orderBy}
       LIMIT ? OFFSET ?
-    `, [...params, parseInt(limit), parseInt(offset)]);
+    `, [...params, Number(limit), Number(offset)]);
 
-    const countRes = db.query(`SELECT COUNT(*) as count FROM leads ${whereClause}`, params);
+    const countRes = await db.query(`
+      SELECT COUNT(*)::int as count FROM leads ${whereClause}
+    `, params);
 
-    res.json({ leads: rows, total: countRes.rows[0]?.count || 0 });
+    res.json({
+      leads: rows,
+      total: countRes.rows[0]?.count || 0,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET lead summary for tabs and status filters
+// GET lead summary
 router.get('/summary', async (req, res) => {
   try {
-    const total = db.raw.prepare('SELECT COUNT(*) as count FROM leads').get()?.count || 0;
-    const byStatus = db.raw.prepare('SELECT status, COUNT(*) as count FROM leads GROUP BY status').all();
-    const bySource = db.raw.prepare('SELECT source, COUNT(*) as count FROM leads GROUP BY source').all();
-    const today = db.raw.prepare("SELECT COUNT(*) as count FROM leads WHERE date(created_at) = date('now')").get()?.count || 0;
-    const week = db.raw.prepare("SELECT COUNT(*) as count FROM leads WHERE datetime(created_at) >= datetime('now', '-7 days')").get()?.count || 0;
-    const materials = db.raw.prepare(`
-      SELECT COUNT(*) as count FROM leads
+    const totalRes = await db.query(`SELECT COUNT(*)::int as count FROM leads`);
+    const byStatusRes = await db.query(`SELECT status, COUNT(*)::int as count FROM leads GROUP BY status`);
+    const bySourceRes = await db.query(`SELECT source, COUNT(*)::int as count FROM leads GROUP BY source`);
+
+    const todayRes = await db.query(`
+      SELECT COUNT(*)::int as count
+      FROM leads
+      WHERE DATE(created_at) = CURRENT_DATE
+    `);
+
+    const weekRes = await db.query(`
+      SELECT COUNT(*)::int as count
+      FROM leads
+      WHERE created_at >= NOW() - INTERVAL '7 days'
+    `);
+
+    const materialsRes = await db.query(`
+      SELECT COUNT(*)::int as count FROM leads
       WHERE google_sheet_name = 'МАТЕРИАЛЫ'
-    `).get()?.count || 0;
-    const services = db.raw.prepare(`
-      SELECT COUNT(*) as count FROM leads
+    `);
+
+    const servicesRes = await db.query(`
+      SELECT COUNT(*)::int as count FROM leads
       WHERE google_sheet_name = 'УСЛУГИ'
-    `).get()?.count || 0;
+    `);
+
+    const bySource = bySourceRes.rows;
+    const byStatus = byStatusRes.rows;
 
     res.json({
-      total,
+      total: totalRes.rows[0]?.count || 0,
       facebook: bySource.find(row => row.source === 'facebook')?.count || 0,
-      materials,
-      services,
-      today,
-      week,
+      materials: materialsRes.rows[0]?.count || 0,
+      services: servicesRes.rows[0]?.count || 0,
+      today: todayRes.rows[0]?.count || 0,
+      week: weekRes.rows[0]?.count || 0,
       statuses: byStatus,
       sources: bySource,
     });
@@ -249,8 +353,13 @@ router.post('/sync-sheets', async (req, res) => {
     if (googleSheets.initialized) {
       await googleSheets.pullBusinessSheets();
     }
-    const result = syncFacebookLeadsWithSheets();
-    res.json({ success: true, ...result });
+
+    const result = await syncFacebookLeadsWithSheets();
+
+    res.json({
+      success: true,
+      ...result,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -259,15 +368,22 @@ router.post('/sync-sheets', async (req, res) => {
 // GET pipeline stats
 router.get('/stats/pipeline', async (req, res) => {
   try {
-    const { rows } = db.query(`
-      SELECT status, COUNT(*) as count, COALESCE(SUM(estimated_value), 0) as total_value
-      FROM leads GROUP BY status
+    const { rows } = await db.query(`
+      SELECT status, COUNT(*)::int as count, COALESCE(SUM(estimated_value), 0) as total_value
+      FROM leads
+      GROUP BY status
       ORDER BY CASE status
-        WHEN 'new' THEN 1 WHEN 'contacted' THEN 2 WHEN 'qualified' THEN 3
-        WHEN 'offer_sent' THEN 4 WHEN 'negotiation' THEN 5
-        WHEN 'won' THEN 6 WHEN 'lost' THEN 7
+        WHEN 'new' THEN 1
+        WHEN 'contacted' THEN 2
+        WHEN 'qualified' THEN 3
+        WHEN 'offer_sent' THEN 4
+        WHEN 'negotiation' THEN 5
+        WHEN 'won' THEN 6
+        WHEN 'lost' THEN 7
+        ELSE 8
       END
     `);
+
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -277,14 +393,25 @@ router.get('/stats/pipeline', async (req, res) => {
 // GET single lead
 router.get('/:id', async (req, res) => {
   try {
-    const { rows: leads } = db.query('SELECT * FROM leads WHERE id = ?', [req.params.id]);
-    if (!leads.length) return res.status(404).json({ error: 'Not found' });
-
-    const { rows: activities } = db.query(
-      'SELECT * FROM lead_activities WHERE lead_id = ? ORDER BY created_at DESC', [req.params.id]
+    const { rows: leads } = await db.query(
+      'SELECT * FROM leads WHERE id = ?',
+      [req.params.id]
     );
 
-    res.json({ lead: leads[0], activities });
+    if (!leads.length) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    const { rows: activities } = await db.query(`
+      SELECT * FROM lead_activities
+      WHERE lead_id = ?
+      ORDER BY created_at DESC
+    `, [req.params.id]);
+
+    res.json({
+      lead: leads[0],
+      activities,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -294,21 +421,55 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const b = req.body;
-    const result = db.raw.prepare(`
-      INSERT INTO leads (company_name, contact_name, email, phone, city, lead_type, source, status, priority, company_type, interest_products, estimated_value, notes, assigned_to)
+
+    const { rows } = await db.query(`
+      INSERT INTO leads (
+        company_name,
+        contact_name,
+        email,
+        phone,
+        city,
+        lead_type,
+        source,
+        status,
+        priority,
+        company_type,
+        interest_products,
+        estimated_value,
+        notes,
+        assigned_to
+      )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      b.company_name, b.contact_name, b.email, b.phone, b.city,
-      b.lead_type || 'inquiry', b.source || 'website', b.status || 'new',
-      b.priority || 'medium', b.company_type, b.interest_products,
-      b.estimated_value, b.notes, b.assigned_to
-    );
+      RETURNING *
+    `, [
+      b.company_name,
+      b.contact_name,
+      b.email,
+      b.phone,
+      b.city,
+      b.lead_type || 'inquiry',
+      b.source || 'website',
+      b.status || 'new',
+      b.priority || 'medium',
+      b.company_type,
+      b.interest_products,
+      b.estimated_value,
+      b.notes,
+      b.assigned_to,
+    ]);
 
-    const lead = db.raw.prepare('SELECT * FROM leads WHERE id = ?').get(result.lastInsertRowid);
+    const lead = rows[0];
 
-    db.raw.prepare(
-      'INSERT INTO lead_activities (lead_id, action, description, new_value, performed_by) VALUES (?, ?, ?, ?, ?)'
-    ).run(lead.id, 'created', `Нов лид от ${b.source || 'website'}`, lead.status, 'system');
+    await db.query(`
+      INSERT INTO lead_activities (lead_id, action, description, new_value, performed_by)
+      VALUES (?, ?, ?, ?, ?)
+    `, [
+      lead.id,
+      'created',
+      `Нов лид от ${b.source || 'website'}`,
+      lead.status,
+      'system',
+    ]);
 
     res.status(201).json(lead);
   } catch (err) {
@@ -319,8 +480,16 @@ router.post('/', async (req, res) => {
 // PUT update lead
 router.put('/:id', async (req, res) => {
   try {
-    const old = db.raw.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
-    if (!old) return res.status(404).json({ error: 'Not found' });
+    const oldRes = await db.query(
+      'SELECT * FROM leads WHERE id = ?',
+      [req.params.id]
+    );
+
+    const old = oldRes.rows[0];
+
+    if (!old) {
+      return res.status(404).json({ error: 'Not found' });
+    }
 
     const b = req.body;
     const fields = [];
@@ -332,30 +501,54 @@ router.put('/:id', async (req, res) => {
         params.push(val);
       }
     }
-    fields.push("updated_at = datetime('now')");
+
+    fields.push('updated_at = NOW()');
     params.push(req.params.id);
 
-    db.raw.prepare(`UPDATE leads SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+    if (!fields.length) {
+      return res.json(old);
+    }
+
+    const updatedRes = await db.query(`
+      UPDATE leads
+      SET ${fields.join(', ')}
+      WHERE id = ?
+      RETURNING *
+    `, params);
+
+    const updated = updatedRes.rows[0];
 
     if (b.status && b.status !== old.status) {
-      db.raw.prepare(
-        'INSERT INTO lead_activities (lead_id, action, description, old_value, new_value) VALUES (?, ?, ?, ?, ?)'
-      ).run(req.params.id, 'status_change', `Статус: ${old.status} → ${b.status}`, old.status, b.status);
+      await db.query(`
+        INSERT INTO lead_activities (lead_id, action, description, old_value, new_value)
+        VALUES (?, ?, ?, ?, ?)
+      `, [
+        req.params.id,
+        'status_change',
+        `Статус: ${old.status} → ${b.status}`,
+        old.status,
+        b.status,
+      ]);
 
       const stageId = dealStageFromLeadStatus(b.status);
+
       if (stageId && old.google_sheet_name && old.google_sheet_row) {
-        ensureDealOverrides();
-        db.raw.prepare(`
+        await ensureDealOverrides();
+
+        await db.query(`
           INSERT INTO deal_status_overrides (sheet_name, row_number, stage_id, updated_at)
-          VALUES (?, ?, ?, datetime('now'))
+          VALUES (?, ?, ?, NOW())
           ON CONFLICT(sheet_name, row_number) DO UPDATE SET
-            stage_id = excluded.stage_id,
-            updated_at = datetime('now')
-        `).run(old.google_sheet_name, old.google_sheet_row, stageId);
+            stage_id = EXCLUDED.stage_id,
+            updated_at = NOW()
+        `, [
+          old.google_sheet_name,
+          old.google_sheet_row,
+          stageId,
+        ]);
       }
     }
 
-    const updated = db.raw.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -365,17 +558,34 @@ router.put('/:id', async (req, res) => {
 // DELETE lead
 router.delete('/:id', async (req, res) => {
   try {
-    const lead = db.raw.prepare('SELECT source, fb_lead_id FROM leads WHERE id = ?').get(req.params.id);
+    const leadRes = await db.query(
+      'SELECT source, fb_lead_id FROM leads WHERE id = ?',
+      [req.params.id]
+    );
+
+    const lead = leadRes.rows[0];
+
     if (lead?.source === 'facebook' && lead.fb_lead_id) {
-      ensureIgnoredFacebookLeads();
-      db.raw.prepare(`
+      await ensureIgnoredFacebookLeads();
+
+      await db.query(`
         INSERT INTO ignored_fb_leads (fb_lead_id, reason, created_at)
-        VALUES (?, 'deleted_in_app', datetime('now'))
-        ON CONFLICT(fb_lead_id) DO UPDATE SET reason = excluded.reason
-      `).run(lead.fb_lead_id);
+        VALUES (?, 'deleted_in_app', NOW())
+        ON CONFLICT(fb_lead_id) DO UPDATE SET
+          reason = EXCLUDED.reason
+      `, [lead.fb_lead_id]);
     }
-    db.raw.prepare('DELETE FROM lead_activities WHERE lead_id = ?').run(req.params.id);
-    db.raw.prepare('DELETE FROM leads WHERE id = ?').run(req.params.id);
+
+    await db.query(
+      'DELETE FROM lead_activities WHERE lead_id = ?',
+      [req.params.id]
+    );
+
+    await db.query(
+      'DELETE FROM leads WHERE id = ?',
+      [req.params.id]
+    );
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
