@@ -62,6 +62,9 @@ const WORKERS = [
 
 async function ensureWorkers() {
   await db.exec(`
+    ALTER TABLE agents ADD COLUMN IF NOT EXISTS worker_code TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_worker_code ON agents(worker_code);
+
     CREATE TABLE IF NOT EXISTS worker_results (
       id SERIAL PRIMARY KEY,
       worker_id TEXT NOT NULL,
@@ -88,9 +91,22 @@ async function ensureWorkers() {
     CREATE INDEX IF NOT EXISTS idx_worker_tasks_worker ON worker_tasks(worker_id);
     CREATE INDEX IF NOT EXISTS idx_worker_tasks_due ON worker_tasks(due_date);
     CREATE INDEX IF NOT EXISTS idx_worker_tasks_status ON worker_tasks(status);
+
+    CREATE TABLE IF NOT EXISTS worker_task_events (
+      id SERIAL PRIMARY KEY,
+      task_id INTEGER NOT NULL REFERENCES worker_tasks(id) ON DELETE CASCADE,
+      worker_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      old_status TEXT,
+      new_status TEXT,
+      note TEXT,
+      changed_by TEXT DEFAULT 'system',
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_worker_task_events_task ON worker_task_events(task_id);
+    CREATE INDEX IF NOT EXISTS idx_worker_task_events_worker ON worker_task_events(worker_id);
   `);
 
-  await db.run('DELETE FROM agents');
   const currentTasks = {
     rostislav: 'Обработва топли клиенти и B2B контакти без статус',
     mark: 'Сравнява пазарни цени и конкурентни оферти',
@@ -99,9 +115,16 @@ async function ensureWorkers() {
   };
   for (const w of WORKERS) {
     await db.run(`
-      INSERT INTO agents (name, role, avatar_emoji, color, status, current_task, tasks_completed, last_active_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-    `, [w.name, w.role, w.avatar_emoji, w.color, 'online', currentTasks[w.id], 0]);
+      INSERT INTO agents (worker_code, name, role, avatar_emoji, color, status, current_task, tasks_completed, last_active_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW())
+      ON CONFLICT(worker_code) DO UPDATE SET
+        name = EXCLUDED.name,
+        role = EXCLUDED.role,
+        avatar_emoji = EXCLUDED.avatar_emoji,
+        color = EXCLUDED.color,
+        current_task = EXCLUDED.current_task,
+        last_active_at = NOW()
+    `, [w.id, w.name, w.role, w.avatar_emoji, w.color, 'online', currentTasks[w.id]]);
   }
 }
 
@@ -222,8 +245,12 @@ async function getAssignedTasks(workerId) {
   return db.all(`
     SELECT * FROM worker_tasks
     WHERE worker_id = ?
-      AND due_date >= CURRENT_DATE - INTERVAL '1 day'
     ORDER BY
+      CASE
+        WHEN due_date = CURRENT_DATE THEN 1
+        WHEN due_date > CURRENT_DATE THEN 2
+        ELSE 3
+      END,
       CASE status
         WHEN 'in_progress' THEN 1
         WHEN 'todo' THEN 2
@@ -710,6 +737,11 @@ router.post('/workers/:id/tasks', auth.requireAdmin, async (req, res) => {
       source ? String(source).trim() : 'admin',
     ]);
 
+    await db.run(`
+      INSERT INTO worker_task_events (task_id, worker_id, event_type, new_status, note, changed_by)
+      VALUES (?, ?, 'created', 'todo', ?, 'admin')
+    `, [info.lastInsertRowid, worker.id, `Создана задача: ${String(title).trim()}`]);
+
     const task = await db.get('SELECT * FROM worker_tasks WHERE id = ?', [info.lastInsertRowid]);
     res.status(201).json(task);
   } catch (err) {
@@ -732,6 +764,28 @@ router.patch('/worker-tasks/:id', async (req, res) => {
       SET status = ?, result_note = ?, updated_at = NOW()
       WHERE id = ?
     `, [status, resultNote, req.params.id]);
+
+    const eventType = status !== task.status ? 'status_changed' : 'result_updated';
+    await db.run(`
+      INSERT INTO worker_task_events (task_id, worker_id, event_type, old_status, new_status, note, changed_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [
+      task.id,
+      task.worker_id,
+      eventType,
+      task.status,
+      status,
+      resultNote !== task.result_note ? resultNote : null,
+      'worker',
+    ]);
+
+    if (status === 'done' && task.status !== 'done') {
+      await db.run(`
+        UPDATE agents
+        SET tasks_completed = COALESCE(tasks_completed, 0) + 1
+        WHERE worker_code = ?
+      `, [task.worker_id]);
+    }
 
     res.json(await db.get('SELECT * FROM worker_tasks WHERE id = ?', [req.params.id]));
   } catch (err) {
