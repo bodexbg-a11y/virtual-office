@@ -5,6 +5,9 @@ const googleSheets = require('./googleSheets');
 const REPORT_SHEET = 'Mark Market Report';
 const SOURCES_SHEET = 'Mark Sources';
 const WRITE_AGENT_REPORTS_TO_SHEETS = String(process.env.AGENT_REPORTS_TO_SHEETS || '').toLowerCase() === 'true';
+const GOOGLE_CSE_API_KEY = process.env.GOOGLE_CSE_API_KEY || '';
+const GOOGLE_CSE_CX = process.env.GOOGLE_CSE_CX || '';
+const SERPAPI_KEY = process.env.SERPAPI_KEY || '';
 let activeRun = null;
 
 async function ensureAgentTables() {
@@ -184,8 +187,18 @@ function buildQuery(product) {
 }
 
 async function scanMarket(product, query) {
-  const sources = await getConfiguredSources(product, query);
-  const source = sources[0] || `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  const sources = await discoverSources(product, query);
+  if (!sources.length) {
+    return {
+      source: '',
+      price: '',
+      currency: '',
+      confidence: 'low',
+      status: 'source_missing',
+      recommendation: 'Нет валидного источника для анализа. Добавьте URL в Mark Sources или подключите SERPAPI_KEY / GOOGLE_CSE_API_KEY + GOOGLE_CSE_CX.',
+    };
+  }
+  const source = sources[0];
 
   try {
     const html = await fetchHtml(source);
@@ -226,6 +239,65 @@ async function getConfiguredSources(product, query) {
   return (res.data.values || [])
     .filter(row => row[1] && matchesSourceRow(row[0], key, name, query))
     .map(row => row[1]);
+}
+
+async function discoverSources(product, query) {
+  const configured = await getConfiguredSources(product, query);
+  if (configured.length) return configured;
+
+  const serpapi = await searchWithSerpApi(query);
+  if (serpapi.length) return serpapi;
+
+  const cse = await searchWithGoogleCse(query);
+  if (cse.length) return cse;
+
+  return [];
+}
+
+async function searchWithSerpApi(query) {
+  if (!SERPAPI_KEY) return [];
+  try {
+    const res = await axios.get('https://serpapi.com/search.json', {
+      timeout: 9000,
+      params: {
+        engine: 'google',
+        q: query,
+        hl: 'bg',
+        gl: 'bg',
+        num: 5,
+        api_key: SERPAPI_KEY,
+      },
+    });
+    return (res.data?.organic_results || [])
+      .map(item => item?.link)
+      .filter(isValidHttpUrl)
+      .slice(0, 3);
+  } catch {
+    return [];
+  }
+}
+
+async function searchWithGoogleCse(query) {
+  if (!GOOGLE_CSE_API_KEY || !GOOGLE_CSE_CX) return [];
+  try {
+    const res = await axios.get('https://www.googleapis.com/customsearch/v1', {
+      timeout: 9000,
+      params: {
+        key: GOOGLE_CSE_API_KEY,
+        cx: GOOGLE_CSE_CX,
+        q: query,
+        num: 5,
+        gl: 'bg',
+        hl: 'bg',
+      },
+    });
+    return (res.data?.items || [])
+      .map(item => item?.link)
+      .filter(isValidHttpUrl)
+      .slice(0, 3);
+  } catch {
+    return [];
+  }
 }
 
 function matchesSourceRow(pattern, sku, name, query) {
@@ -272,6 +344,16 @@ function normalizeCurrency(value) {
   if (v.includes('лв') || v.includes('bgn')) return 'BGN';
   if (v.includes('eur') || v.includes('€')) return 'EUR';
   return value;
+}
+
+function isValidHttpUrl(value) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 async function latestRun() {
