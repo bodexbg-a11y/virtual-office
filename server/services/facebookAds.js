@@ -3,8 +3,8 @@ const db = require('../db');
 
 const LEGACY_UNMATCHED_FB_CUTOFF = '2026-05-27 00:00:00';
 
-function ensureIgnoredFacebookLeads() {
-  db.raw.exec(`
+async function ensureIgnoredFacebookLeads() {
+  await db.query(`
     CREATE TABLE IF NOT EXISTS ignored_fb_leads (
       fb_lead_id TEXT PRIMARY KEY,
       reason TEXT,
@@ -31,7 +31,10 @@ class FacebookAdsService {
   }
 
   async syncCampaigns() {
-    if (!this.initialized) return { success: true, demo: true, message: 'Demo: would sync campaigns' };
+    if (!this.initialized) {
+      return { success: true, demo: true, message: 'Demo: would sync campaigns' };
+    }
+
     try {
       const res = await axios.get(`${this.baseUrl}/${this.adAccountId}/campaigns`, {
         params: {
@@ -42,22 +45,49 @@ class FacebookAdsService {
       });
 
       let withInsights = 0;
-      for (const c of (res.data.data || [])) {
+
+      for (const c of res.data.data || []) {
         const insights = await this.getCampaignInsights(c.id);
         if (insights.hasData) withInsights += 1;
 
-        db.raw.prepare(`
+        await db.query(`
           INSERT INTO fb_campaigns (
-            fb_campaign_id, name, status, objective, daily_budget, lifetime_budget,
-            impressions, clicks, ctr, cpc, spend, leads_count, cost_per_lead,
-            start_date, end_date, synced_at
+            fb_campaign_id,
+            name,
+            status,
+            objective,
+            daily_budget,
+            lifetime_budget,
+            impressions,
+            clicks,
+            ctr,
+            cpc,
+            spend,
+            leads_count,
+            cost_per_lead,
+            start_date,
+            end_date,
+            synced_at
           )
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
           ON CONFLICT(fb_campaign_id) DO UPDATE SET
-            name=?, status=?, objective=?, daily_budget=?, lifetime_budget=?,
-            impressions=?, clicks=?, ctr=?, cpc=?, spend=?, leads_count=?, cost_per_lead=?,
-            start_date=?, end_date=?, synced_at=NOW(), updated_at=NOW()
-        `).run(
+            name = EXCLUDED.name,
+            status = EXCLUDED.status,
+            objective = EXCLUDED.objective,
+            daily_budget = EXCLUDED.daily_budget,
+            lifetime_budget = EXCLUDED.lifetime_budget,
+            impressions = EXCLUDED.impressions,
+            clicks = EXCLUDED.clicks,
+            ctr = EXCLUDED.ctr,
+            cpc = EXCLUDED.cpc,
+            spend = EXCLUDED.spend,
+            leads_count = EXCLUDED.leads_count,
+            cost_per_lead = EXCLUDED.cost_per_lead,
+            start_date = EXCLUDED.start_date,
+            end_date = EXCLUDED.end_date,
+            synced_at = NOW(),
+            updated_at = NOW()
+        `, [
           c.id,
           c.name,
           c.status,
@@ -73,21 +103,7 @@ class FacebookAdsService {
           insights.cpl,
           c.start_time || null,
           c.stop_time || null,
-          c.name,
-          c.status,
-          c.objective,
-          centsToMoney(c.daily_budget),
-          centsToMoney(c.lifetime_budget),
-          insights.impressions,
-          insights.clicks,
-          insights.ctr,
-          insights.cpc,
-          insights.spend,
-          insights.leads,
-          insights.cpl,
-          c.start_time || null,
-          c.stop_time || null,
-        );
+        ]);
       }
 
       return {
@@ -119,6 +135,7 @@ class FacebookAdsService {
       'offsite_conversion.fb_pixel_lead',
       'leadgen_grouped',
     ]);
+
     const cpl = actionValue(row.cost_per_action_type, [
       'lead',
       'onsite_conversion.lead_grouped',
@@ -139,16 +156,21 @@ class FacebookAdsService {
   }
 
   async syncLeadForms() {
-    if (!this.initialized) return { success: true, demo: true, message: 'Demo: would sync lead forms' };
+    if (!this.initialized) {
+      return { success: true, demo: true, message: 'Demo: would sync lead forms' };
+    }
+
     try {
-      db.raw.exec(`
+      await db.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_fb_lead_id
         ON leads(fb_lead_id)
         WHERE fb_lead_id IS NOT NULL
       `);
-      ensureIgnoredFacebookLeads();
+
+      await ensureIgnoredFacebookLeads();
 
       const pages = await this.getPages();
+
       let formsChecked = 0;
       let fbLeadsChecked = 0;
       let newLeads = 0;
@@ -166,12 +188,19 @@ class FacebookAdsService {
 
           for (const fbLead of leads) {
             const mapped = mapFacebookLead(fbLead, page, form);
-            const ignored = db.raw.prepare('SELECT 1 FROM ignored_fb_leads WHERE fb_lead_id = ?').get(mapped.fb_lead_id);
-            if (ignored) {
+
+            const ignoredRes = await db.query(
+              'SELECT 1 FROM ignored_fb_leads WHERE fb_lead_id = ?',
+              [mapped.fb_lead_id]
+            );
+
+            if (ignoredRes.rows.length) {
               skippedLegacyUnmatched += 1;
               continue;
             }
-            const sheetMatch = findOperationalSheetMatch(mapped);
+
+            const sheetMatch = await findOperationalSheetMatch(mapped);
+
             if (sheetMatch) {
               mapped.status = inferLeadStatusFromSheet(sheetMatch);
               mapped.google_sheet_name = sheetMatch.sheet_name;
@@ -188,23 +217,32 @@ class FacebookAdsService {
               continue;
             }
 
-            const existing = db.raw.prepare('SELECT id, status FROM leads WHERE fb_lead_id = ?').get(mapped.fb_lead_id);
+            const existingRes = await db.query(
+              'SELECT id, status FROM leads WHERE fb_lead_id = ?',
+              [mapped.fb_lead_id]
+            );
+
+            const existing = existingRes.rows[0];
+
             if (existing) {
-              db.raw.prepare(`
+              await db.query(`
                 UPDATE leads
                 SET company_name = COALESCE(NULLIF(?, ''), company_name),
                     contact_name = COALESCE(NULLIF(?, ''), contact_name),
                     email = COALESCE(NULLIF(?, ''), email),
                     phone = COALESCE(NULLIF(?, ''), phone),
                     city = COALESCE(NULLIF(?, ''), city),
-                    status = CASE WHEN status = 'new' THEN COALESCE(NULLIF(?, ''), status) ELSE status END,
+                    status = CASE
+                      WHEN status = 'new' THEN COALESCE(NULLIF(?, ''), status)
+                      ELSE status
+                    END,
                     google_sheet_name = COALESCE(NULLIF(?, ''), google_sheet_name),
                     google_sheet_row = COALESCE(?, google_sheet_row),
                     interest_products = COALESCE(NULLIF(?, ''), interest_products),
                     notes = COALESCE(NULLIF(?, ''), notes),
                     updated_at = NOW()
                 WHERE id = ?
-              `).run(
+              `, [
                 mapped.company_name,
                 mapped.contact_name,
                 mapped.email,
@@ -215,25 +253,54 @@ class FacebookAdsService {
                 mapped.google_sheet_row || null,
                 mapped.interest_products,
                 mapped.notes,
-                existing.id
-              );
+                existing.id,
+              ]);
+
               if (existing.status === 'new' && mapped.status && mapped.status !== 'new') {
-                db.raw.prepare(`
-                  INSERT INTO lead_activities (lead_id, action, description, old_value, new_value, performed_by)
+                await db.query(`
+                  INSERT INTO lead_activities (
+                    lead_id,
+                    action,
+                    description,
+                    old_value,
+                    new_value,
+                    performed_by
+                  )
                   VALUES (?, 'status_change', ?, 'new', ?, 'google_sheets')
-                `).run(existing.id, `Статус обновлён по листу ${mapped.google_sheet_name || 'Google Sheets'}`, mapped.status);
+                `, [
+                  existing.id,
+                  `Статус обновлён по листу ${mapped.google_sheet_name || 'Google Sheets'}`,
+                  mapped.status,
+                ]);
               }
+
               updatedLeads += 1;
               continue;
             }
 
-            const info = db.raw.prepare(`
+            const insertRes = await db.query(`
               INSERT INTO leads (
-                company_name, contact_name, email, phone, city, lead_type, source, status,
-                priority, company_type, interest_products, notes, assigned_to, fb_lead_id, google_sheet_name, google_sheet_row, created_at
+                company_name,
+                contact_name,
+                email,
+                phone,
+                city,
+                lead_type,
+                source,
+                status,
+                priority,
+                company_type,
+                interest_products,
+                notes,
+                assigned_to,
+                fb_lead_id,
+                google_sheet_name,
+                google_sheet_row,
+                created_at
               )
-              VALUES (?, ?, ?, ?, ?, 'fb_lead', 'facebook', ?, ?, ?, ?, ?, 'rostislav', ?, ?, ?, COALESCE(?, NOW()))
-            `).run(
+              VALUES (?, ?, ?, ?, ?, 'fb_lead', 'facebook', ?, ?, ?, ?, ?, 'rostislav', ?, ?, ?, COALESCE(?::timestamp, NOW()))
+              RETURNING id
+            `, [
               mapped.company_name,
               mapped.contact_name,
               mapped.email,
@@ -247,19 +314,44 @@ class FacebookAdsService {
               mapped.fb_lead_id,
               mapped.google_sheet_name || null,
               mapped.google_sheet_row || null,
-              mapped.created_at
-            );
+              mapped.created_at,
+            ]);
 
-            db.raw.prepare(`
-              INSERT INTO lead_activities (lead_id, action, description, new_value, performed_by)
+            const leadId = insertRes.rows[0].id;
+
+            await db.query(`
+              INSERT INTO lead_activities (
+                lead_id,
+                action,
+                description,
+                new_value,
+                performed_by
+              )
               VALUES (?, 'created', ?, ?, 'facebook')
-            `).run(info.lastInsertRowid, `Facebook lead form: ${form.name || form.id}`, mapped.status || 'new');
+            `, [
+              leadId,
+              `Facebook lead form: ${form.name || form.id}`,
+              mapped.status || 'new',
+            ]);
+
             if (mapped.status && mapped.status !== 'new') {
-              db.raw.prepare(`
-                INSERT INTO lead_activities (lead_id, action, description, old_value, new_value, performed_by)
+              await db.query(`
+                INSERT INTO lead_activities (
+                  lead_id,
+                  action,
+                  description,
+                  old_value,
+                  new_value,
+                  performed_by
+                )
                 VALUES (?, 'status_change', ?, 'new', ?, 'google_sheets')
-              `).run(info.lastInsertRowid, `Статус обновлён по листу ${mapped.google_sheet_name || 'Google Sheets'}`, mapped.status);
+              `, [
+                leadId,
+                `Статус обновлён по листу ${mapped.google_sheet_name || 'Google Sheets'}`,
+                mapped.status,
+              ]);
             }
+
             newLeads += 1;
           }
         }
@@ -287,6 +379,7 @@ class FacebookAdsService {
         limit: 50,
       },
     });
+
     return res.data.data || [];
   }
 
@@ -298,6 +391,7 @@ class FacebookAdsService {
         limit: 100,
       },
     });
+
     return res.data.data || [];
   }
 
@@ -309,33 +403,45 @@ class FacebookAdsService {
         limit: 100,
       },
     });
+
     return res.data.data || [];
   }
 
   async getCampaigns() {
-    const { rows } = db.query(`
+    const { rows } = await db.query(`
       SELECT * FROM fb_campaigns
       WHERE fb_campaign_id NOT LIKE 'camp_%'
       ORDER BY synced_at DESC
     `);
+
     return rows;
   }
 
   async getSummary() {
-    const { rows } = db.query(`
+    const { rows } = await db.query(`
       SELECT
-        COUNT(*) as total_campaigns,
-        SUM(CASE WHEN status = 'ACTIVE' THEN 1 ELSE 0 END) as active_campaigns,
-        COALESCE(SUM(spend), 0) as total_spend,
-        COALESCE(SUM(clicks), 0) as total_clicks,
-        COALESCE(SUM(impressions), 0) as total_impressions,
-        COALESCE(SUM(leads_count), 0) as total_leads,
-        CASE WHEN SUM(clicks) > 0 THEN ROUND(CAST(SUM(spend) AS REAL) / SUM(clicks), 2) ELSE 0 END as avg_cpc,
-        CASE WHEN SUM(leads_count) > 0 THEN ROUND(CAST(SUM(spend) AS REAL) / SUM(leads_count), 2) ELSE 0 END as avg_cpl,
-        CASE WHEN SUM(impressions) > 0 THEN ROUND(CAST(SUM(clicks) AS REAL) / SUM(impressions) * 100, 2) ELSE 0 END as avg_ctr
+        COUNT(*)::int as total_campaigns,
+        COALESCE(SUM(CASE WHEN status = 'ACTIVE' THEN 1 ELSE 0 END), 0)::int as active_campaigns,
+        COALESCE(SUM(spend), 0)::numeric as total_spend,
+        COALESCE(SUM(clicks), 0)::int as total_clicks,
+        COALESCE(SUM(impressions), 0)::int as total_impressions,
+        COALESCE(SUM(leads_count), 0)::int as total_leads,
+        CASE
+          WHEN SUM(clicks) > 0 THEN ROUND((SUM(spend) / SUM(clicks))::numeric, 2)
+          ELSE 0
+        END as avg_cpc,
+        CASE
+          WHEN SUM(leads_count) > 0 THEN ROUND((SUM(spend) / SUM(leads_count))::numeric, 2)
+          ELSE 0
+        END as avg_cpl,
+        CASE
+          WHEN SUM(impressions) > 0 THEN ROUND(((SUM(clicks)::numeric / SUM(impressions)::numeric) * 100), 2)
+          ELSE 0
+        END as avg_ctr
       FROM fb_campaigns
       WHERE fb_campaign_id NOT LIKE 'camp_%'
     `);
+
     return rows[0] || {};
   }
 }
@@ -373,13 +479,18 @@ function actionValue(actions, names) {
 
 function mapFacebookLead(lead, page, form) {
   const fields = {};
+
   for (const item of lead.field_data || []) {
-    fields[item.name] = Array.isArray(item.values) ? item.values.join(', ') : item.values || '';
+    fields[item.name] = Array.isArray(item.values)
+      ? item.values.join(', ')
+      : item.values || '';
   }
+
   const get = (...names) => {
     for (const name of names) {
       if (fields[name]) return String(fields[name]).trim();
     }
+
     return '';
   };
 
@@ -421,20 +532,31 @@ function normalizePhone(value) {
   return String(value || '').replace(/\D/g, '');
 }
 
-function findOperationalSheetMatch(mapped) {
+async function findOperationalSheetMatch(mapped) {
   const phone = normalizePhone(mapped.phone);
   const email = normalizeContact(mapped.email);
-  const rows = db.raw.prepare(`
+
+  const { rows } = await db.query(`
     SELECT sheet_name, row_number, company_name, contact_name, phone, email, status, action_needed, problem, interest, notes
     FROM sheet_clients
     WHERE sheet_name IN ('МАТЕРИАЛЫ', 'УСЛУГИ')
       AND (
-        (? != '' AND replace(replace(replace(replace(replace(COALESCE(phone, ''), ' ', ''), '+', ''), '-', ''), '(', ''), ')', '') = ?)
+        (? != '' AND regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = ?)
         OR (? != '' AND lower(COALESCE(email, '')) = ?)
       )
-    ORDER BY CASE sheet_name WHEN 'МАТЕРИАЛЫ' THEN 1 WHEN 'УСЛУГИ' THEN 2 ELSE 3 END, row_number
+    ORDER BY CASE sheet_name
+      WHEN 'МАТЕРИАЛЫ' THEN 1
+      WHEN 'УСЛУГИ' THEN 2
+      ELSE 3
+    END, row_number
     LIMIT 1
-  `).all(phone, phone, email, email);
+  `, [
+    phone,
+    phone,
+    email,
+    email,
+  ]);
+
   return rows[0] || null;
 }
 
@@ -453,11 +575,14 @@ function inferLeadStatusFromSheet(row) {
   if (/коммерческ|оферт|предложен|\bкп\b/.test(text)) return 'offer_sent';
   if (/встреч|срещ|дума|цена|жд[уе]т|ответит/.test(text)) return 'negotiation';
   if (/поговор|говор|звон|вайбер|пинг|пропинг|посмотр|интерес|каталог|презентац|форма/.test(text)) return 'contacted';
+
   return 'contacted';
 }
 
 function facebookErrorMessage(err) {
-  return err.response?.data?.error?.message || err.response?.data?.error?.error_user_msg || err.message;
+  return err.response?.data?.error?.message ||
+    err.response?.data?.error?.error_user_msg ||
+    err.message;
 }
 
 module.exports = new FacebookAdsService();
