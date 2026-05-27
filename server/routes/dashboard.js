@@ -63,27 +63,27 @@ const WORKERS = [
 function ensureWorkers() {
   db.raw.exec(`
     CREATE TABLE IF NOT EXISTS worker_results (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       worker_id TEXT NOT NULL,
       title TEXT NOT NULL,
       value TEXT,
       notes TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS worker_tasks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       worker_id TEXT NOT NULL,
       title TEXT NOT NULL,
       description TEXT,
       source TEXT DEFAULT 'admin',
       priority TEXT DEFAULT 'medium',
       status TEXT DEFAULT 'todo',
-      due_date TEXT DEFAULT (date('now')),
+      due_date TEXT DEFAULT (CURRENT_DATE),
       assigned_by TEXT DEFAULT 'admin',
       result_note TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_worker_tasks_worker ON worker_tasks(worker_id);
     CREATE INDEX IF NOT EXISTS idx_worker_tasks_due ON worker_tasks(due_date);
@@ -93,7 +93,7 @@ function ensureWorkers() {
   db.raw.prepare('DELETE FROM agents').run();
   const insert = db.raw.prepare(`
     INSERT INTO agents (name, role, avatar_emoji, color, status, current_task, tasks_completed, last_active_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
   `);
   const currentTasks = {
     rostislav: 'Обработва топли клиенти и B2B контакти без статус',
@@ -110,7 +110,7 @@ function ensureDealOverrides() {
       sheet_name TEXT NOT NULL,
       row_number INTEGER NOT NULL,
       stage_id TEXT NOT NULL,
-      updated_at TEXT DEFAULT (datetime('now')),
+      updated_at TIMESTAMP DEFAULT NOW(),
       PRIMARY KEY (sheet_name, row_number)
     );
   `);
@@ -235,18 +235,18 @@ function getAssignedTasks(workerId) {
 function ensureTaskTableOnly() {
   db.raw.exec(`
     CREATE TABLE IF NOT EXISTS worker_tasks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       worker_id TEXT NOT NULL,
       title TEXT NOT NULL,
       description TEXT,
       source TEXT DEFAULT 'admin',
       priority TEXT DEFAULT 'medium',
       status TEXT DEFAULT 'todo',
-      due_date TEXT DEFAULT (date('now')),
+      due_date TEXT DEFAULT (CURRENT_DATE),
       assigned_by TEXT DEFAULT 'admin',
       result_note TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
     );
   `);
 }
@@ -547,7 +547,7 @@ router.get('/stats', async (req, res) => {
         SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_leads,
         SUM(CASE WHEN status IN ('qualified','offer_sent','negotiation') THEN 1 ELSE 0 END) as active_leads,
         SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) as won_deals,
-        SUM(CASE WHEN date(created_at) = date('now') THEN 1 ELSE 0 END) as today_leads,
+        SUM(CASE WHEN date(created_at) = CURRENT_DATE THEN 1 ELSE 0 END) as today_leads,
         COALESCE(SUM(CASE WHEN status != 'lost' THEN estimated_value ELSE 0 END), 0) as pipeline_value,
         COALESCE(SUM(CASE WHEN status = 'won' THEN estimated_value ELSE 0 END), 0) as won_value
       FROM leads
@@ -647,10 +647,10 @@ router.patch('/deals/status', async (req, res) => {
 
     db.raw.prepare(`
       INSERT INTO deal_status_overrides (sheet_name, row_number, stage_id, updated_at)
-      VALUES (?, ?, ?, datetime('now'))
+      VALUES (?, ?, ?, NOW())
       ON CONFLICT(sheet_name, row_number) DO UPDATE SET
         stage_id = excluded.stage_id,
-        updated_at = datetime('now')
+        updated_at = NOW()
     `).run(sheet_name, row_number, stage.id);
 
     const nextLeadStatus = leadStatusFromDealStage(stage.id);
@@ -659,7 +659,7 @@ router.patch('/deals/status', async (req, res) => {
       WHERE google_sheet_name = ? AND google_sheet_row = ?
     `).all(sheet_name, row_number);
     const updateLead = db.raw.prepare(`
-      UPDATE leads SET status = ?, updated_at = datetime('now')
+      UPDATE leads SET status = ?, updated_at = NOW()
       WHERE id = ?
     `);
     const insertActivity = db.raw.prepare(`
@@ -696,7 +696,7 @@ router.post('/workers/:id/tasks', auth.requireAdmin, async (req, res) => {
 
     const info = db.raw.prepare(`
       INSERT INTO worker_tasks (worker_id, title, description, priority, due_date, source, status, assigned_by)
-      VALUES (?, ?, ?, ?, COALESCE(?, date('now')), ?, 'todo', 'admin')
+      VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_DATE), ?, 'todo', 'admin')
     `).run(
       worker.id,
       String(title).trim(),
@@ -725,7 +725,7 @@ router.patch('/worker-tasks/:id', async (req, res) => {
 
     db.raw.prepare(`
       UPDATE worker_tasks
-      SET status = ?, result_note = ?, updated_at = datetime('now')
+      SET status = ?, result_note = ?, updated_at = NOW()
       WHERE id = ?
     `).run(status, resultNote, req.params.id);
 
@@ -749,7 +749,7 @@ router.put('/agents/:id', async (req, res) => {
   try {
     const { status, current_task } = req.body;
     db.raw.prepare(
-      "UPDATE agents SET status = COALESCE(?, status), current_task = COALESCE(?, current_task), last_active_at = datetime('now') WHERE id = ?"
+      "UPDATE agents SET status = COALESCE(?, status), current_task = COALESCE(?, current_task), last_active_at = NOW() WHERE id = ?"
     ).run(status, current_task, req.params.id);
     const agent = db.raw.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
     res.json(agent);

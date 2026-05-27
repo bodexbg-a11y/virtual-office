@@ -83,7 +83,7 @@ class GoogleSheetsService {
   ensureBusinessTables() {
     db.raw.exec(`
       CREATE TABLE IF NOT EXISTS sheet_clients (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         sheet_name TEXT NOT NULL,
         row_number INTEGER NOT NULL,
         segment TEXT,
@@ -102,7 +102,7 @@ class GoogleSheetsService {
         deal TEXT,
         notes TEXT,
         raw_json TEXT,
-        synced_at TEXT DEFAULT (datetime('now')),
+        synced_at TEXT DEFAULT (NOW()),
         UNIQUE(sheet_name, row_number)
       );
       CREATE INDEX IF NOT EXISTS idx_sheet_clients_sheet ON sheet_clients(sheet_name);
@@ -197,7 +197,7 @@ class GoogleSheetsService {
       for (const row of rows) {
         const [id, , , , , , status, priority] = row;
         if (id) {
-          db.raw.prepare("UPDATE leads SET status = COALESCE(?, status), priority = COALESCE(?, priority), updated_at = datetime('now') WHERE id = ?").run(status, priority, parseInt(id));
+          db.raw.prepare("UPDATE leads SET status = COALESCE(?, status), priority = COALESCE(?, priority), updated_at = NOW() WHERE id = ?").run(status, priority, parseInt(id));
           updated++;
         }
       }
@@ -245,7 +245,7 @@ class GoogleSheetsService {
       INSERT INTO sheet_clients (
         sheet_name, row_number, segment, company_name, contact_name, phone, email, city,
         object_type, problem, interest, action_needed, status, priority, result, deal, notes, raw_json, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
       ON CONFLICT(sheet_name, row_number) DO UPDATE SET
         segment=excluded.segment,
         company_name=excluded.company_name,
@@ -263,7 +263,7 @@ class GoogleSheetsService {
         deal=excluded.deal,
         notes=excluded.notes,
         raw_json=excluded.raw_json,
-        synced_at=datetime('now')
+        synced_at=NOW()
     `);
 
     for (let i = 0; i < rows.length; i++) {

@@ -9,12 +9,12 @@ let activeRun = null;
 function ensureAgentTables() {
   db.raw.exec(`
     CREATE TABLE IF NOT EXISTS agent_runs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       agent_id TEXT NOT NULL,
       status TEXT NOT NULL,
       message TEXT,
       rows_created INTEGER DEFAULT 0,
-      started_at TEXT DEFAULT (datetime('now')),
+      started_at TEXT DEFAULT (NOW()),
       finished_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent_id);
@@ -66,7 +66,7 @@ async function executeRun() {
     await writeReport(reportRows);
     db.raw.prepare(`
       UPDATE agent_runs
-      SET status = 'done', message = ?, rows_created = ?, finished_at = datetime('now')
+      SET status = 'done', message = ?, rows_created = ?, finished_at = NOW()
       WHERE id = ?
     `).run(`Готов отчёт по ${reportRows.length} продуктам`, reportRows.length, runId);
 
@@ -80,7 +80,7 @@ async function executeRun() {
   } catch (err) {
     db.raw.prepare(`
       UPDATE agent_runs
-      SET status = 'error', message = ?, finished_at = datetime('now')
+      SET status = 'error', message = ?, finished_at = NOW()
       WHERE id = ?
     `).run(err.message, runId);
     throw err;

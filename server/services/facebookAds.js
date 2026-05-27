@@ -8,7 +8,7 @@ function ensureIgnoredFacebookLeads() {
     CREATE TABLE IF NOT EXISTS ignored_fb_leads (
       fb_lead_id TEXT PRIMARY KEY,
       reason TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW()
     );
   `);
 }
@@ -52,11 +52,11 @@ class FacebookAdsService {
             impressions, clicks, ctr, cpc, spend, leads_count, cost_per_lead,
             start_date, end_date, synced_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
           ON CONFLICT(fb_campaign_id) DO UPDATE SET
             name=?, status=?, objective=?, daily_budget=?, lifetime_budget=?,
             impressions=?, clicks=?, ctr=?, cpc=?, spend=?, leads_count=?, cost_per_lead=?,
-            start_date=?, end_date=?, synced_at=datetime('now'), updated_at=datetime('now')
+            start_date=?, end_date=?, synced_at=NOW(), updated_at=NOW()
         `).run(
           c.id,
           c.name,
@@ -202,7 +202,7 @@ class FacebookAdsService {
                     google_sheet_row = COALESCE(?, google_sheet_row),
                     interest_products = COALESCE(NULLIF(?, ''), interest_products),
                     notes = COALESCE(NULLIF(?, ''), notes),
-                    updated_at = datetime('now')
+                    updated_at = NOW()
                 WHERE id = ?
               `).run(
                 mapped.company_name,
@@ -232,7 +232,7 @@ class FacebookAdsService {
                 company_name, contact_name, email, phone, city, lead_type, source, status,
                 priority, company_type, interest_products, notes, assigned_to, fb_lead_id, google_sheet_name, google_sheet_row, created_at
               )
-              VALUES (?, ?, ?, ?, ?, 'fb_lead', 'facebook', ?, ?, ?, ?, ?, 'rostislav', ?, ?, ?, COALESCE(?, datetime('now')))
+              VALUES (?, ?, ?, ?, ?, 'fb_lead', 'facebook', ?, ?, ?, ?, ?, 'rostislav', ?, ?, ?, COALESCE(?, NOW()))
             `).run(
               mapped.company_name,
               mapped.contact_name,
