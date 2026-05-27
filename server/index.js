@@ -7,7 +7,7 @@ const cron = require('node-cron');
 const googleSheets = require('./services/googleSheets');
 const facebookAds = require('./services/facebookAds');
 const markAgent = require('./services/markAgent');
-const mariaAgent = require('./services/mariaAgent');
+const steveAgent = require('./services/steveAgent');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -83,25 +83,25 @@ async function start() {
     }
   });
 
-  // Cron: Mark scans material market prices once per working day.
-  cron.schedule('30 8 * * 1-5', async () => {
+  // Cron: Mark scans material market prices twice per working day.
+  cron.schedule('0 9,15 * * 1-5', async () => {
     console.log('[CRON] Running Mark market agent...');
     try {
       await markAgent.run();
     } catch (err) {
       console.error('[CRON] Mark agent error:', err.message);
     }
-  });
+  }, { timezone: 'Europe/Sofia' });
 
-  // Cron: Maria prepares a daily Facebook Ads performance report.
-  cron.schedule('45 8 * * 1-5', async () => {
-    console.log('[CRON] Running Maria FB Ads agent...');
+  // Cron: Steve audits SEO and prepares linkbuilding recommendations twice per working day.
+  cron.schedule('30 9,15 * * 1-5', async () => {
+    console.log('[CRON] Running Steve SEO agent...');
     try {
-      await mariaAgent.run();
+      await steveAgent.run();
     } catch (err) {
-      console.error('[CRON] Maria agent error:', err.message);
+      console.error('[CRON] Steve agent error:', err.message);
     }
-  });
+  }, { timezone: 'Europe/Sofia' });
 
   app.listen(PORT, () => {
     console.log(`

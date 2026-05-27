@@ -455,7 +455,7 @@ async function renderOffice(el) {
 
 async function renderWorker(el, workerId) {
   const worker = await api(`/api/dashboard/workers/${workerId}`);
-  const agentStatus = ['mark', 'maria'].includes(worker.id)
+  const agentStatus = ['mark', 'maria', 'steve'].includes(worker.id)
     ? await api(`/api/agents/${worker.id}/status`).catch(err => ({ error: err.message }))
     : null;
   const mariaAnalysis = worker.id === 'maria'
@@ -488,6 +488,7 @@ async function renderWorker(el, workerId) {
     ${renderMonthlyGoals(worker)}
     ${worker.id === 'mark' ? renderMarkAgentPanel(agentStatus) : ''}
     ${worker.id === 'maria' ? renderMariaAgentPanel(agentStatus, mariaAnalysis) : ''}
+    ${worker.id === 'steve' ? renderSteveAgentPanel(agentStatus) : ''}
 
     <div class="grid-2 fade-in">
       <div class="card">
@@ -552,7 +553,7 @@ function renderMarkAgentPanel(status) {
       <div class="agent-run-layout">
         <div>
           <div class="agent-run-copy">
-            Mark берёт список материалов из приложения, ищет рыночные цены по болгарскому рынку, формирует рекомендацию и записывает результат во вкладку Google Sheets <strong>Mark Market Report</strong>. Для точных источников можно добавить прямые URL во вкладку <strong>Mark Sources</strong>.
+            Mark берёт список материалов из приложения, ищет рыночные цены по болгарскому рынку, формирует рекомендацию и сохраняет отчёт в БД. Для точных источников можно добавить прямые URL во вкладку <strong>Mark Sources</strong>.
           </div>
           <div id="mark-agent-result" class="sync-result ${status?.error ? 'show err' : ''}">${status?.error ? '❌ ' + status.error : ''}</div>
         </div>
@@ -565,7 +566,10 @@ function renderMarkAgentPanel(status) {
       <div class="agent-run-actions">
         <button class="btn btn-primary" onclick="runMarkAgent()" ${isRunning ? 'disabled' : ''}>▶ Запустить агента</button>
         <button class="btn btn-secondary" onclick="refreshMarkAgent()">Обновить статус</button>
-        <button class="btn btn-secondary" onclick="navigate('sheets')">Google Sheets</button>
+        <button class="btn btn-secondary" onclick="navigate('agent-reports')">Отчёты</button>
+      </div>
+      <div style="font-size:11px;color:#777;margin-top:10px;">
+        Cron: понедельник-пятница, 09:00 и 15:00 Europe/Sofia.
       </div>
     </div>
   `;
@@ -644,6 +648,46 @@ function renderMariaAgentPanel(status, analysis = {}) {
         </table>
       </div>
       <div style="font-size:11px;color:#777;margin-top:10px;">Этот же отчёт записывается в Google Sheets во вкладку Maria Ads Report.</div>
+    </div>
+  `;
+}
+
+function renderSteveAgentPanel(status) {
+  const latest = status?.latest;
+  const isRunning = Boolean(status?.running);
+  const stateClass = isRunning ? 'running' : latest?.status || 'idle';
+  const stateText = isRunning ? 'Steve сейчас проверяет SEO' : agentRunLabel(latest?.status);
+  const rows = latest?.rows_created || 0;
+  const message = latest?.message || 'Запуска ещё не было. Steve проверит SEO сайта, структуру, внутренние ссылки и даст план линкбилдинга.';
+  const finished = latest?.finished_at ? formatDateTime(latest.finished_at) : '—';
+
+  return `
+    <div class="card fade-in mark-agent-panel">
+      <div class="card-title">
+        🌐 Запуск агента Steve
+        <span class="agent-run-status ${stateClass}">${stateText}</span>
+      </div>
+      <div class="agent-run-layout">
+        <div>
+          <div class="agent-run-copy">
+            Steve делает SEO аудит <strong>bodexbg.com</strong>: title/meta, H1/H2, внутренние ссылки, B2B ключи, изображения, посадочные страницы и линкбилдинг. Отчёт сохраняется в БД и виден в разделе <strong>Отчёты работников</strong>.
+          </div>
+          <div id="steve-agent-result" class="sync-result ${status?.error ? 'show err' : ''}">${status?.error ? '❌ ' + status.error : ''}</div>
+        </div>
+        <div class="agent-run-meta">
+          <div><span>${rows}</span><small>рекомендаций в последнем отчёте</small></div>
+          <div><span>${finished}</span><small>последнее завершение</small></div>
+        </div>
+      </div>
+      <div class="agent-run-message">${message}</div>
+      <div class="agent-run-actions">
+        <button class="btn btn-primary" onclick="runSteveAgent()" ${isRunning ? 'disabled' : ''}>▶ Запустить SEO аудит</button>
+        <button class="btn btn-secondary" onclick="refreshSteveAgent()">Обновить статус</button>
+        <button class="btn btn-secondary" onclick="navigate('agent-reports')">Отчёты</button>
+      </div>
+      <div style="font-size:11px;color:#777;margin-top:10px;">
+        Cron: понедельник-пятница, 09:30 и 15:30 Europe/Sofia.
+      </div>
     </div>
   `;
 }
@@ -838,6 +882,44 @@ function pollMariaAgent() {
     }
     const status = await api('/api/agents/maria/status').catch(() => null);
     await renderWorker(document.getElementById('main'), 'maria');
+    if (!status?.running) {
+      clearInterval(markAgentPoll);
+      markAgentPoll = null;
+    }
+  }, 5000);
+}
+
+async function runSteveAgent() {
+  const result = document.getElementById('steve-agent-result');
+  if (result) {
+    result.className = 'sync-result show';
+    result.textContent = 'Steve запущен. Он проверяет SEO сайта и готовит рекомендации по линкбилдингу...';
+  }
+  try {
+    await api('/api/agents/steve/run', { method: 'POST' });
+    pollSteveAgent();
+  } catch (err) {
+    if (result) {
+      result.className = 'sync-result show err';
+      result.textContent = '❌ ' + err.message;
+    }
+  }
+}
+
+async function refreshSteveAgent() {
+  await renderWorker(document.getElementById('main'), 'steve');
+}
+
+function pollSteveAgent() {
+  if (markAgentPoll) clearInterval(markAgentPoll);
+  markAgentPoll = setInterval(async () => {
+    if (currentPage !== 'worker-steve') {
+      clearInterval(markAgentPoll);
+      markAgentPoll = null;
+      return;
+    }
+    const status = await api('/api/agents/steve/status').catch(() => null);
+    await renderWorker(document.getElementById('main'), 'steve');
     if (!status?.running) {
       clearInterval(markAgentPoll);
       markAgentPoll = null;
