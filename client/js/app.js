@@ -1614,7 +1614,10 @@ async function renderLeads(el, filters = {}) {
                 <td>${l.contact_name || '—'}</td>
                 <td style="font-size:11px;">${l.phone || l.email || '—'}</td>
                 <td>${l.city || '—'}</td>
-                <td><span class="badge badge-${l.status}">${statusLabel(l.status)}</span></td>
+                <td>
+                  <span class="badge badge-${l.status}">${l.google_sheet_status || statusLabel(l.status)}</span>
+                  ${l.google_sheet_action ? `<div style="font-size:10px;color:#888;margin-top:4px;">${l.google_sheet_action}</div>` : ''}
+                </td>
                 <td><span class="badge badge-${l.priority}">${l.priority}</span></td>
                 <td>${sourceLabel(l.source)}</td>
                 <td style="max-width:240px;font-size:11px;color:#aaa;">${l.interest_products || l.lead_type || '—'}</td>
@@ -1670,7 +1673,7 @@ async function syncLeadsWithSheets() {
   try {
     const result = await api('/api/leads/sync-sheets', { method: 'POST' });
     el.className = 'sync-result show ok';
-    el.textContent = `✅ Проверено ${result.checked || 0} FB лидов. Совпадений ${result.matched || 0}: материалы ${result.materials || 0}, услуги ${result.services || 0}. Из новых убрано ${result.moved_from_new || 0}.`;
+    el.textContent = `✅ Проверено ${result.checked || 0} FB лидов. Совпадений ${result.matched || 0}: материалы ${result.materials || 0}, услуги ${result.services || 0}. Статусов обновлено ${result.status_updated || 0}.`;
     setTimeout(() => renderLeads(document.getElementById('main'), currentLeadFilters), 900);
   } catch (err) {
     el.className = 'sync-result show err';
@@ -2330,6 +2333,7 @@ async function openLeadDetail(id) {
               `<option value="${s}" ${l.status===s?'selected':''}>${statusLabel(s)}</option>`
             ).join('')}
           </select>
+          ${l.google_sheet_status ? `<div style="font-size:11px;color:#8dd3ff;margin-top:6px;">Google Sheets: ${l.google_sheet_status}${l.google_sheet_action ? ' · ' + l.google_sheet_action : ''}</div>` : ''}
         </div>
         <div class="form-group">
           <label>Приоритет</label>

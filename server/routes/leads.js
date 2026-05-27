@@ -19,6 +19,14 @@ async function ensureLeadSheetColumns() {
   if (!cols.includes('google_sheet_row')) {
     await db.query(`ALTER TABLE leads ADD COLUMN google_sheet_row INTEGER`);
   }
+
+  if (!cols.includes('google_sheet_status')) {
+    await db.query(`ALTER TABLE leads ADD COLUMN google_sheet_status TEXT`);
+  }
+
+  if (!cols.includes('google_sheet_action')) {
+    await db.query(`ALTER TABLE leads ADD COLUMN google_sheet_action TEXT`);
+  }
 }
 
 async function ensureDealOverrides() {
@@ -84,6 +92,20 @@ async function findSheetMatchForLead(lead) {
   return rows[0] || null;
 }
 
+async function findSheetRowByLeadReference(lead) {
+  if (!lead.google_sheet_name || !lead.google_sheet_row) return null;
+
+  const { rows } = await db.query(`
+    SELECT sheet_name, row_number, company_name, contact_name, phone, email, status, action_needed, problem, interest, notes
+    FROM sheet_clients
+    WHERE sheet_name = ?
+      AND row_number = ?
+    LIMIT 1
+  `, [lead.google_sheet_name, lead.google_sheet_row]);
+
+  return rows[0] || null;
+}
+
 function sheetHasManagerWork(row) {
   const text = String([
     row.status,
@@ -120,19 +142,24 @@ async function syncFacebookLeadsWithSheets() {
   const { rows: leads } = await db.query(`SELECT * FROM leads WHERE source = 'facebook'`);
 
   let matched = 0;
-  let movedFromNew = 0;
+  let statusUpdated = 0;
   let materials = 0;
   let services = 0;
-  let skippedExisting = 0;
+  let alreadyLinked = 0;
+  let notFound = 0;
 
   for (const lead of leads) {
-    if (lead.status !== 'new' || lead.google_sheet_name) {
-      skippedExisting += 1;
-      continue;
+    let match = await findSheetRowByLeadReference(lead);
+    if (match) alreadyLinked += 1;
+
+    if (!match) {
+      match = await findSheetMatchForLead(lead);
     }
 
-    const match = await findSheetMatchForLead(lead);
-    if (!match) continue;
+    if (!match) {
+      notFound += 1;
+      continue;
+    }
 
     matched += 1;
     if (match.sheet_name === 'МАТЕРИАЛЫ') materials += 1;
@@ -156,32 +183,44 @@ async function syncFacebookLeadsWithSheets() {
 
     await db.query(`
       UPDATE leads
-      SET status = CASE WHEN status = 'new' THEN ? ELSE status END,
+      SET status = ?,
           google_sheet_name = ?,
           google_sheet_row = ?,
+          google_sheet_status = ?,
+          google_sheet_action = ?,
           interest_products = COALESCE(NULLIF(?, ''), interest_products),
           notes = ?,
           updated_at = NOW()
       WHERE id = ?
-    `, [nextStatus, match.sheet_name, match.row_number, interest, notes, lead.id]);
+    `, [
+      nextStatus,
+      match.sheet_name,
+      match.row_number,
+      match.status || null,
+      match.action_needed || null,
+      interest,
+      notes,
+      lead.id,
+    ]);
 
-    if (lead.status === 'new' && nextStatus !== 'new') {
-      movedFromNew += 1;
+    if (lead.status !== nextStatus) {
+      statusUpdated += 1;
 
       await db.query(`
         INSERT INTO lead_activities (lead_id, action, description, old_value, new_value, performed_by)
-        VALUES (?, 'status_change', ?, 'new', ?, 'google_sheets')
-      `, [lead.id, `Статус обновлён по листу ${match.sheet_name}`, nextStatus]);
+        VALUES (?, 'status_change', ?, ?, ?, 'google_sheets')
+      `, [lead.id, `Статус обновлён по листу ${match.sheet_name}`, lead.status, nextStatus]);
     }
   }
 
   return {
     checked: leads.length,
     matched,
-    moved_from_new: movedFromNew,
+    status_updated: statusUpdated,
     materials,
     services,
-    skipped_existing: skippedExisting,
+    already_linked: alreadyLinked,
+    not_found: notFound,
   };
 }
 
