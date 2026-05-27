@@ -31,6 +31,49 @@ function calcTotal(items) {
 
 router.use(auth.requireAdmin);
 
+router.get('/', async (req, res) => {
+  try {
+    await ensureOfferColumns();
+    const limit = Math.min(Number(req.query.limit || 100), 500);
+
+    const { rows } = await db.query(`
+      SELECT
+        o.id,
+        o.lead_id,
+        o.offer_number,
+        o.status,
+        o.items,
+        o.subtotal,
+        o.discount_pct,
+        o.total,
+        o.currency,
+        o.valid_until,
+        o.notes,
+        o.sent_at,
+        o.created_at,
+        o.updated_at,
+        l.company_name,
+        l.contact_name,
+        l.phone,
+        l.email,
+        l.status AS lead_status
+      FROM offers o
+      LEFT JOIN leads l ON l.id = o.lead_id
+      ORDER BY o.created_at DESC
+      LIMIT ?
+    `, [limit]);
+
+    res.json({
+      offers: rows.map((row) => ({
+        ...row,
+        items: safeParse(row.items),
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/lead/:leadId', async (req, res) => {
   try {
     await ensureOfferColumns();
@@ -168,4 +211,3 @@ function safeParse(value) {
 }
 
 module.exports = router;
-

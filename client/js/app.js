@@ -1,7 +1,7 @@
 // ===== BODEX Virtual Office — Frontend App =====
 
 const API = 'https://virtual-office-f48m.onrender.com';
-const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports']);
+const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers']);
 let currentPage = 'leads';
 let currentRole = 'worker';
 let adminToken = localStorage.getItem('bodex_admin_token') || '';
@@ -47,6 +47,7 @@ async function renderPage(page) {
       case 'facebook': await renderFacebook(main); break;
       case 'sheets': await renderSheets(main); break;
       case 'products': await renderProducts(main); break;
+      case 'offers': await renderOffers(main); break;
       case 'settings': await renderSettings(main); break;
       default: main.innerHTML = '<h2>404</h2>';
     }
@@ -2221,6 +2222,18 @@ async function openLeadDetail(id) {
     const offers = offerData.offers || [];
 
     openModal(`${l.company_name || 'Лид #' + l.id}`, `
+      ${currentRole === 'admin' ? `
+        <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;padding:14px 16px;margin-bottom:16px;border:1px solid rgba(99,102,241,0.35);border-radius:10px;background:rgba(99,102,241,0.08);">
+          <div>
+            <div style="font-weight:800;color:#eee;font-size:14px;">Коммерческое предложение</div>
+            <div style="font-size:12px;color:#9ca3af;margin-top:4px;">
+              Данные клиента уже подставлены: ${l.company_name || l.contact_name || ('лид #' + l.id)}${l.phone ? ' · ' + l.phone : ''}${l.email ? ' · ' + l.email : ''}
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="openOfferModal(${l.id})">📄 Создать КП PDF</button>
+        </div>
+      ` : ''}
+
       <div class="form-grid">
         <div class="form-group"><label>Компания</label><input id="ld-company" value="${l.company_name || ''}"></div>
         <div class="form-group"><label>Контакт</label><input id="ld-contact" value="${l.contact_name || ''}"></div>
@@ -2273,7 +2286,6 @@ async function openLeadDetail(id) {
       ` : ''}
 
       <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
-        ${currentRole === 'admin' ? `<button class="btn btn-secondary btn-sm" onclick="openOfferModal(${l.id})">📄 Создать КП</button>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteLead(${l.id})">🗑️ Изтрий</button>
         <div style="flex:1;"></div>
         <button class="btn btn-secondary" onclick="closeModal()">Затвори</button>
@@ -2487,6 +2499,86 @@ async function saveOffer(leadId) {
       alert('Грешка: ' + err.message);
     }
   }
+}
+
+// ===== OFFERS =====
+async function renderOffers(el) {
+  const [offerData, leadData] = await Promise.all([
+    api('/api/offers?limit=100').catch(() => ({ offers: [] })),
+    api('/api/leads?limit=200').catch(() => ({ leads: [] })),
+  ]);
+  const offers = offerData.offers || [];
+  const leads = leadData.leads || [];
+  const offerLeadIds = new Set(offers.map(o => Number(o.lead_id)));
+  const candidateLeads = leads
+    .filter(l => !offerLeadIds.has(Number(l.id)) && !['won', 'lost'].includes(l.status))
+    .slice(0, 20);
+
+  el.innerHTML = `
+    <div class="page-header fade-in">
+      <h2>📄 Коммерческие предложения</h2>
+      <div class="page-header-actions">
+        <button class="btn btn-secondary" onclick="navigate('leads')">📋 Лиды</button>
+      </div>
+    </div>
+
+    <div class="stats-grid fade-in">
+      <div class="stat-card"><div class="stat-label">Всего КП</div><div class="stat-value">${offers.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Отправлено</div><div class="stat-value">${offers.filter(o => o.status === 'sent').length}</div></div>
+      <div class="stat-card"><div class="stat-label">Сумма</div><div class="stat-value">${Math.round(offers.reduce((sum, o) => sum + Number(o.total || 0), 0)).toLocaleString()}</div></div>
+      <div class="stat-card"><div class="stat-label">Кандидаты</div><div class="stat-value">${candidateLeads.length}</div></div>
+    </div>
+
+    <div class="card fade-in" style="margin-top:18px;">
+      <div class="card-title">Создать КП по лиду</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Клиент</th><th>Контакт</th><th>Статус</th><th>Интерес</th><th></th></tr></thead>
+          <tbody>
+            ${candidateLeads.length ? candidateLeads.map(l => `
+              <tr>
+                <td style="font-weight:700;color:#ddd;">${l.company_name || '—'}</td>
+                <td>${l.contact_name || l.phone || l.email || '—'}</td>
+                <td><span class="badge badge-${l.status}">${statusLabel(l.status)}</span></td>
+                <td style="max-width:260px;color:#9ca3af;font-size:12px;">${l.interest_products || l.lead_type || '—'}</td>
+                <td style="text-align:right;">
+                  <button class="btn btn-secondary btn-sm" onclick="openLeadDetail(${l.id})">👁</button>
+                  <button class="btn btn-primary btn-sm" onclick="openOfferModal(${l.id})">Создать КП</button>
+                </td>
+              </tr>
+            `).join('') : '<tr><td colspan="5" style="text-align:center;color:#777;padding:22px;">Нет активных лидов без КП.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card fade-in" style="margin-top:18px;">
+      <div class="card-title">История КП</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Номер</th><th>Клиент</th><th>Сумма</th><th>Статус лида</th><th>Дата</th><th></th></tr></thead>
+          <tbody>
+            ${offers.length ? offers.map(o => `
+              <tr>
+                <td style="font-weight:800;color:var(--brand-light);">${o.offer_number}</td>
+                <td>
+                  <div style="font-weight:700;color:#ddd;">${o.company_name || '—'}</div>
+                  <div style="font-size:11px;color:#777;">${o.contact_name || o.phone || o.email || ''}</div>
+                </td>
+                <td style="font-weight:700;color:var(--green);">${Number(o.total || 0).toLocaleString()} ${o.currency || 'EUR'}</td>
+                <td><span class="badge badge-${o.lead_status || 'offer_sent'}">${statusLabel(o.lead_status || 'offer_sent')}</span></td>
+                <td style="color:#888;font-size:12px;">${formatDateTime(o.created_at)}</td>
+                <td style="text-align:right;">
+                  <button class="btn btn-secondary btn-sm" onclick="openLeadDetail(${o.lead_id})">Лид</button>
+                  <button class="btn btn-primary btn-sm" onclick="downloadOfferPdf(${o.id})">PDF</button>
+                </td>
+              </tr>
+            `).join('') : '<tr><td colspan="6" style="text-align:center;color:#777;padding:22px;">КП пока не создавались.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
 
 function openPdfFromBase64(base64, filename) {
