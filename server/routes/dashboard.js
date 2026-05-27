@@ -245,10 +245,11 @@ async function getAssignedTasks(workerId) {
   return db.all(`
     SELECT * FROM worker_tasks
     WHERE worker_id = ?
+      AND COALESCE(NULLIF(due_date::text, ''), CURRENT_DATE::text)::date >= (CURRENT_DATE - 1)
     ORDER BY
       CASE
-        WHEN due_date = CURRENT_DATE THEN 1
-        WHEN due_date > CURRENT_DATE THEN 2
+        WHEN COALESCE(NULLIF(due_date::text, ''), CURRENT_DATE::text)::date = CURRENT_DATE THEN 1
+        WHEN COALESCE(NULLIF(due_date::text, ''), CURRENT_DATE::text)::date > CURRENT_DATE THEN 2
         ELSE 3
       END,
       CASE status
