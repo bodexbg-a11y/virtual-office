@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const auth = require('../services/auth');
+const productCatalog = require('../services/productCatalog');
 
 const DEAL_STAGES = [
   { id: 'new', label: 'Новый лид', short: 'Новый' },
@@ -138,6 +139,45 @@ async function ensureDealOverrides() {
       PRIMARY KEY (sheet_name, row_number)
     );
   `);
+}
+
+async function ensureProductMetaColumns() {
+  await db.exec(`
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS source_url TEXT;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS market_segment TEXT;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS call_hint TEXT;
+  `);
+}
+
+async function seedProductsFromSiteIfEmpty() {
+  const row = await db.get("SELECT COUNT(*)::int AS total FROM products WHERE sku LIKE 'WEB-%'");
+  if (Number(row?.total || 0) >= 12) return { seeded: false, count: Number(row.total || 0) };
+
+  const scanned = await productCatalog.scanSiteProducts();
+  let inserted = 0;
+
+  for (const p of scanned.items || []) {
+    await db.run(`
+      INSERT INTO products (
+        sku, name, name_bg, category, description_bg, price_per_kg, min_order_kg, in_stock, source_url, market_segment, call_hint, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, 50, 1, ?, ?, ?, NOW())
+      ON CONFLICT(sku) DO NOTHING
+    `, [
+      p.sku,
+      p.name,
+      p.name_bg,
+      p.category,
+      p.description_bg || null,
+      p.price_per_kg,
+      p.source_url || null,
+      p.market_segment || null,
+      p.call_hint || null,
+    ]);
+    inserted += 1;
+  }
+
+  return { seeded: true, count: inserted, source: scanned.source };
 }
 
 async function workerData() {
@@ -819,8 +859,59 @@ router.put('/agents/:id', async (req, res) => {
 
 router.get('/products', async (req, res) => {
   try {
+    await ensureProductMetaColumns();
+    await seedProductsFromSiteIfEmpty();
     const { rows } = await db.query('SELECT * FROM products ORDER BY category, name');
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/products/sync-site', auth.requireAdmin, async (req, res) => {
+  try {
+    await ensureProductMetaColumns();
+    const scanned = await productCatalog.scanSiteProducts();
+
+    let upserted = 0;
+    for (const p of scanned.items) {
+      await db.run(`
+        INSERT INTO products (
+          sku, name, name_bg, category, description_bg, price_per_kg, min_order_kg, in_stock, source_url, market_segment, call_hint, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 50, 1, ?, ?, ?, NOW())
+        ON CONFLICT(sku) DO UPDATE SET
+          name = EXCLUDED.name,
+          name_bg = EXCLUDED.name_bg,
+          category = EXCLUDED.category,
+          description_bg = EXCLUDED.description_bg,
+          price_per_kg = COALESCE(EXCLUDED.price_per_kg, products.price_per_kg),
+          source_url = EXCLUDED.source_url,
+          market_segment = EXCLUDED.market_segment,
+          call_hint = EXCLUDED.call_hint,
+          updated_at = NOW()
+      `, [
+        p.sku,
+        p.name,
+        p.name_bg,
+        p.category,
+        p.description_bg || null,
+        p.price_per_kg,
+        p.source_url || null,
+        p.market_segment || null,
+        p.call_hint || null,
+      ]);
+      upserted += 1;
+    }
+
+    res.json({
+      success: true,
+      source: scanned.source,
+      discovered: scanned.total_discovered,
+      parsed: scanned.parsed,
+      upserted,
+      message: `С сайта загружено ${upserted} продуктов`,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

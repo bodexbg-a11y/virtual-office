@@ -26,6 +26,7 @@ app.use('/api/settings', require('./routes/settings'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/agents', require('./routes/agents'));
+app.use('/api/offers', require('./routes/offers'));
 
 // Health check
 app.get('/api/health', (req, res) => {

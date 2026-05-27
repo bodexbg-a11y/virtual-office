@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS offers (
   subtotal NUMERIC,
   discount_pct NUMERIC DEFAULT 0,
   total NUMERIC,
+  currency TEXT DEFAULT 'EUR',
   valid_until TIMESTAMP,
   notes TEXT,
   sent_at TIMESTAMP,

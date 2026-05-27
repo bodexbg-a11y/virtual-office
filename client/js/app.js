@@ -1,12 +1,14 @@
 // ===== BODEX Virtual Office — Frontend App =====
 
 const API = 'https://virtual-office-f48m.onrender.com';
-const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings']);
+const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports']);
 let currentPage = 'leads';
 let currentRole = 'worker';
 let adminToken = localStorage.getItem('bodex_admin_token') || '';
 let markAgentPoll = null;
 let currentLeadFilters = {};
+let agentReportsFilters = { agent: 'all', date_from: '', date_to: '', limit: 100 };
+let currentOfferDraft = null;
 
 // ===== NAVIGATION =====
 function navigate(page) {
@@ -37,6 +39,7 @@ async function renderPage(page) {
       case 'worker-mark': await renderWorker(main, 'mark'); break;
       case 'worker-maria': await renderWorker(main, 'maria'); break;
       case 'worker-steve': await renderWorker(main, 'steve'); break;
+      case 'agent-reports': await renderAgentReports(main); break;
       case 'leads': await renderLeads(main); break;
       case 'clients': await renderClients(main); break;
       case 'deals': await renderDeals(main); break;
@@ -1885,11 +1888,17 @@ async function renderProducts(el) {
   };
 
   el.innerHTML = `
-    <div class="page-header fade-in"><h2>📦 Продукти ARCAN</h2></div>
+    <div class="page-header fade-in">
+      <h2>📦 Продукти ARCAN</h2>
+      <div class="page-header-actions">
+        ${currentRole === 'admin' ? '<button class="btn btn-primary" onclick="syncProductsFromSite()">🌐 Синхронизирай от сайта</button>' : ''}
+      </div>
+    </div>
+    <div id="products-sync-result" class="sync-result"></div>
     <div class="card fade-in">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>SKU</th><th>Име</th><th>Категория</th><th>Описание</th><th>Мин. поръчка</th><th>Наличност</th></tr></thead>
+          <thead><tr><th>SKU</th><th>Име</th><th>Категория</th><th>Описание</th><th>Сфера</th><th>Кому звонить</th><th>Мин. поръчка</th><th>Наличност</th></tr></thead>
           <tbody>
             ${products.map(p => `
               <tr>
@@ -1897,6 +1906,8 @@ async function renderProducts(el) {
                 <td style="font-weight:500;color:#ddd;">${p.name_bg || p.name}</td>
                 <td>${categories[p.category] || p.category}</td>
                 <td style="max-width:300px;font-size:11px;color:#888;">${p.description_bg || '—'}</td>
+                <td style="max-width:180px;font-size:11px;color:#8dd3ff;">${p.market_segment || '—'}</td>
+                <td style="max-width:280px;font-size:11px;color:#a9b4d0;">${p.call_hint || '—'}</td>
                 <td>${p.min_order_kg} кг</td>
                 <td><span class="badge badge-${p.in_stock ? 'won' : 'lost'}">${p.in_stock ? 'Да' : 'Не'}</span></td>
               </tr>
@@ -1906,6 +1917,21 @@ async function renderProducts(el) {
       </div>
     </div>
   `;
+}
+
+async function syncProductsFromSite() {
+  const el = document.getElementById('products-sync-result');
+  el.className = 'sync-result show';
+  el.textContent = 'Сканирую сайт и загружаю реальные продукты...';
+  try {
+    const result = await api('/api/dashboard/products/sync-site', { method: 'POST' });
+    el.className = 'sync-result show ok';
+    el.textContent = `✅ ${result.message}. Источник: ${result.source}. Найдено: ${result.discovered}, обработано: ${result.parsed}.`;
+    setTimeout(() => navigate('products'), 1000);
+  } catch (err) {
+    el.className = 'sync-result show err';
+    el.textContent = `❌ ${err.message}`;
+  }
 }
 
 // ===== SETTINGS =====
@@ -2190,7 +2216,9 @@ async function createLead(e) {
 async function openLeadDetail(id) {
   try {
     const data = await api(`/api/leads/${id}`);
+    const offerData = await api(`/api/offers/lead/${id}`).catch(() => ({ offers: [] }));
     const l = data.lead;
+    const offers = offerData.offers || [];
 
     openModal(`${l.company_name || 'Лид #' + l.id}`, `
       <div class="form-grid">
@@ -2229,7 +2257,23 @@ async function openLeadDetail(id) {
         `).join('') || '<div style="font-size:11px;color:#555;">Няма активност</div>'}
       </div>
 
+      ${offers.length ? `
+        <div style="margin-top:16px;">
+          <div class="card-title" style="font-size:12px;">📄 Коммерческие предложения</div>
+          ${offers.map(o => `
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;font-size:11px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.03);">
+              <div>
+                <div style="font-weight:700;color:#ddd;">${o.offer_number}</div>
+                <div style="color:#777;">${o.status} · ${Number(o.total || 0).toLocaleString()} ${o.currency || 'EUR'} · ${formatDateTime(o.created_at)}</div>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="downloadOfferPdf(${o.id})">PDF</button>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+
       <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+        ${currentRole === 'admin' ? `<button class="btn btn-secondary btn-sm" onclick="openOfferModal(${l.id})">📄 Создать КП</button>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteLead(${l.id})">🗑️ Изтрий</button>
         <div style="flex:1;"></div>
         <button class="btn btn-secondary" onclick="closeModal()">Затвори</button>
@@ -2271,6 +2315,368 @@ async function deleteLead(id) {
   } catch (err) {
     alert('Грешка: ' + err.message);
   }
+}
+
+async function openOfferModal(leadId) {
+  if (currentRole !== 'admin') {
+    alert('Admin access required');
+    return;
+  }
+
+  try {
+    const [leadData, products] = await Promise.all([
+      api(`/api/leads/${leadId}`),
+      api('/api/dashboard/products'),
+    ]);
+    currentOfferDraft = {
+      lead: leadData.lead,
+      items: [],
+      currency: 'EUR',
+      discount_pct: 0,
+      valid_until: '',
+      notes: '',
+      products: products || [],
+    };
+
+    openModal(`КП за ${leadData.lead.company_name || ('Лид #' + leadId)}`, `
+      <div id="offer-modal-content">
+        <div class="form-grid">
+          <div class="form-group"><label>Валута</label><select id="offer-currency" onchange="renderOfferDraft()">
+            ${['EUR', 'USD', 'BGN'].map(c => `<option value="${c}" ${currentOfferDraft.currency === c ? 'selected' : ''}>${c}</option>`).join('')}
+          </select></div>
+          <div class="form-group"><label>Отстъпка %</label><input id="offer-discount" type="number" min="0" max="100" value="0" oninput="renderOfferDraft()"></div>
+          <div class="form-group"><label>Валидно до</label><input id="offer-valid-until" type="date"></div>
+          <div class="form-group full"><label>Бележки</label><textarea id="offer-notes" rows="2" placeholder="Условия, срокове, доставка..."></textarea></div>
+        </div>
+
+        <div style="margin-top:14px;">
+          <div class="card-title" style="font-size:12px;">Выбери продукти и въведи цена ръчно</div>
+          <div class="table-wrap" style="max-height:280px;overflow:auto;border:1px solid var(--border);border-radius:10px;">
+            <table>
+              <thead>
+                <tr><th>Продукт</th><th>Категория</th><th>К-во</th><th>Цена</th><th></th></tr>
+              </thead>
+              <tbody>
+                ${currentOfferDraft.products.map((p) => `
+                  <tr>
+                    <td style="font-weight:600;color:#ddd;">${p.name_bg || p.name}</td>
+                    <td style="color:#888;">${p.category}</td>
+                    <td style="width:80px;"><input id="offer-qty-${p.id}" type="number" min="1" value="1" style="width:72px;"></td>
+                    <td style="width:120px;"><input id="offer-price-${p.id}" type="number" min="0" step="0.01" value="${Number(p.price_per_kg || 0) || ''}" style="width:100px;"></td>
+                    <td><button class="btn btn-secondary btn-sm" onclick="addOfferItem(${p.id})">Добави</button></td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;">
+          <div class="card-title" style="font-size:12px;">Избрани позиции</div>
+          <div id="offer-selected-items" class="offer-selected-items"></div>
+          <div id="offer-total-box" style="margin-top:8px;font-weight:700;color:#ddd;"></div>
+        </div>
+
+        <div id="offer-result" class="sync-result"></div>
+        <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+          <button class="btn btn-secondary" onclick="closeModal()">Отказ</button>
+          <button class="btn btn-primary" onclick="saveOffer(${leadId})">📄 Създай КП (PDF)</button>
+        </div>
+      </div>
+    `);
+    renderOfferDraft();
+  } catch (err) {
+    alert('Грешка: ' + err.message);
+  }
+}
+
+function addOfferItem(productId) {
+  if (!currentOfferDraft) return;
+  const product = currentOfferDraft.products.find((p) => Number(p.id) === Number(productId));
+  if (!product) return;
+  const quantity = Number(document.getElementById(`offer-qty-${productId}`)?.value || 1);
+  const unit_price = Number(document.getElementById(`offer-price-${productId}`)?.value || 0);
+  if (quantity <= 0 || unit_price <= 0) {
+    alert('Въведи количество и цена повече от 0.');
+    return;
+  }
+
+  currentOfferDraft.items.push({
+    product_id: product.id,
+    sku: product.sku,
+    name: product.name_bg || product.name,
+    category: product.category,
+    quantity,
+    unit_price,
+    currency: currentOfferDraft.currency,
+  });
+  renderOfferDraft();
+}
+
+function removeOfferItem(index) {
+  if (!currentOfferDraft) return;
+  currentOfferDraft.items.splice(index, 1);
+  renderOfferDraft();
+}
+
+function renderOfferDraft() {
+  const itemsEl = document.getElementById('offer-selected-items');
+  const totalEl = document.getElementById('offer-total-box');
+  if (!itemsEl || !totalEl || !currentOfferDraft) return;
+  const items = currentOfferDraft.items;
+  const currency = document.getElementById('offer-currency')?.value || currentOfferDraft.currency || 'EUR';
+  currentOfferDraft.currency = currency;
+  const discount = Number(document.getElementById('offer-discount')?.value || currentOfferDraft.discount_pct || 0);
+  currentOfferDraft.discount_pct = discount;
+  const subtotal = items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_price || 0), 0);
+  const total = subtotal - (subtotal * discount / 100);
+
+  itemsEl.innerHTML = items.length ? items.map((item, index) => `
+    <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;">
+      <div style="flex:1;">
+        <div style="font-size:12px;font-weight:700;color:#ddd;">${item.name}</div>
+        <div style="font-size:11px;color:#888;">${item.quantity} × ${Number(item.unit_price).toLocaleString()} ${item.currency || currency}</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="removeOfferItem(${index})">✕</button>
+    </div>
+  `).join('') : '<div style="font-size:12px;color:#777;">Добави поне един продукт.</div>';
+
+  totalEl.textContent = `Subtotal: ${subtotal.toLocaleString()} ${currency} · Total: ${total.toLocaleString()} ${currency}`;
+}
+
+async function saveOffer(leadId) {
+  const result = document.getElementById('offer-result');
+  if (!currentOfferDraft || !currentOfferDraft.items.length) {
+    if (result) {
+      result.className = 'sync-result show err';
+      result.textContent = 'Добави поне един продукт в КП.';
+    }
+    return;
+  }
+
+  const payload = {
+    lead_id: leadId,
+    items: currentOfferDraft.items,
+    currency: document.getElementById('offer-currency')?.value || currentOfferDraft.currency || 'EUR',
+    discount_pct: Number(document.getElementById('offer-discount')?.value || 0),
+    valid_until: document.getElementById('offer-valid-until')?.value || '',
+    notes: document.getElementById('offer-notes')?.value || '',
+    status: 'sent',
+  };
+
+  if (result) {
+    result.className = 'sync-result show';
+    result.textContent = 'Създавам КП и PDF...';
+  }
+
+  try {
+    const res = await api('/api/offers', { method: 'POST', body: payload });
+    if (result) {
+      result.className = 'sync-result show ok';
+      result.textContent = `✅ ${res.offer.offer_number} е готово.`;
+    }
+    if (res.pdf_base64) {
+      openPdfFromBase64(res.pdf_base64, res.pdf_filename || `${res.offer.offer_number}.pdf`);
+    }
+    setTimeout(() => openLeadDetail(leadId), 800);
+  } catch (err) {
+    if (result) {
+      result.className = 'sync-result show err';
+      result.textContent = '❌ ' + err.message;
+    } else {
+      alert('Грешка: ' + err.message);
+    }
+  }
+}
+
+function openPdfFromBase64(base64, filename) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'offer.pdf';
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function downloadOfferPdf(id) {
+  try {
+    const res = await fetch(`${API}/api/offers/${id}/pdf`, {
+      headers: { ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `offer-${id}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) {
+    alert('Грешка при сваляне на PDF: ' + err.message);
+  }
+}
+
+// ===== AGENT REPORTS =====
+async function renderAgentReports(el) {
+  const params = new URLSearchParams();
+  if (agentReportsFilters.agent) params.set('agent', agentReportsFilters.agent);
+  if (agentReportsFilters.date_from) params.set('date_from', agentReportsFilters.date_from);
+  if (agentReportsFilters.date_to) params.set('date_to', agentReportsFilters.date_to);
+  if (agentReportsFilters.limit) params.set('limit', String(agentReportsFilters.limit));
+
+  const data = await api(`/api/agents/reports?${params.toString()}`);
+  const byAgent = Object.fromEntries((data.summary?.by_agent || []).map((x) => [x.id, x]));
+  const reports = data.reports || [];
+  const runs = data.runs || [];
+
+  el.innerHTML = `
+    <div class="page-header fade-in">
+      <h2>🗂️ Отчёты агентов</h2>
+      <div class="page-header-actions">
+        <button class="btn btn-secondary" onclick="navigate('agent-reports')">🔄 Обновить</button>
+      </div>
+    </div>
+
+    <div class="card fade-in">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Агент</label>
+          <select id="agent-reports-agent">
+            <option value="all" ${agentReportsFilters.agent === 'all' ? 'selected' : ''}>Все</option>
+            <option value="maria" ${agentReportsFilters.agent === 'maria' ? 'selected' : ''}>Maria</option>
+            <option value="mark" ${agentReportsFilters.agent === 'mark' ? 'selected' : ''}>Mark</option>
+            <option value="steve" ${agentReportsFilters.agent === 'steve' ? 'selected' : ''}>Steve</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>С даты</label>
+          <input id="agent-reports-date-from" type="date" value="${agentReportsFilters.date_from || ''}">
+        </div>
+        <div class="form-group">
+          <label>По дату</label>
+          <input id="agent-reports-date-to" type="date" value="${agentReportsFilters.date_to || ''}">
+        </div>
+        <div class="form-group">
+          <label>Лимит</label>
+          <input id="agent-reports-limit" type="number" min="10" max="500" value="${agentReportsFilters.limit || 100}">
+        </div>
+      </div>
+      <div class="page-header-actions" style="justify-content:flex-start;margin-top:6px;">
+        <button class="btn btn-primary" onclick="applyAgentReportsFilters()">Применить</button>
+        <button class="btn btn-secondary" onclick="resetAgentReportsFilters()">Сбросить</button>
+      </div>
+    </div>
+
+    <div class="stats-grid fade-in">
+      <div class="stat-card">
+        <div class="stat-label">Всего отчётов</div>
+        <div class="stat-value brand">${data.summary?.total_reports || 0}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Maria</div>
+        <div class="stat-value pink">${byAgent.maria?.reports || 0}</div>
+        <div class="stat-sub">запусков: ${byAgent.maria?.runs || 0}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Mark</div>
+        <div class="stat-value blue">${byAgent.mark?.reports || 0}</div>
+        <div class="stat-sub">запусков: ${byAgent.mark?.runs || 0}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Steve</div>
+        <div class="stat-value green">${byAgent.steve?.reports || 0}</div>
+        <div class="stat-sub">запусков: ${byAgent.steve?.runs || 0}</div>
+      </div>
+    </div>
+
+    <div class="grid-2 fade-in">
+      <div class="card">
+        <div class="card-title">📑 История запусков</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Время</th><th>Агент</th><th>Статус</th><th>Строк</th><th>Сообщение</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${runs.length ? runs.slice(0, 30).map((r) => `
+                <tr>
+                  <td>${formatDateTime(r.started_at)}</td>
+                  <td>${agentName(r.agent_id)}</td>
+                  <td>${agentRunLabel(r.status)}</td>
+                  <td>${r.rows_created || 0}</td>
+                  <td>${r.message || '—'}</td>
+                </tr>
+              `).join('') : '<tr><td colspan="5" style="text-align:center;color:#777;">Запусков пока нет</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📘 Последние отчёты</div>
+        <div style="display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto;">
+          ${reports.length ? reports.slice(0, 40).map((r) => `
+            <div style="padding:10px;border:1px solid var(--border);border-radius:10px;">
+              <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
+                <strong>${agentName(r.agent_id)}</strong>
+                <span class="badge badge-${r.run_status === 'done' ? 'won' : r.run_status === 'error' ? 'lost' : 'new'}">${agentRunLabel(r.run_status || 'done')}</span>
+              </div>
+              <div style="font-size:12px;color:#aaa;margin-top:4px;">${reportTypeLabel(r.report_type)} · ${formatDateTime(r.created_at)}</div>
+              <div style="font-size:12px;color:#ddd;margin-top:6px;">${reportSummary(r)}</div>
+            </div>
+          `).join('') : '<div style="color:#777;font-size:13px;">В выбранном периоде отчётов нет.</div>'}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function applyAgentReportsFilters() {
+  agentReportsFilters = {
+    agent: document.getElementById('agent-reports-agent')?.value || 'all',
+    date_from: document.getElementById('agent-reports-date-from')?.value || '',
+    date_to: document.getElementById('agent-reports-date-to')?.value || '',
+    limit: Number(document.getElementById('agent-reports-limit')?.value || 100),
+  };
+  navigate('agent-reports');
+}
+
+function resetAgentReportsFilters() {
+  agentReportsFilters = { agent: 'all', date_from: '', date_to: '', limit: 100 };
+  navigate('agent-reports');
+}
+
+function agentName(id) {
+  const map = { maria: 'Maria', mark: 'Mark', steve: 'Steve' };
+  return map[id] || id || '—';
+}
+
+function reportTypeLabel(type) {
+  const map = {
+    ads_analysis: 'Анализ рекламы',
+    market_scan: 'Скан рынка',
+    seo_report: 'SEO отчёт',
+  };
+  return map[type] || type || 'Отчёт';
+}
+
+function reportSummary(report) {
+  const payload = report?.payload || {};
+  if (payload.summary) return payload.summary;
+  if (payload.overview?.golden_recommendation) return payload.overview.golden_recommendation;
+  if (Array.isArray(payload.rows)) return `Строк в отчёте: ${payload.rows.length}`;
+  return report?.run_message || 'Краткое описание недоступно.';
 }
 
 // ===== HELPERS =====
