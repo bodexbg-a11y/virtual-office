@@ -3,6 +3,7 @@ const facebookAds = require('./facebookAds');
 const googleSheets = require('./googleSheets');
 
 const REPORT_SHEET = 'Maria Ads Report';
+const WRITE_AGENT_REPORTS_TO_SHEETS = String(process.env.AGENT_REPORTS_TO_SHEETS || '').toLowerCase() === 'true';
 let activeRun = null;
 
 async function ensureAgentTables() {
@@ -17,6 +18,16 @@ async function ensureAgentTables() {
       finished_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent_id);
+
+    CREATE TABLE IF NOT EXISTS agent_reports (
+      id SERIAL PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      report_type TEXT NOT NULL,
+      run_id INTEGER,
+      payload_json TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_reports_agent ON agent_reports(agent_id, created_at DESC);
   `);
 }
 
@@ -41,9 +52,11 @@ async function executeRun() {
     await facebookAds.syncCampaigns();
     const campaigns = await facebookAds.getCampaigns();
     const rows = campaigns.map(analyzeCampaign);
+    const overview = buildOverview(rows);
+    await saveReportToDb(runId, rows, overview);
     await writeReport(rows);
 
-    const summary = summarize(rows);
+    const summary = overview.summary;
     await db.run(`
       UPDATE agent_runs
       SET status = 'done', message = ?, rows_created = ?, finished_at = NOW()
@@ -68,6 +81,24 @@ async function executeRun() {
 }
 
 async function getAnalysis() {
+  await ensureAgentTables();
+  const latestStored = await db.get(`
+    SELECT payload_json
+    FROM agent_reports
+    WHERE agent_id = 'maria' AND report_type = 'ads_analysis'
+    ORDER BY id DESC
+    LIMIT 1
+  `);
+  if (latestStored?.payload_json) {
+    const payload = JSON.parse(latestStored.payload_json);
+    return {
+      summary: payload.summary || '',
+      overview: payload.overview || {},
+      rows: payload.rows || [],
+      latest: await latestRun(),
+    };
+  }
+
   const campaigns = await facebookAds.getCampaigns();
   const rows = campaigns.map(analyzeCampaign);
   const overview = buildOverview(rows);
@@ -245,7 +276,19 @@ function buildOverview(rows) {
   };
 }
 
+async function saveReportToDb(runId, rows, overview) {
+  await db.run(`
+    INSERT INTO agent_reports (agent_id, report_type, run_id, payload_json)
+    VALUES ('maria', 'ads_analysis', ?, ?)
+  `, [runId, JSON.stringify({
+    summary: overview.summary,
+    overview,
+    rows,
+  })]);
+}
+
 async function writeReport(rows) {
+  if (!WRITE_AGENT_REPORTS_TO_SHEETS) return;
   if (!googleSheets.initialized) {
     await googleSheets.init();
   }

@@ -4,6 +4,7 @@ const googleSheets = require('./googleSheets');
 
 const REPORT_SHEET = 'Mark Market Report';
 const SOURCES_SHEET = 'Mark Sources';
+const WRITE_AGENT_REPORTS_TO_SHEETS = String(process.env.AGENT_REPORTS_TO_SHEETS || '').toLowerCase() === 'true';
 let activeRun = null;
 
 async function ensureAgentTables() {
@@ -18,6 +19,16 @@ async function ensureAgentTables() {
       finished_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent_id);
+
+    CREATE TABLE IF NOT EXISTS agent_reports (
+      id SERIAL PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      report_type TEXT NOT NULL,
+      run_id INTEGER,
+      payload_json TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_reports_agent ON agent_reports(agent_id, created_at DESC);
   `);
 }
 
@@ -64,6 +75,7 @@ async function executeRun() {
       ]);
     }
 
+    await saveReportToDb(runId, reportRows);
     await writeReport(reportRows);
     await db.run(`
       UPDATE agent_runs
@@ -75,8 +87,8 @@ async function executeRun() {
       success: true,
       run_id: runId,
       rows: reportRows.length,
-      sheet: REPORT_SHEET,
-      message: `Mark готов: отчёт по ${reportRows.length} продуктам записан в Google Sheets.`,
+      storage: WRITE_AGENT_REPORTS_TO_SHEETS ? 'database+google_sheets' : 'database',
+      message: `Mark готов: отчёт по ${reportRows.length} продуктам сохранён в БД.`,
     };
   } catch (err) {
     await db.run(`
@@ -88,7 +100,28 @@ async function executeRun() {
   }
 }
 
+async function saveReportToDb(runId, rows) {
+  const objects = rows.map(r => ({
+    date: r[0],
+    sku: r[1],
+    product: r[2],
+    category: r[3],
+    query: r[4],
+    source: r[5],
+    price: r[6],
+    currency: r[7],
+    confidence: r[8],
+    status: r[9],
+    recommendation: r[10],
+  }));
+  await db.run(`
+    INSERT INTO agent_reports (agent_id, report_type, run_id, payload_json)
+    VALUES ('mark', 'market_scan', ?, ?)
+  `, [runId, JSON.stringify({ rows: objects })]);
+}
+
 async function writeReport(rows) {
+  if (!WRITE_AGENT_REPORTS_TO_SHEETS) return;
   if (!googleSheets.initialized) {
     await googleSheets.init();
   }
