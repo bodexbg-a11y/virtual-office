@@ -14,21 +14,31 @@ class GoogleSheetsService {
     this.initialized = false;
     this.spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
 
-    if (!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY || !process.env.GOOGLE_SPREADSHEET_ID) {
+    if (
+      !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ||
+      !process.env.GOOGLE_PRIVATE_KEY ||
+      !process.env.GOOGLE_SPREADSHEET_ID
+    ) {
       console.log('⚠️  Google Sheets: credentials not configured, running in demo mode');
       return;
     }
+
     try {
       const privateKey = normalizePrivateKey(process.env.GOOGLE_PRIVATE_KEY);
+
       const auth = new google.auth.JWT(
-        process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL, null,
+        process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+        null,
         privateKey,
         ['https://www.googleapis.com/auth/spreadsheets']
       );
+
       this.sheets = google.sheets({ version: 'v4', auth });
+
       await this.testConnection();
       await this.ensureStructure();
-      this.ensureBusinessTables();
+      await this.ensureBusinessTables();
+
       this.initialized = true;
       console.log('✅ Google Sheets connected');
     } catch (err) {
@@ -80,8 +90,8 @@ class GoogleSheetsService {
     return { ok: true, createdSheets: missing };
   }
 
-  ensureBusinessTables() {
-    db.raw.exec(`
+  async ensureBusinessTables() {
+    await db.query(`
       CREATE TABLE IF NOT EXISTS sheet_clients (
         id SERIAL PRIMARY KEY,
         sheet_name TEXT NOT NULL,
@@ -102,9 +112,10 @@ class GoogleSheetsService {
         deal TEXT,
         notes TEXT,
         raw_json TEXT,
-        synced_at TEXT DEFAULT (NOW()),
+        synced_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(sheet_name, row_number)
       );
+
       CREATE INDEX IF NOT EXISTS idx_sheet_clients_sheet ON sheet_clients(sheet_name);
       CREATE INDEX IF NOT EXISTS idx_sheet_clients_status ON sheet_clients(status);
       CREATE INDEX IF NOT EXISTS idx_sheet_clients_priority ON sheet_clients(priority);
@@ -141,77 +152,173 @@ class GoogleSheetsService {
 
   async pushLeads() {
     if (!this.initialized) return this._demo('push', 'Leads');
+
     try {
       await this.ensureStructure();
-      const { rows } = db.query('SELECT * FROM leads ORDER BY created_at DESC');
+
+      const { rows } = await db.query('SELECT * FROM leads ORDER BY created_at DESC');
+
       const header = this.leadHeader();
-      const values = [header, ...rows.map(r => [r.id, r.company_name, r.contact_name, r.email, r.phone, r.city, r.status, r.priority, r.company_type, r.interest_products, r.estimated_value, r.source, r.created_at])];
-      await this.sheets.spreadsheets.values.update({ spreadsheetId: this.spreadsheetId, range: 'Leads!A1', valueInputOption: 'RAW', resource: { values } });
-      this._log('Leads', 'push', rows.length, 'success');
+
+      const values = [
+        header,
+        ...rows.map(r => [
+          r.id,
+          r.company_name,
+          r.contact_name,
+          r.email,
+          r.phone,
+          r.city,
+          r.status,
+          r.priority,
+          r.company_type,
+          r.interest_products,
+          r.estimated_value,
+          r.source,
+          r.created_at,
+        ]),
+      ];
+
+      await this.sheets.spreadsheets.values.update({
+        spreadsheetId: this.spreadsheetId,
+        range: 'Leads!A1',
+        valueInputOption: 'RAW',
+        resource: { values },
+      });
+
+      await this._log('Leads', 'push', rows.length, 'success');
+
       return { success: true, rows: rows.length };
     } catch (err) {
-      this._log('Leads', 'push', 0, 'error', err.message);
+      await this._log('Leads', 'push', 0, 'error', err.message);
       throw err;
     }
   }
 
   async pushProducts() {
     if (!this.initialized) return this._demo('push', 'Products');
+
     try {
       await this.ensureStructure();
-      const { rows } = db.query('SELECT * FROM products ORDER BY category, name');
+
+      const { rows } = await db.query('SELECT * FROM products ORDER BY category, name');
+
       const header = this.productHeader();
-      const values = [header, ...rows.map(r => [r.sku, r.name_bg || r.name, r.category, r.description_bg, r.min_order_kg, r.in_stock ? 'Да' : 'Не'])];
-      await this.sheets.spreadsheets.values.update({ spreadsheetId: this.spreadsheetId, range: 'Products!A1', valueInputOption: 'RAW', resource: { values } });
-      this._log('Products', 'push', rows.length, 'success');
+
+      const values = [
+        header,
+        ...rows.map(r => [
+          r.sku,
+          r.name_bg || r.name,
+          r.category,
+          r.description_bg,
+          r.min_order_kg,
+          r.in_stock ? 'Да' : 'Не',
+        ]),
+      ];
+
+      await this.sheets.spreadsheets.values.update({
+        spreadsheetId: this.spreadsheetId,
+        range: 'Products!A1',
+        valueInputOption: 'RAW',
+        resource: { values },
+      });
+
+      await this._log('Products', 'push', rows.length, 'success');
+
       return { success: true, rows: rows.length };
     } catch (err) {
-      this._log('Products', 'push', 0, 'error', err.message);
+      await this._log('Products', 'push', 0, 'error', err.message);
       throw err;
     }
   }
 
   async pushStats() {
     if (!this.initialized) return this._demo('push', 'Stats');
+
     try {
       await this.ensureStructure();
-      const { rows } = db.query('SELECT * FROM daily_stats ORDER BY date DESC LIMIT 30');
+
+      const { rows } = await db.query('SELECT * FROM daily_stats ORDER BY date DESC LIMIT 30');
+
       const header = this.statsHeader();
-      const values = [header, ...rows.map(r => [r.date, r.new_leads, r.qualified_leads, r.offers_sent, r.deals_won, r.fb_spend, r.fb_leads, r.fb_clicks, r.chatbot_conversations, r.chatbot_leads, r.revenue])];
-      await this.sheets.spreadsheets.values.update({ spreadsheetId: this.spreadsheetId, range: 'Stats!A1', valueInputOption: 'RAW', resource: { values } });
-      this._log('Stats', 'push', rows.length, 'success');
+
+      const values = [
+        header,
+        ...rows.map(r => [
+          r.date,
+          r.new_leads,
+          r.qualified_leads,
+          r.offers_sent,
+          r.deals_won,
+          r.fb_spend,
+          r.fb_leads,
+          r.fb_clicks,
+          r.chatbot_conversations,
+          r.chatbot_leads,
+          r.revenue,
+        ]),
+      ];
+
+      await this.sheets.spreadsheets.values.update({
+        spreadsheetId: this.spreadsheetId,
+        range: 'Stats!A1',
+        valueInputOption: 'RAW',
+        resource: { values },
+      });
+
+      await this._log('Stats', 'push', rows.length, 'success');
+
       return { success: true, rows: rows.length };
     } catch (err) {
-      this._log('Stats', 'push', 0, 'error', err.message);
+      await this._log('Stats', 'push', 0, 'error', err.message);
       throw err;
     }
   }
 
   async pullLeads() {
     if (!this.initialized) return this._demo('pull', 'Leads');
+
     try {
       await this.ensureStructure();
-      const res = await this.sheets.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range: 'Leads!A2:M' });
+
+      const res = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: this.spreadsheetId,
+        range: 'Leads!A2:M',
+      });
+
       const rows = res.data.values || [];
       let updated = 0;
+
       for (const row of rows) {
         const [id, , , , , , status, priority] = row;
+
         if (id) {
-          db.raw.prepare("UPDATE leads SET status = COALESCE(?, status), priority = COALESCE(?, priority), updated_at = NOW() WHERE id = ?").run(status, priority, parseInt(id));
+          await db.query(`
+            UPDATE leads
+            SET status = COALESCE(?, status),
+                priority = COALESCE(?, priority),
+                updated_at = NOW()
+            WHERE id = ?
+          `, [status || null, priority || null, parseInt(id, 10)]);
+
           updated++;
         }
       }
-      this._log('Leads', 'pull', updated, 'success');
+
+      await this._log('Leads', 'pull', updated, 'success');
+
       return { success: true, rows: updated };
     } catch (err) {
-      this._log('Leads', 'pull', 0, 'error', err.message);
+      await this._log('Leads', 'pull', 0, 'error', err.message);
       throw err;
     }
   }
 
   async pullBusinessSheets() {
     if (!this.initialized) return this._demo('pull', 'Business Sheets');
-    this.ensureBusinessTables();
+
+    await this.ensureBusinessTables();
 
     const sheetConfigs = [
       { name: 'УСЛУГИ', headerRow: 1 },
@@ -229,42 +336,26 @@ class GoogleSheetsService {
       total += imported;
     }
 
-    this._log('BusinessSheets', 'pull', total, 'success');
+    await this._log('BusinessSheets', 'pull', total, 'success');
+
     return { success: true, rows: total, summary };
   }
 
   async pullBusinessSheet({ name, headerRow }) {
+    await this.ensureBusinessTables();
+
     const range = `'${name}'!A1:Z1000`;
-    const res = await this.sheets.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range });
+
+    const res = await this.sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range,
+    });
+
     const values = res.data.values || [];
     const header = values[headerRow - 1] || [];
     const rows = values.slice(headerRow);
-    let imported = 0;
 
-    const upsert = db.raw.prepare(`
-      INSERT INTO sheet_clients (
-        sheet_name, row_number, segment, company_name, contact_name, phone, email, city,
-        object_type, problem, interest, action_needed, status, priority, result, deal, notes, raw_json, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-      ON CONFLICT(sheet_name, row_number) DO UPDATE SET
-        segment=excluded.segment,
-        company_name=excluded.company_name,
-        contact_name=excluded.contact_name,
-        phone=excluded.phone,
-        email=excluded.email,
-        city=excluded.city,
-        object_type=excluded.object_type,
-        problem=excluded.problem,
-        interest=excluded.interest,
-        action_needed=excluded.action_needed,
-        status=excluded.status,
-        priority=excluded.priority,
-        result=excluded.result,
-        deal=excluded.deal,
-        notes=excluded.notes,
-        raw_json=excluded.raw_json,
-        synced_at=NOW()
-    `);
+    let imported = 0;
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -274,7 +365,48 @@ class GoogleSheetsService {
 
       if (!hasClientIdentity(client)) continue;
 
-      upsert.run(
+      await db.query(`
+        INSERT INTO sheet_clients (
+          sheet_name,
+          row_number,
+          segment,
+          company_name,
+          contact_name,
+          phone,
+          email,
+          city,
+          object_type,
+          problem,
+          interest,
+          action_needed,
+          status,
+          priority,
+          result,
+          deal,
+          notes,
+          raw_json,
+          synced_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        ON CONFLICT(sheet_name, row_number) DO UPDATE SET
+          segment = EXCLUDED.segment,
+          company_name = EXCLUDED.company_name,
+          contact_name = EXCLUDED.contact_name,
+          phone = EXCLUDED.phone,
+          email = EXCLUDED.email,
+          city = EXCLUDED.city,
+          object_type = EXCLUDED.object_type,
+          problem = EXCLUDED.problem,
+          interest = EXCLUDED.interest,
+          action_needed = EXCLUDED.action_needed,
+          status = EXCLUDED.status,
+          priority = EXCLUDED.priority,
+          result = EXCLUDED.result,
+          deal = EXCLUDED.deal,
+          notes = EXCLUDED.notes,
+          raw_json = EXCLUDED.raw_json,
+          synced_at = NOW()
+      `, [
         name,
         rowNumber,
         clean(client.segment),
@@ -292,16 +424,18 @@ class GoogleSheetsService {
         clean(client.result),
         clean(client.deal),
         clean(client.notes),
-        JSON.stringify(raw)
-      );
+        JSON.stringify(raw),
+      ]);
+
       imported++;
     }
 
     return imported;
   }
 
-  getBusinessClients(filters = {}) {
-    this.ensureBusinessTables();
+  async getBusinessClients(filters = {}) {
+    await this.ensureBusinessTables();
+
     const where = [];
     const params = [];
 
@@ -309,23 +443,29 @@ class GoogleSheetsService {
       where.push('sheet_name = ?');
       params.push(filters.sheet_name);
     }
+
     if (filters.status) {
-      where.push('LOWER(COALESCE(status, "")) LIKE ?');
+      where.push("LOWER(COALESCE(status, '')) LIKE ?");
       params.push(`%${filters.status.toLowerCase()}%`);
     }
+
     if (filters.priority) {
       where.push('priority = ?');
       params.push(filters.priority);
     }
+
     if (filters.search) {
-      where.push(`(
-        LOWER(COALESCE(company_name, '')) LIKE ?
-        OR LOWER(COALESCE(contact_name, '')) LIKE ?
-        OR LOWER(COALESCE(phone, '')) LIKE ?
-        OR LOWER(COALESCE(email, '')) LIKE ?
-        OR LOWER(COALESCE(problem, '')) LIKE ?
-        OR LOWER(COALESCE(notes, '')) LIKE ?
-      )`);
+      where.push(`
+        (
+          LOWER(COALESCE(company_name, '')) LIKE ?
+          OR LOWER(COALESCE(contact_name, '')) LIKE ?
+          OR LOWER(COALESCE(phone, '')) LIKE ?
+          OR LOWER(COALESCE(email, '')) LIKE ?
+          OR LOWER(COALESCE(problem, '')) LIKE ?
+          OR LOWER(COALESCE(notes, '')) LIKE ?
+        )
+      `);
+
       const term = `%${filters.search.toLowerCase()}%`;
       params.push(term, term, term, term, term, term);
     }
@@ -334,49 +474,68 @@ class GoogleSheetsService {
       SELECT * FROM sheet_clients
       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       ORDER BY
-        CASE priority WHEN 'hot' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
+        CASE priority
+          WHEN 'hot' THEN 1
+          WHEN 'high' THEN 2
+          WHEN 'medium' THEN 3
+          ELSE 4
+        END,
         synced_at DESC,
         id DESC
       LIMIT ?
     `;
+
     params.push(Number(filters.limit || 300));
 
-    const rows = db.raw.prepare(sql).all(...params);
-    const stats = db.raw.prepare(`
+    const { rows } = await db.query(sql, params);
+
+    const statsRes = await db.query(`
       SELECT
-        COUNT(*) as total,
-        SUM(CASE WHEN sheet_name = 'УСЛУГИ' THEN 1 ELSE 0 END) as services,
-        SUM(CASE WHEN sheet_name = 'МАТЕРИАЛЫ' THEN 1 ELSE 0 END) as materials,
-        SUM(CASE WHEN sheet_name = 'ПРОЕКТЫ' THEN 1 ELSE 0 END) as projects,
-        SUM(CASE WHEN sheet_name = 'b2b' THEN 1 ELSE 0 END) as b2b,
-        SUM(CASE WHEN priority IN ('hot', 'high') THEN 1 ELSE 0 END) as high_priority,
+        COUNT(*)::int as total,
+        COALESCE(SUM(CASE WHEN sheet_name = 'УСЛУГИ' THEN 1 ELSE 0 END), 0)::int as services,
+        COALESCE(SUM(CASE WHEN sheet_name = 'МАТЕРИАЛЫ' THEN 1 ELSE 0 END), 0)::int as materials,
+        COALESCE(SUM(CASE WHEN sheet_name = 'ПРОЕКТЫ' THEN 1 ELSE 0 END), 0)::int as projects,
+        COALESCE(SUM(CASE WHEN sheet_name = 'b2b' THEN 1 ELSE 0 END), 0)::int as b2b,
+        COALESCE(SUM(CASE WHEN priority IN ('hot', 'high') THEN 1 ELSE 0 END), 0)::int as high_priority,
         MAX(synced_at) as last_sync
       FROM sheet_clients
-    `).get();
+    `);
 
-    return { rows, stats };
+    return {
+      rows,
+      stats: statsRes.rows[0] || {},
+    };
   }
 
-  getTodayRecommendations() {
-    this.ensureBusinessTables();
-    const clients = db.raw.prepare('SELECT * FROM sheet_clients ORDER BY synced_at DESC').all();
+  async getTodayRecommendations() {
+    await this.ensureBusinessTables();
+
+    const { rows: clients } = await db.query(`
+      SELECT * FROM sheet_clients
+      ORDER BY synced_at DESC
+    `);
+
     const recommendations = [];
 
     const noCall = value => /не\s*звон|не\s*звън|do not call/i.test(value || '');
+
     const interested = clients.filter(c =>
       !noCall(`${c.status} ${c.action_needed} ${c.notes}`)
       && /(интерес|заинтерес|высок|high|очень|много)/i.test(`${c.status} ${c.priority} ${c.interest} ${c.notes}`)
     );
+
     const needsAction = clients.filter(c =>
       !noCall(`${c.status} ${c.action_needed} ${c.notes}`)
       && c.action_needed
       && !/(готово|done|спечелен|lost|загуб)/i.test(`${c.status} ${c.result}`)
     );
+
     const b2bNoCallStatus = clients.filter(c =>
       c.sheet_name === 'b2b'
       && !c.status
       && !noCall(`${c.status} ${c.notes}`)
     );
+
     const projects = clients.filter(c =>
       c.sheet_name === 'ПРОЕКТЫ'
       && !/(спечелен|завършен|done|lost|загуб)/i.test(c.status || '')
@@ -426,7 +585,12 @@ class GoogleSheetsService {
   }
 
   async getSyncHistory() {
-    const { rows } = db.query('SELECT * FROM sheets_sync_log ORDER BY synced_at DESC LIMIT 20');
+    const { rows } = await db.query(`
+      SELECT * FROM sheets_sync_log
+      ORDER BY synced_at DESC
+      LIMIT 20
+    `);
+
     return rows;
   }
 
@@ -440,23 +604,73 @@ class GoogleSheetsService {
   }
 
   leadHeader() {
-    return ['ID','Компания','Контакт','Email','Телефон','Град','Статус','Приоритет','Тип','Продукти','Стойност','Източник','Дата'];
+    return [
+      'ID',
+      'Компания',
+      'Контакт',
+      'Email',
+      'Телефон',
+      'Град',
+      'Статус',
+      'Приоритет',
+      'Тип',
+      'Продукти',
+      'Стойност',
+      'Източник',
+      'Дата',
+    ];
   }
 
   productHeader() {
-    return ['SKU','Име','Категория','Описание','Мин. поръчка','Наличност'];
+    return [
+      'SKU',
+      'Име',
+      'Категория',
+      'Описание',
+      'Мин. поръчка',
+      'Наличност',
+    ];
   }
 
   statsHeader() {
-    return ['Дата','Нови лидове','Квалифицирани','Оферти','Сделки','FB разход','FB лидове','FB кликове','Чатбот','Чатбот лидове','Приход'];
+    return [
+      'Дата',
+      'Нови лидове',
+      'Квалифицирани',
+      'Оферти',
+      'Сделки',
+      'FB разход',
+      'FB лидове',
+      'FB кликове',
+      'Чатбот',
+      'Чатбот лидове',
+      'Приход',
+    ];
   }
 
-  _log(sheet, dir, count, status, error = null) {
-    db.raw.prepare('INSERT INTO sheets_sync_log (sheet_name, direction, rows_affected, status, error_message) VALUES (?, ?, ?, ?, ?)').run(sheet, dir, count, status, error);
+  async _log(sheet, dir, count, status, error = null) {
+    try {
+      await db.query(`
+        INSERT INTO sheets_sync_log (
+          sheet_name,
+          direction,
+          rows_affected,
+          status,
+          error_message
+        )
+        VALUES (?, ?, ?, ?, ?)
+      `, [sheet, dir, count, status, error]);
+    } catch (err) {
+      console.error('❌ Sync log error:', err.message);
+    }
   }
 
   _demo(dir, sheet) {
-    return { success: true, demo: true, message: `Demo: would ${dir} ${sheet}` };
+    return {
+      success: true,
+      demo: true,
+      message: `Demo: would ${dir} ${sheet}`,
+    };
   }
 }
 
@@ -469,9 +683,11 @@ function normalizePrivateKey(raw) {
 
 function rowToObject(header, row) {
   const obj = {};
+
   header.forEach((key, index) => {
     if (key) obj[String(key).trim()] = row[index] || '';
   });
+
   return obj;
 }
 
@@ -519,7 +735,12 @@ function mapBusinessClient(sheetName, raw, row) {
       status: raw['Статус проекта'],
       action_needed: raw['ETA / Срок'],
       priority: raw['Бюджет'] ? 'high' : 'medium',
-      notes: [raw['Адрес объекта'], raw['Ответственный'], raw['Комментарий'], raw['Документы']].filter(Boolean).join(' | '),
+      notes: [
+        raw['Адрес объекта'],
+        raw['Ответственный'],
+        raw['Комментарий'],
+        raw['Документы'],
+      ].filter(Boolean).join(' | '),
       result: raw['Дата старта'],
     };
   }
@@ -533,15 +754,26 @@ function mapBusinessClient(sheetName, raw, row) {
       email: raw['Email'],
       status: raw['Статус звонка'],
       priority: raw['Ст-с'] === '✅' ? 'high' : 'medium',
-      notes: [raw['Адрес / Сайт'], raw['Профил / Бележка']].filter(Boolean).join(' | '),
+      notes: [
+        raw['Адрес / Сайт'],
+        raw['Профил / Бележка'],
+      ].filter(Boolean).join(' | '),
     };
   }
 
-  return { notes: JSON.stringify(raw), contact_name: row.filter(Boolean).join(' ') };
+  return {
+    notes: JSON.stringify(raw),
+    contact_name: row.filter(Boolean).join(' '),
+  };
 }
 
 function hasClientIdentity(client) {
-  return !!(clean(client.company_name) || clean(client.contact_name) || clean(client.phone) || clean(client.email));
+  return !!(
+    clean(client.company_name) ||
+    clean(client.contact_name) ||
+    clean(client.phone) ||
+    clean(client.email)
+  );
 }
 
 function clean(value) {
@@ -554,23 +786,29 @@ function cleanPhone(value) {
 
 function normalizePriority(value) {
   const text = clean(value).toLowerCase();
+
   if (!text) return 'medium';
   if (/hot|очень|много|высок|high|✅/.test(text)) return 'high';
   if (/низ|low/.test(text)) return 'low';
+
   return 'medium';
 }
 
 function formatGoogleError(err) {
   const message = err.response?.data?.error?.message || err.errors?.[0]?.message || err.message;
+
   if (message.includes('The caller does not have permission')) {
     return 'Няма достъп до таблицата. Споделете Google Sheet-а със service account email като Editor.';
   }
+
   if (message.includes('Requested entity was not found')) {
     return 'Spreadsheet ID не е намерен. Проверете ID от URL на Google Sheet.';
   }
+
   if (message.includes('invalid_grant') || message.includes('Invalid JWT')) {
     return 'Невалиден Service Account ключ. Проверете client_email и private_key от JSON файла.';
   }
+
   return message;
 }
 
