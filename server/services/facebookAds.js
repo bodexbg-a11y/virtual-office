@@ -1,6 +1,18 @@
 const axios = require('axios');
 const db = require('../db');
 
+const LEGACY_UNMATCHED_FB_CUTOFF = '2026-05-27 00:00:00';
+
+function ensureIgnoredFacebookLeads() {
+  db.raw.exec(`
+    CREATE TABLE IF NOT EXISTS ignored_fb_leads (
+      fb_lead_id TEXT PRIMARY KEY,
+      reason TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+}
+
 class FacebookAdsService {
   constructor() {
     this.accessToken = process.env.FB_ACCESS_TOKEN;
@@ -134,12 +146,14 @@ class FacebookAdsService {
         ON leads(fb_lead_id)
         WHERE fb_lead_id IS NOT NULL
       `);
+      ensureIgnoredFacebookLeads();
 
       const pages = await this.getPages();
       let formsChecked = 0;
       let fbLeadsChecked = 0;
       let newLeads = 0;
       let updatedLeads = 0;
+      let skippedLegacyUnmatched = 0;
 
       for (const page of pages) {
         const pageToken = page.access_token || this.accessToken;
@@ -152,6 +166,11 @@ class FacebookAdsService {
 
           for (const fbLead of leads) {
             const mapped = mapFacebookLead(fbLead, page, form);
+            const ignored = db.raw.prepare('SELECT 1 FROM ignored_fb_leads WHERE fb_lead_id = ?').get(mapped.fb_lead_id);
+            if (ignored) {
+              skippedLegacyUnmatched += 1;
+              continue;
+            }
             const sheetMatch = findOperationalSheetMatch(mapped);
             if (sheetMatch) {
               mapped.status = inferLeadStatusFromSheet(sheetMatch);
@@ -162,6 +181,11 @@ class FacebookAdsService {
                 sheetMatch.action_needed,
                 sheetMatch.problem,
               ].filter(Boolean).join(' / ')}`;
+            }
+
+            if (!sheetMatch && mapped.created_at && mapped.created_at < LEGACY_UNMATCHED_FB_CUTOFF) {
+              skippedLegacyUnmatched += 1;
+              continue;
             }
 
             const existing = db.raw.prepare('SELECT id, status FROM leads WHERE fb_lead_id = ?').get(mapped.fb_lead_id);
@@ -248,6 +272,7 @@ class FacebookAdsService {
         leads_checked: fbLeadsChecked,
         new_leads: newLeads,
         updated_leads: updatedLeads,
+        skipped_legacy_unmatched: skippedLegacyUnmatched,
       };
     } catch (err) {
       throw new Error(facebookErrorMessage(err));

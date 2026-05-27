@@ -1,7 +1,8 @@
 // ===== BODEX Virtual Office — Frontend App =====
 
 const API = '';
-let currentPage = 'dashboard';
+const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings']);
+let currentPage = 'leads';
 let currentRole = 'worker';
 let adminToken = localStorage.getItem('bodex_admin_token') || '';
 let markAgentPoll = null;
@@ -9,6 +10,9 @@ let currentLeadFilters = {};
 
 // ===== NAVIGATION =====
 function navigate(page) {
+  if (ADMIN_ONLY_PAGES.has(page) && currentRole !== 'admin') {
+    page = 'leads';
+  }
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
@@ -21,7 +25,7 @@ async function renderPage(page) {
   main.innerHTML = '<div style="text-align:center;padding:60px;color:#555;">Зареждане...</div>';
 
   try {
-    if (page === 'goals' && currentRole !== 'admin') {
+    if (ADMIN_ONLY_PAGES.has(page) && currentRole !== 'admin') {
       await renderAdminGate(main);
       return;
     }
@@ -72,7 +76,11 @@ async function refreshRole() {
 
 function updateRoleUi() {
   document.querySelectorAll('.admin-only').forEach(el => {
-    el.style.display = currentRole === 'admin' ? 'flex' : 'none';
+    if (currentRole === 'admin') {
+      el.style.display = el.classList.contains('nav-section') ? 'block' : 'flex';
+    } else {
+      el.style.display = 'none';
+    }
   });
   const roleValue = document.getElementById('role-value');
   const loginBtn = document.getElementById('admin-login-btn');
@@ -80,6 +88,9 @@ function updateRoleUi() {
   if (roleValue) roleValue.textContent = currentRole === 'admin' ? 'Админ' : 'Работник / AI';
   if (loginBtn) loginBtn.style.display = currentRole === 'admin' ? 'none' : 'inline-flex';
   if (logoutBtn) logoutBtn.style.display = currentRole === 'admin' ? 'inline-flex' : 'none';
+  if (currentRole !== 'admin' && ADMIN_ONLY_PAGES.has(currentPage)) {
+    navigate('leads');
+  }
 }
 
 async function openAdminLogin() {
@@ -125,15 +136,15 @@ async function logoutAdmin() {
   localStorage.removeItem('bodex_admin_token');
   currentRole = 'worker';
   updateRoleUi();
-  if (currentPage === 'goals') navigate('dashboard');
+  if (ADMIN_ONLY_PAGES.has(currentPage)) navigate('leads');
 }
 
 async function renderAdminGate(el) {
   el.innerHTML = `
     <div class="page-header fade-in"><h2>🔒 Админ доступ</h2></div>
     <div class="card fade-in">
-      <div class="card-title">Цели 2026 закрыты для работников и AI-агентов</div>
-      <p style="font-size:13px;color:#aaa;line-height:1.6;margin-bottom:16px;">В рабочем режиме доступны клиенты, CRM, Google Sheets и задачи. Бизнес-план, финансовые ориентиры и стратегические цели видит только админ.</p>
+      <div class="card-title">Этот раздел доступен только админу</div>
+      <p style="font-size:13px;color:#aaa;line-height:1.6;margin-bottom:16px;">В рабочем режиме доступны лиды, клиенты, сделки, pipeline и разделы работников. Управление офисом, интеграциями и настройками видит только админ.</p>
       <button class="btn btn-primary" onclick="openAdminLogin()">Войти как админ</button>
     </div>
   `;
@@ -1289,13 +1300,6 @@ async function renderDeals(el) {
 
     <div id="deals-sync-result" class="sync-result"></div>
 
-    <div class="stats-grid fade-in">
-      <div class="stat-card"><div class="stat-label">Всего контактов в воронке</div><div class="stat-value brand">${summary.total || 0}</div></div>
-      <div class="stat-card"><div class="stat-label">Интерес / горячие</div><div class="stat-value yellow">${summary.interested || 0}</div></div>
-      <div class="stat-card"><div class="stat-label">Каталог или КП</div><div class="stat-value purple">${summary.catalog_or_offer || 0}</div></div>
-      <div class="stat-card"><div class="stat-label">Договор / закупка / закрыто</div><div class="stat-value green">${summary.contract_purchase_won || 0}</div></div>
-    </div>
-
     ${sections.map(section => renderDealSection(section)).join('')}
   `;
 }
@@ -1315,18 +1319,6 @@ function renderDealSection(section) {
           <span>${summary.interested || 0} интерес</span>
           <span>${summary.catalog_or_offer || 0} каталог/КП</span>
           <span>${summary.contract_purchase_won || 0} договор/закупка</span>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">Цикл сделки: ${section.label}</div>
-        <div class="deal-cycle">
-          ${stages.map(stage => `
-            <div class="deal-cycle-step">
-              <span>${stage.short}</span>
-              <strong>${stage.count}</strong>
-            </div>
-          `).join('')}
         </div>
       </div>
 
@@ -2311,4 +2303,4 @@ setInterval(() => {
 }, 60000);
 
 // ===== INIT =====
-refreshRole().finally(() => navigate('dashboard'));
+refreshRole().finally(() => navigate(currentRole === 'admin' ? 'dashboard' : 'leads'));

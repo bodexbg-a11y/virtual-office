@@ -10,6 +10,41 @@ function ensureLeadSheetColumns() {
   }
 }
 
+function ensureDealOverrides() {
+  db.raw.exec(`
+    CREATE TABLE IF NOT EXISTS deal_status_overrides (
+      sheet_name TEXT NOT NULL,
+      row_number INTEGER NOT NULL,
+      stage_id TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (sheet_name, row_number)
+    );
+  `);
+}
+
+function ensureIgnoredFacebookLeads() {
+  db.raw.exec(`
+    CREATE TABLE IF NOT EXISTS ignored_fb_leads (
+      fb_lead_id TEXT PRIMARY KEY,
+      reason TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+}
+
+function dealStageFromLeadStatus(status) {
+  const map = {
+    new: 'new',
+    contacted: 'interested',
+    qualified: 'interested',
+    offer_sent: 'offer_sent',
+    negotiation: 'negotiation',
+    won: 'won',
+    lost: 'lost',
+  };
+  return map[status] || null;
+}
+
 function normalizePhone(value) {
   return String(value || '').replace(/\D/g, '');
 }
@@ -72,8 +107,13 @@ function syncFacebookLeadsWithSheets() {
   let movedFromNew = 0;
   let materials = 0;
   let services = 0;
+  let skippedExisting = 0;
 
   for (const lead of leads) {
+    if (lead.status !== 'new' || lead.google_sheet_name) {
+      skippedExisting += 1;
+      continue;
+    }
     const match = findSheetMatchForLead(lead);
     if (!match) continue;
     matched += 1;
@@ -113,7 +153,7 @@ function syncFacebookLeadsWithSheets() {
     }
   }
 
-  return { checked: leads.length, matched, moved_from_new: movedFromNew, materials, services };
+  return { checked: leads.length, matched, moved_from_new: movedFromNew, materials, services, skipped_existing: skippedExisting };
 }
 
 ensureLeadSheetColumns();
@@ -301,6 +341,18 @@ router.put('/:id', async (req, res) => {
       db.raw.prepare(
         'INSERT INTO lead_activities (lead_id, action, description, old_value, new_value) VALUES (?, ?, ?, ?, ?)'
       ).run(req.params.id, 'status_change', `Статус: ${old.status} → ${b.status}`, old.status, b.status);
+
+      const stageId = dealStageFromLeadStatus(b.status);
+      if (stageId && old.google_sheet_name && old.google_sheet_row) {
+        ensureDealOverrides();
+        db.raw.prepare(`
+          INSERT INTO deal_status_overrides (sheet_name, row_number, stage_id, updated_at)
+          VALUES (?, ?, ?, datetime('now'))
+          ON CONFLICT(sheet_name, row_number) DO UPDATE SET
+            stage_id = excluded.stage_id,
+            updated_at = datetime('now')
+        `).run(old.google_sheet_name, old.google_sheet_row, stageId);
+      }
     }
 
     const updated = db.raw.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
@@ -313,6 +365,15 @@ router.put('/:id', async (req, res) => {
 // DELETE lead
 router.delete('/:id', async (req, res) => {
   try {
+    const lead = db.raw.prepare('SELECT source, fb_lead_id FROM leads WHERE id = ?').get(req.params.id);
+    if (lead?.source === 'facebook' && lead.fb_lead_id) {
+      ensureIgnoredFacebookLeads();
+      db.raw.prepare(`
+        INSERT INTO ignored_fb_leads (fb_lead_id, reason, created_at)
+        VALUES (?, 'deleted_in_app', datetime('now'))
+        ON CONFLICT(fb_lead_id) DO UPDATE SET reason = excluded.reason
+      `).run(lead.fb_lead_id);
+    }
     db.raw.prepare('DELETE FROM lead_activities WHERE lead_id = ?').run(req.params.id);
     db.raw.prepare('DELETE FROM leads WHERE id = ?').run(req.params.id);
     res.json({ success: true });

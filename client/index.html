@@ -17,22 +17,22 @@
       </div>
     </div>
 
-    <div class="nav-section">
+    <div class="nav-section admin-only" style="display:none;">
       <div class="nav-label">Основно</div>
-      <a class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+      <a class="nav-item" data-page="dashboard" onclick="navigate('dashboard')">
         <span class="nav-icon">📊</span> Дашборд
       </a>
       <a class="nav-item" data-page="office" onclick="navigate('office')">
         <span class="nav-icon">🏢</span> Офис
       </a>
-      <a class="nav-item admin-only" data-page="goals" onclick="navigate('goals')" style="display:none;">
+      <a class="nav-item" data-page="goals" onclick="navigate('goals')">
         <span class="nav-icon">🎯</span> Цели 2026
       </a>
     </div>
 
     <div class="nav-section">
       <div class="nav-label">CRM</div>
-      <a class="nav-item" data-page="leads" onclick="navigate('leads')">
+      <a class="nav-item active" data-page="leads" onclick="navigate('leads')">
         <span class="nav-icon">📋</span> Лидове
         <span class="nav-badge" id="nav-badge-leads">0</span>
       </a>
@@ -63,7 +63,7 @@
       </a>
     </div>
 
-    <div class="nav-section">
+    <div class="nav-section admin-only" style="display:none;">
       <div class="nav-label">Интеграции</div>
       <a class="nav-item" data-page="facebook" onclick="navigate('facebook')">
         <span class="nav-icon">📢</span> Facebook Ads
@@ -80,7 +80,7 @@
       </a>
     </div>
 
-    <div class="nav-section">
+    <div class="nav-section admin-only" style="display:none;">
       <div class="nav-label">Настройки</div>
       <a class="nav-item" data-page="settings" onclick="navigate('settings')">
         <span class="nav-icon">⚙️</span> Интеграции

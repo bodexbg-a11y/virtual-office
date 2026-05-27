@@ -17,8 +17,8 @@ const DEAL_STAGES = [
 ];
 
 const DEAL_SECTIONS = [
-  { id: 'services', label: 'Услуги', description: 'УСЛУГИ и ПРОЕКТЫ', sheets: ['УСЛУГИ', 'ПРОЕКТЫ'] },
   { id: 'materials', label: 'Материалы', description: 'МАТЕРИАЛЫ', sheets: ['МАТЕРИАЛЫ'] },
+  { id: 'services', label: 'Услуги', description: 'УСЛУГИ и ПРОЕКТЫ', sheets: ['УСЛУГИ', 'ПРОЕКТЫ'] },
 ];
 
 const WORKERS = [
@@ -443,6 +443,22 @@ function nextDealAction(stageId, row) {
   return byStage[stageId] || 'Обновить статус в таблице';
 }
 
+function leadStatusFromDealStage(stageId) {
+  const map = {
+    new: 'new',
+    interested: 'contacted',
+    catalog_sent: 'contacted',
+    thinking: 'contacted',
+    offer_sent: 'offer_sent',
+    negotiation: 'negotiation',
+    contract: 'negotiation',
+    purchase: 'negotiation',
+    won: 'won',
+    lost: 'lost',
+  };
+  return map[stageId] || 'contacted';
+}
+
 function buildDealsPayload() {
   ensureDealOverrides();
   const rows = db.query(`
@@ -636,6 +652,30 @@ router.patch('/deals/status', async (req, res) => {
         stage_id = excluded.stage_id,
         updated_at = datetime('now')
     `).run(sheet_name, row_number, stage.id);
+
+    const nextLeadStatus = leadStatusFromDealStage(stage.id);
+    const matchedLeads = db.raw.prepare(`
+      SELECT id, status FROM leads
+      WHERE google_sheet_name = ? AND google_sheet_row = ?
+    `).all(sheet_name, row_number);
+    const updateLead = db.raw.prepare(`
+      UPDATE leads SET status = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `);
+    const insertActivity = db.raw.prepare(`
+      INSERT INTO lead_activities (lead_id, action, description, old_value, new_value, performed_by)
+      VALUES (?, 'status_change', ?, ?, ?, 'deals')
+    `);
+    matchedLeads.forEach(lead => {
+      if (lead.status === nextLeadStatus) return;
+      updateLead.run(nextLeadStatus, lead.id);
+      insertActivity.run(
+        lead.id,
+        `Статус обновлён через сделку ${sheet_name} row ${row_number}`,
+        lead.status,
+        nextLeadStatus
+      );
+    });
 
     res.json({ success: true, sheet_name, row_number, stage_id: stage.id, stage_label: stage.label });
   } catch (err) {
