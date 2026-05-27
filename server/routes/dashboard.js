@@ -60,8 +60,8 @@ const WORKERS = [
   },
 ];
 
-function ensureWorkers() {
-  db.raw.exec(`
+async function ensureWorkers() {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS worker_results (
       id SERIAL PRIMARY KEY,
       worker_id TEXT NOT NULL,
@@ -90,22 +90,23 @@ function ensureWorkers() {
     CREATE INDEX IF NOT EXISTS idx_worker_tasks_status ON worker_tasks(status);
   `);
 
-  db.raw.prepare('DELETE FROM agents').run();
-  const insert = db.raw.prepare(`
-    INSERT INTO agents (name, role, avatar_emoji, color, status, current_task, tasks_completed, last_active_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-  `);
+  await db.run('DELETE FROM agents');
   const currentTasks = {
     rostislav: 'Обработва топли клиенти и B2B контакти без статус',
     mark: 'Сравнява пазарни цени и конкурентни оферти',
     maria: 'Анализира Facebook кампании, CPL и CTR',
     steve: 'Проверява SEO задачи за bodexbg.com',
   };
-  WORKERS.forEach(w => insert.run(w.name, w.role, w.avatar_emoji, w.color, 'online', currentTasks[w.id], 0));
+  for (const w of WORKERS) {
+    await db.run(`
+      INSERT INTO agents (name, role, avatar_emoji, color, status, current_task, tasks_completed, last_active_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+    `, [w.name, w.role, w.avatar_emoji, w.color, 'online', currentTasks[w.id], 0]);
+  }
 }
 
-function ensureDealOverrides() {
-  db.raw.exec(`
+async function ensureDealOverrides() {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS deal_status_overrides (
       sheet_name TEXT NOT NULL,
       row_number INTEGER NOT NULL,
@@ -116,9 +117,9 @@ function ensureDealOverrides() {
   `);
 }
 
-function workerData() {
-  ensureWorkers();
-  const clients = safeGet(`
+async function workerData() {
+  await ensureWorkers();
+  const clients = await safeGet(`
     SELECT
       COUNT(*) as total,
       SUM(CASE WHEN status IS NULL OR status = '' THEN 1 ELSE 0 END) as no_status,
@@ -127,7 +128,7 @@ function workerData() {
       SUM(CASE WHEN sheet_name = 'b2b' THEN 1 ELSE 0 END) as b2b
     FROM sheet_clients
   `);
-  const leads = safeGet(`
+  const leads = await safeGet(`
     SELECT
       COUNT(*) as total,
       SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_leads,
@@ -135,7 +136,7 @@ function workerData() {
       COALESCE(SUM(CASE WHEN status != 'lost' THEN estimated_value ELSE 0 END), 0) as pipeline
     FROM leads
   `);
-  const fb = safeGet(`
+  const fb = await safeGet(`
     SELECT
       COUNT(*) as campaigns,
       SUM(CASE WHEN status = 'ACTIVE' THEN 1 ELSE 0 END) as active_campaigns,
@@ -146,16 +147,20 @@ function workerData() {
     FROM fb_campaigns
     WHERE fb_campaign_id NOT LIKE 'camp_%'
   `);
-  const products = safeGet('SELECT COUNT(*) as total FROM products');
+  const products = await safeGet('SELECT COUNT(*) as total FROM products');
 
-  return WORKERS.map(worker => ({
+  const data = [];
+  for (const worker of WORKERS) {
+    data.push({
     ...worker,
     status: 'online',
     monthlyGoals: monthlyGoalsFor(worker.id),
-    tasks: getAssignedTasks(worker.id),
+    tasks: await getAssignedTasks(worker.id),
     recommendations: tasksFor(worker.id, { clients, leads, fb, products }),
     results: resultsFor(worker.id, { clients, leads, fb, products }),
-  }));
+    });
+  }
+  return data;
 }
 
 function monthlyGoalsFor(id) {
@@ -212,12 +217,12 @@ function monthlyGoalsFor(id) {
   return goals[id] || { minimum: '', optimal: '', reward: '', daily: '', measurement: [] };
 }
 
-function getAssignedTasks(workerId) {
-  ensureTaskTableOnly();
-  return db.raw.prepare(`
+async function getAssignedTasks(workerId) {
+  await ensureTaskTableOnly();
+  return db.all(`
     SELECT * FROM worker_tasks
     WHERE worker_id = ?
-      AND due_date >= date('now', '-1 day')
+      AND due_date >= CURRENT_DATE - INTERVAL '1 day'
     ORDER BY
       CASE status
         WHEN 'in_progress' THEN 1
@@ -229,11 +234,11 @@ function getAssignedTasks(workerId) {
       END,
       CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
       id DESC
-  `).all(workerId);
+  `, [workerId]);
 }
 
-function ensureTaskTableOnly() {
-  db.raw.exec(`
+async function ensureTaskTableOnly() {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS worker_tasks (
       id SERIAL PRIMARY KEY,
       worker_id TEXT NOT NULL,
@@ -320,27 +325,27 @@ function resultsFor(id, data) {
   return results[id] || [];
 }
 
-function safeGet(sql) {
+async function safeGet(sql) {
   try {
-    return db.raw.prepare(sql).get() || {};
+    return (await db.get(sql)) || {};
   } catch {
     return {};
   }
 }
 
-function getWorkerSummary() {
-  ensureWorkers();
-  const workers = workerData();
+async function getWorkerSummary() {
+  await ensureWorkers();
+  const workers = await workerData();
   const aiRunMap = {};
   try {
-    const runs = db.raw.prepare(`
+    const runs = await db.all(`
       SELECT ar.* FROM agent_runs ar
       INNER JOIN (
         SELECT agent_id, MAX(id) as id
         FROM agent_runs
         GROUP BY agent_id
       ) latest ON latest.id = ar.id
-    `).all();
+    `);
     runs.forEach(run => {
       aiRunMap[run.agent_id] = run;
     });
@@ -459,9 +464,9 @@ function leadStatusFromDealStage(stageId) {
   return map[stageId] || 'contacted';
 }
 
-function buildDealsPayload() {
-  ensureDealOverrides();
-  const rows = db.query(`
+async function buildDealsPayload() {
+  await ensureDealOverrides();
+  const { rows } = await db.query(`
     SELECT
       id, sheet_name, row_number, segment, company_name, contact_name, phone, email, city,
       object_type, problem, interest, action_needed, status, priority, result, deal, notes, synced_at
@@ -470,8 +475,8 @@ function buildDealsPayload() {
       CASE priority WHEN 'hot' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
       sheet_name,
       row_number
-  `).rows || [];
-  const overrides = db.raw.prepare('SELECT sheet_name, row_number, stage_id FROM deal_status_overrides').all();
+  `);
+  const overrides = await db.all('SELECT sheet_name, row_number, stage_id FROM deal_status_overrides');
   const overrideByKey = new Map(overrides.map(row => [`${row.sheet_name}:${row.row_number}`, row.stage_id]));
 
   const dealRows = rows.filter(row => DEAL_SECTIONS.some(section => section.sheets.includes(row.sheet_name)));
@@ -541,7 +546,7 @@ function buildDealsPayload() {
 
 router.get('/stats', async (req, res) => {
   try {
-    const leadStats = db.query(`
+    const leadStats = await db.query(`
       SELECT
         COUNT(*) as total_leads,
         SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_leads,
@@ -553,32 +558,32 @@ router.get('/stats', async (req, res) => {
       FROM leads
     `);
 
-    const sourceStats = db.query(`
+    const sourceStats = await db.query(`
       SELECT source, COUNT(*) as count FROM leads GROUP BY source ORDER BY count DESC
     `);
 
-    const fbStats = db.query(`
+    const fbStats = await db.query(`
       SELECT
         COUNT(*) as campaigns,
         SUM(CASE WHEN status = 'ACTIVE' THEN 1 ELSE 0 END) as active_campaigns,
         COALESCE(SUM(spend), 0) as spend,
         COALESCE(SUM(leads_count), 0) as leads,
-        CASE WHEN SUM(leads_count) > 0 THEN ROUND(CAST(SUM(spend) AS REAL) / SUM(leads_count), 2) ELSE NULL END as avg_cpl,
-        CASE WHEN SUM(impressions) > 0 THEN ROUND(CAST(SUM(clicks) AS REAL) / SUM(impressions) * 100, 2) ELSE NULL END as avg_ctr
+        CASE WHEN SUM(leads_count) > 0 THEN ROUND(SUM(spend) / SUM(leads_count), 2) ELSE NULL END as avg_cpl,
+        CASE WHEN SUM(impressions) > 0 THEN ROUND(SUM(clicks) / SUM(impressions) * 100, 2) ELSE NULL END as avg_ctr
       FROM fb_campaigns
       WHERE fb_campaign_id NOT LIKE 'camp_%'
     `);
 
-    const trend = db.query(`
+    const trend = await db.query(`
       SELECT date(created_at) as date, COUNT(*) as new_leads
       FROM leads
-      WHERE created_at >= date('now', '-7 days')
+      WHERE created_at >= NOW() - INTERVAL '7 days'
       GROUP BY date(created_at)
       ORDER BY date(created_at)
     `);
 
-    ensureWorkers();
-    const agents = db.query('SELECT * FROM agents ORDER BY id');
+    await ensureWorkers();
+    const agents = await db.query('SELECT * FROM agents ORDER BY id');
 
     res.json({
       leads: leadStats.rows[0] || {},
@@ -586,7 +591,7 @@ router.get('/stats', async (req, res) => {
       fb: fbStats.rows[0] || {},
       trend: trend.rows,
       agents: agents.rows,
-      worker_summary: getWorkerSummary(),
+      worker_summary: await getWorkerSummary(),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -595,8 +600,8 @@ router.get('/stats', async (req, res) => {
 
 router.get('/agents', async (req, res) => {
   try {
-    ensureWorkers();
-    const { rows } = db.query('SELECT * FROM agents ORDER BY id');
+    await ensureWorkers();
+    const { rows } = await db.query('SELECT * FROM agents ORDER BY id');
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -605,7 +610,7 @@ router.get('/agents', async (req, res) => {
 
 router.get('/workers', async (req, res) => {
   try {
-    res.json(workerData());
+    res.json(await workerData());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -613,7 +618,7 @@ router.get('/workers', async (req, res) => {
 
 router.get('/workers/:id', async (req, res) => {
   try {
-    const worker = workerData().find(w => w.id === req.params.id);
+    const worker = (await workerData()).find(w => w.id === req.params.id);
     if (!worker) return res.status(404).json({ error: 'Worker not found' });
     res.json(worker);
   } catch (err) {
@@ -623,7 +628,7 @@ router.get('/workers/:id', async (req, res) => {
 
 router.get('/deals', async (req, res) => {
   try {
-    res.json(buildDealsPayload());
+    res.json(await buildDealsPayload());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -631,51 +636,49 @@ router.get('/deals', async (req, res) => {
 
 router.patch('/deals/status', async (req, res) => {
   try {
-    ensureDealOverrides();
+    await ensureDealOverrides();
     const { sheet_name, row_number, stage_id } = req.body || {};
     const stage = DEAL_STAGES.find(item => item.id === stage_id);
     if (!sheet_name || !row_number || !stage) {
       return res.status(400).json({ error: 'sheet_name, row_number and valid stage_id are required' });
     }
 
-    const exists = db.raw.prepare(`
+    const exists = await db.get(`
       SELECT 1 FROM sheet_clients
       WHERE sheet_name = ? AND row_number = ?
       LIMIT 1
-    `).get(sheet_name, row_number);
+    `, [sheet_name, row_number]);
     if (!exists) return res.status(404).json({ error: 'Deal row not found' });
 
-    db.raw.prepare(`
+    await db.run(`
       INSERT INTO deal_status_overrides (sheet_name, row_number, stage_id, updated_at)
       VALUES (?, ?, ?, NOW())
       ON CONFLICT(sheet_name, row_number) DO UPDATE SET
         stage_id = excluded.stage_id,
         updated_at = NOW()
-    `).run(sheet_name, row_number, stage.id);
+    `, [sheet_name, row_number, stage.id]);
 
     const nextLeadStatus = leadStatusFromDealStage(stage.id);
-    const matchedLeads = db.raw.prepare(`
+    const matchedLeads = await db.all(`
       SELECT id, status FROM leads
       WHERE google_sheet_name = ? AND google_sheet_row = ?
-    `).all(sheet_name, row_number);
-    const updateLead = db.raw.prepare(`
-      UPDATE leads SET status = ?, updated_at = NOW()
-      WHERE id = ?
-    `);
-    const insertActivity = db.raw.prepare(`
-      INSERT INTO lead_activities (lead_id, action, description, old_value, new_value, performed_by)
-      VALUES (?, 'status_change', ?, ?, ?, 'deals')
-    `);
-    matchedLeads.forEach(lead => {
-      if (lead.status === nextLeadStatus) return;
-      updateLead.run(nextLeadStatus, lead.id);
-      insertActivity.run(
+    `, [sheet_name, row_number]);
+    for (const lead of matchedLeads) {
+      if (lead.status === nextLeadStatus) continue;
+      await db.run(`
+        UPDATE leads SET status = ?, updated_at = NOW()
+        WHERE id = ?
+      `, [nextLeadStatus, lead.id]);
+      await db.run(`
+        INSERT INTO lead_activities (lead_id, action, description, old_value, new_value, performed_by)
+        VALUES (?, 'status_change', ?, ?, ?, 'deals')
+      `, [
         lead.id,
         `Статус обновлён через сделку ${sheet_name} row ${row_number}`,
         lead.status,
-        nextLeadStatus
-      );
-    });
+        nextLeadStatus,
+      ]);
+    }
 
     res.json({ success: true, sheet_name, row_number, stage_id: stage.id, stage_label: stage.label });
   } catch (err) {
@@ -685,7 +688,7 @@ router.patch('/deals/status', async (req, res) => {
 
 router.post('/workers/:id/tasks', auth.requireAdmin, async (req, res) => {
   try {
-    ensureWorkers();
+    await ensureWorkers();
     const worker = WORKERS.find(w => w.id === req.params.id);
     if (!worker) return res.status(404).json({ error: 'Worker not found' });
 
@@ -694,19 +697,20 @@ router.post('/workers/:id/tasks', auth.requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Task title is required' });
     }
 
-    const info = db.raw.prepare(`
+    const info = await db.run(`
       INSERT INTO worker_tasks (worker_id, title, description, priority, due_date, source, status, assigned_by)
       VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_DATE), ?, 'todo', 'admin')
-    `).run(
+      RETURNING id
+    `, [
       worker.id,
       String(title).trim(),
       description ? String(description).trim() : '',
       ['low', 'medium', 'high'].includes(priority) ? priority : 'medium',
       due_date || null,
-      source ? String(source).trim() : 'admin'
-    );
+      source ? String(source).trim() : 'admin',
+    ]);
 
-    const task = db.raw.prepare('SELECT * FROM worker_tasks WHERE id = ?').get(info.lastInsertRowid);
+    const task = await db.get('SELECT * FROM worker_tasks WHERE id = ?', [info.lastInsertRowid]);
     res.status(201).json(task);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -715,21 +719,21 @@ router.post('/workers/:id/tasks', auth.requireAdmin, async (req, res) => {
 
 router.patch('/worker-tasks/:id', async (req, res) => {
   try {
-    ensureTaskTableOnly();
+    await ensureTaskTableOnly();
     const allowedStatuses = ['todo', 'in_progress', 'done', 'not_done', 'blocked'];
-    const task = db.raw.prepare('SELECT * FROM worker_tasks WHERE id = ?').get(req.params.id);
+    const task = await db.get('SELECT * FROM worker_tasks WHERE id = ?', [req.params.id]);
     if (!task) return res.status(404).json({ error: 'Task not found' });
 
     const status = allowedStatuses.includes(req.body?.status) ? req.body.status : task.status;
     const resultNote = req.body?.result_note !== undefined ? String(req.body.result_note || '') : task.result_note;
 
-    db.raw.prepare(`
+    await db.run(`
       UPDATE worker_tasks
       SET status = ?, result_note = ?, updated_at = NOW()
       WHERE id = ?
-    `).run(status, resultNote, req.params.id);
+    `, [status, resultNote, req.params.id]);
 
-    res.json(db.raw.prepare('SELECT * FROM worker_tasks WHERE id = ?').get(req.params.id));
+    res.json(await db.get('SELECT * FROM worker_tasks WHERE id = ?', [req.params.id]));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -737,8 +741,8 @@ router.patch('/worker-tasks/:id', async (req, res) => {
 
 router.delete('/worker-tasks/:id', auth.requireAdmin, async (req, res) => {
   try {
-    ensureTaskTableOnly();
-    db.raw.prepare('DELETE FROM worker_tasks WHERE id = ?').run(req.params.id);
+    await ensureTaskTableOnly();
+    await db.run('DELETE FROM worker_tasks WHERE id = ?', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -748,10 +752,10 @@ router.delete('/worker-tasks/:id', auth.requireAdmin, async (req, res) => {
 router.put('/agents/:id', async (req, res) => {
   try {
     const { status, current_task } = req.body;
-    db.raw.prepare(
+    await db.run(
       "UPDATE agents SET status = COALESCE(?, status), current_task = COALESCE(?, current_task), last_active_at = NOW() WHERE id = ?"
-    ).run(status, current_task, req.params.id);
-    const agent = db.raw.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
+    , [status, current_task, req.params.id]);
+    const agent = await db.get('SELECT * FROM agents WHERE id = ?', [req.params.id]);
     res.json(agent);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -760,7 +764,7 @@ router.put('/agents/:id', async (req, res) => {
 
 router.get('/products', async (req, res) => {
   try {
-    const { rows } = db.query('SELECT * FROM products ORDER BY category, name');
+    const { rows } = await db.query('SELECT * FROM products ORDER BY category, name');
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -769,7 +773,7 @@ router.get('/products', async (req, res) => {
 
 router.get('/feed', async (req, res) => {
   try {
-    const { rows } = db.query(`
+    const { rows } = await db.query(`
       SELECT * FROM (
         SELECT 'lead' as type, la.action, la.description as text,
                l.company_name as context, la.created_at

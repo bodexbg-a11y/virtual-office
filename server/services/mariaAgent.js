@@ -5,8 +5,8 @@ const googleSheets = require('./googleSheets');
 const REPORT_SHEET = 'Maria Ads Report';
 let activeRun = null;
 
-function ensureAgentTables() {
-  db.raw.exec(`
+async function ensureAgentTables() {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS agent_runs (
       id SERIAL PRIMARY KEY,
       agent_id TEXT NOT NULL,
@@ -29,11 +29,12 @@ async function run() {
 }
 
 async function executeRun() {
-  ensureAgentTables();
-  const runInfo = db.raw.prepare(`
+  await ensureAgentTables();
+  const runInfo = await db.run(`
     INSERT INTO agent_runs (agent_id, status, message)
     VALUES ('maria', 'running', 'Maria синхронизирует Facebook Ads и считает CPL/CTR/CPC')
-  `).run();
+    RETURNING id
+  `);
   const runId = runInfo.lastInsertRowid;
 
   try {
@@ -43,11 +44,11 @@ async function executeRun() {
     await writeReport(rows);
 
     const summary = summarize(rows);
-    db.raw.prepare(`
+    await db.run(`
       UPDATE agent_runs
       SET status = 'done', message = ?, rows_created = ?, finished_at = NOW()
       WHERE id = ?
-    `).run(summary, rows.length, runId);
+    `, [summary, rows.length, runId]);
 
     return {
       success: true,
@@ -57,11 +58,11 @@ async function executeRun() {
       message: summary,
     };
   } catch (err) {
-    db.raw.prepare(`
+    await db.run(`
       UPDATE agent_runs
       SET status = 'error', message = ?, finished_at = NOW()
       WHERE id = ?
-    `).run(err.message, runId);
+    `, [err.message, runId]);
     throw err;
   }
 }
@@ -74,7 +75,7 @@ async function getAnalysis() {
     summary: overview.summary,
     overview,
     rows,
-    latest: latestRun(),
+    latest: await latestRun(),
   };
 }
 
@@ -310,14 +311,15 @@ async function ensureSheet(title) {
   });
 }
 
-function latestRun() {
-  ensureAgentTables();
-  return db.raw.prepare(`
+async function latestRun() {
+  await ensureAgentTables();
+  const row = await db.get(`
     SELECT * FROM agent_runs
     WHERE agent_id = 'maria'
     ORDER BY id DESC
     LIMIT 1
-  `).get() || null;
+  `);
+  return row || null;
 }
 
 module.exports = {

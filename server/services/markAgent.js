@@ -6,8 +6,8 @@ const REPORT_SHEET = 'Mark Market Report';
 const SOURCES_SHEET = 'Mark Sources';
 let activeRun = null;
 
-function ensureAgentTables() {
-  db.raw.exec(`
+async function ensureAgentTables() {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS agent_runs (
       id SERIAL PRIMARY KEY,
       agent_id TEXT NOT NULL,
@@ -30,19 +30,20 @@ async function run() {
 }
 
 async function executeRun() {
-  ensureAgentTables();
-  const runInfo = db.raw.prepare(`
+  await ensureAgentTables();
+  const runInfo = await db.run(`
     INSERT INTO agent_runs (agent_id, status, message)
     VALUES ('mark', 'running', 'Mark сканирует рынок цен материалов')
-  `).run();
+    RETURNING id
+  `);
   const runId = runInfo.lastInsertRowid;
 
   try {
-    const products = db.raw.prepare(`
+    const products = await db.all(`
       SELECT sku, name, name_bg, category, description_bg
       FROM products
       ORDER BY category, name
-    `).all();
+    `);
 
     const reportRows = [];
     for (const product of products) {
@@ -64,11 +65,11 @@ async function executeRun() {
     }
 
     await writeReport(reportRows);
-    db.raw.prepare(`
+    await db.run(`
       UPDATE agent_runs
       SET status = 'done', message = ?, rows_created = ?, finished_at = NOW()
       WHERE id = ?
-    `).run(`Готов отчёт по ${reportRows.length} продуктам`, reportRows.length, runId);
+    `, [`Готов отчёт по ${reportRows.length} продуктам`, reportRows.length, runId]);
 
     return {
       success: true,
@@ -78,11 +79,11 @@ async function executeRun() {
       message: `Mark готов: отчёт по ${reportRows.length} продуктам записан в Google Sheets.`,
     };
   } catch (err) {
-    db.raw.prepare(`
+    await db.run(`
       UPDATE agent_runs
       SET status = 'error', message = ?, finished_at = NOW()
       WHERE id = ?
-    `).run(err.message, runId);
+    `, [err.message, runId]);
     throw err;
   }
 }
@@ -240,14 +241,15 @@ function normalizeCurrency(value) {
   return value;
 }
 
-function latestRun() {
-  ensureAgentTables();
-  return db.raw.prepare(`
+async function latestRun() {
+  await ensureAgentTables();
+  const row = await db.get(`
     SELECT * FROM agent_runs
     WHERE agent_id = 'mark'
     ORDER BY id DESC
     LIMIT 1
-  `).get() || null;
+  `);
+  return row || null;
 }
 
 module.exports = {

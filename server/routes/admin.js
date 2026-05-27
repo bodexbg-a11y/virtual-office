@@ -5,24 +5,24 @@ const db = require('../db');
 
 router.use(auth.requireAdmin);
 
-router.get('/goals', (req, res) => {
+router.get('/goals', async (req, res) => {
   try {
-    const clientStats = db.raw.prepare(`
+    const clientStats = await db.get(`
       SELECT
         COUNT(*) as total_clients,
         SUM(CASE WHEN sheet_name = 'b2b' THEN 1 ELSE 0 END) as b2b_clients,
         SUM(CASE WHEN priority IN ('hot', 'high') THEN 1 ELSE 0 END) as high_priority,
         SUM(CASE WHEN sheet_name = 'ПРОЕКТЫ' THEN 1 ELSE 0 END) as projects
       FROM sheet_clients
-    `).get();
+    `);
 
-    const leadStats = db.raw.prepare(`
+    const leadStats = await db.get(`
       SELECT
         COUNT(*) as crm_leads,
         SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) as won_deals,
         COALESCE(SUM(CASE WHEN status != 'lost' THEN estimated_value ELSE 0 END), 0) as pipeline_value
       FROM leads
-    `).get();
+    `);
 
     res.json({
       source: 'BODEX_BusinessPlan_2026_with_Charts.pdf',

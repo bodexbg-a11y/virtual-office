@@ -3,11 +3,15 @@ const router = express.Router();
 const markAgent = require('../services/markAgent');
 const mariaAgent = require('../services/mariaAgent');
 
-router.get('/mark/status', (req, res) => {
-  res.json({
-    running: markAgent.isRunning(),
-    latest: markAgent.latestRun(),
-  });
+router.get('/mark/status', async (req, res) => {
+  try {
+    res.json({
+      running: markAgent.isRunning(),
+      latest: await markAgent.latestRun(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/mark/run', async (req, res) => {
@@ -21,11 +25,15 @@ router.post('/mark/run', async (req, res) => {
     .catch(err => console.error('[Mark Agent] error:', err.message));
 });
 
-router.get('/maria/status', (req, res) => {
-  res.json({
-    running: mariaAgent.isRunning(),
-    latest: mariaAgent.latestRun(),
-  });
+router.get('/maria/status', async (req, res) => {
+  try {
+    res.json({
+      running: mariaAgent.isRunning(),
+      latest: await mariaAgent.latestRun(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.get('/maria/analysis', async (req, res) => {

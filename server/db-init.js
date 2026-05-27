@@ -170,7 +170,7 @@ CREATE INDEX IF NOT EXISTS idx_lead_activities_lead ON lead_activities(lead_id);
 
 (async () => {
   try {
-    await db.raw.exec(schema);
+    await db.exec(schema);
     console.log('✅ Database schema created');
     process.exit(0);
   } catch (err) {
