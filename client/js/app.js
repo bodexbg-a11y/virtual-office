@@ -1337,12 +1337,12 @@ function renderDealSection(section) {
             <span>${stage.label}</span>
             <strong>${stage.count}</strong>
           </div>
-          <div class="deal-col-body">
+          <div class="deal-col-body" data-stage-id="${stage.id}" ondragover="allowDealDrop(event)" ondrop="dropDealCard(event)">
             ${stage.clients.length ? stage.clients.map(c => `
-              <article class="deal-card">
+              <article class="deal-card" draggable="true" data-sheet-name="${c.sheet_name}" data-row-number="${c.row_number}" ondragstart="dragDealCard(event)" ondragend="endDealDrag(event)">
                 <div class="deal-card-top">
                   <span class="badge badge-${dealBadgeClass(stage.id)}">${c.sheet_name || 'таблица'}</span>
-                  <span class="deal-row">#${c.row_number || c.id}</span>
+                  <span class="deal-row">#${c.row_number || c.id}${c.status_override ? ' · saved' : ''}</span>
                 </div>
                 <div class="deal-title">${c.company_name || c.contact_name || 'Без имени'}</div>
                 <div class="deal-meta">${[c.contact_name, c.city, c.phone || c.email].filter(Boolean).join(' · ') || 'Контакт не указан'}</div>
@@ -1375,6 +1375,50 @@ function dealBadgeClass(stageId) {
     lost: 'lost',
   };
   return map[stageId] || 'new';
+}
+
+function dragDealCard(event) {
+  const card = event.currentTarget;
+  card.classList.add('dragging');
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('application/json', JSON.stringify({
+    sheet_name: card.dataset.sheetName,
+    row_number: Number(card.dataset.rowNumber),
+  }));
+}
+
+function endDealDrag(event) {
+  event.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.deal-col-body.drag-over').forEach(el => el.classList.remove('drag-over'));
+}
+
+function allowDealDrop(event) {
+  event.preventDefault();
+  event.currentTarget.classList.add('drag-over');
+}
+
+async function dropDealCard(event) {
+  event.preventDefault();
+  const target = event.currentTarget;
+  target.classList.remove('drag-over');
+  const stage_id = target.dataset.stageId;
+  let payload;
+  try {
+    payload = JSON.parse(event.dataTransfer.getData('application/json') || '{}');
+  } catch {
+    return;
+  }
+  if (!payload.sheet_name || !payload.row_number || !stage_id) return;
+
+  try {
+    await api('/api/dashboard/deals/status', {
+      method: 'PATCH',
+      body: { ...payload, stage_id },
+    });
+    await renderDeals(document.getElementById('main'));
+  } catch (err) {
+    alert('Не удалось сохранить статус сделки: ' + err.message);
+  }
 }
 
 async function pullDealsSheets() {

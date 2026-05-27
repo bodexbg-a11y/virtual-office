@@ -133,10 +133,10 @@ router.get('/', async (req, res) => {
       params.push('facebook');
     }
     if (view === 'materials') {
-      where.push("(google_sheet_name = 'МАТЕРИАЛЫ' OR LOWER(COALESCE(notes, '')) LIKE '%main material form%' OR LOWER(COALESCE(notes, '')) LIKE '%materials%')");
+      where.push("google_sheet_name = 'МАТЕРИАЛЫ'");
     }
     if (view === 'services') {
-      where.push("(google_sheet_name = 'УСЛУГИ' OR LOWER(COALESCE(notes, '')) LIKE '%услуги%' OR LOWER(COALESCE(notes, '')) LIKE '%service%' OR LOWER(COALESCE(notes, '')) LIKE '%nova%')");
+      where.push("google_sheet_name = 'УСЛУГИ'");
     }
     if (search) {
       where.push("(company_name LIKE ? OR contact_name LIKE ? OR email LIKE ? OR phone LIKE ? OR city LIKE ? OR notes LIKE ? OR interest_products LIKE ?)");
@@ -182,15 +182,10 @@ router.get('/summary', async (req, res) => {
     const materials = db.raw.prepare(`
       SELECT COUNT(*) as count FROM leads
       WHERE google_sheet_name = 'МАТЕРИАЛЫ'
-         OR LOWER(COALESCE(notes, '')) LIKE '%main material form%'
-         OR LOWER(COALESCE(notes, '')) LIKE '%materials%'
     `).get()?.count || 0;
     const services = db.raw.prepare(`
       SELECT COUNT(*) as count FROM leads
       WHERE google_sheet_name = 'УСЛУГИ'
-         OR LOWER(COALESCE(notes, '')) LIKE '%услуги%'
-         OR LOWER(COALESCE(notes, '')) LIKE '%service%'
-         OR LOWER(COALESCE(notes, '')) LIKE '%nova%'
     `).get()?.count || 0;
 
     res.json({

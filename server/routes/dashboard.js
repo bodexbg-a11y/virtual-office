@@ -104,6 +104,18 @@ function ensureWorkers() {
   WORKERS.forEach(w => insert.run(w.name, w.role, w.avatar_emoji, w.color, 'online', currentTasks[w.id], 0));
 }
 
+function ensureDealOverrides() {
+  db.raw.exec(`
+    CREATE TABLE IF NOT EXISTS deal_status_overrides (
+      sheet_name TEXT NOT NULL,
+      row_number INTEGER NOT NULL,
+      stage_id TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (sheet_name, row_number)
+    );
+  `);
+}
+
 function workerData() {
   ensureWorkers();
   const clients = safeGet(`
@@ -432,6 +444,7 @@ function nextDealAction(stageId, row) {
 }
 
 function buildDealsPayload() {
+  ensureDealOverrides();
   const rows = db.query(`
     SELECT
       id, sheet_name, row_number, segment, company_name, contact_name, phone, email, city,
@@ -442,6 +455,8 @@ function buildDealsPayload() {
       sheet_name,
       row_number
   `).rows || [];
+  const overrides = db.raw.prepare('SELECT sheet_name, row_number, stage_id FROM deal_status_overrides').all();
+  const overrideByKey = new Map(overrides.map(row => [`${row.sheet_name}:${row.row_number}`, row.stage_id]));
 
   const dealRows = rows.filter(row => DEAL_SECTIONS.some(section => section.sheets.includes(row.sheet_name)));
   const summary = {
@@ -472,13 +487,15 @@ function buildDealsPayload() {
   dealRows.forEach(row => {
     const section = sections.find(item => item.sheets.includes(row.sheet_name));
     if (!section) return;
-    const stageId = classifyDeal(row);
+    const key = `${row.sheet_name}:${row.row_number}`;
+    const stageId = overrideByKey.get(key) || classifyDeal(row);
     const stage = section.stages.find(item => item.id === stageId) || section.stages[0];
     const client = {
       ...row,
       section_id: section.id,
       stage_id: stage.id,
       stage_label: stage.label,
+      status_override: overrideByKey.has(key),
       next_action: nextDealAction(stage.id, row),
     };
     stage.clients.push(client);
@@ -591,6 +608,36 @@ router.get('/workers/:id', async (req, res) => {
 router.get('/deals', async (req, res) => {
   try {
     res.json(buildDealsPayload());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/deals/status', async (req, res) => {
+  try {
+    ensureDealOverrides();
+    const { sheet_name, row_number, stage_id } = req.body || {};
+    const stage = DEAL_STAGES.find(item => item.id === stage_id);
+    if (!sheet_name || !row_number || !stage) {
+      return res.status(400).json({ error: 'sheet_name, row_number and valid stage_id are required' });
+    }
+
+    const exists = db.raw.prepare(`
+      SELECT 1 FROM sheet_clients
+      WHERE sheet_name = ? AND row_number = ?
+      LIMIT 1
+    `).get(sheet_name, row_number);
+    if (!exists) return res.status(404).json({ error: 'Deal row not found' });
+
+    db.raw.prepare(`
+      INSERT INTO deal_status_overrides (sheet_name, row_number, stage_id, updated_at)
+      VALUES (?, ?, ?, datetime('now'))
+      ON CONFLICT(sheet_name, row_number) DO UPDATE SET
+        stage_id = excluded.stage_id,
+        updated_at = datetime('now')
+    `).run(sheet_name, row_number, stage.id);
+
+    res.json({ success: true, sheet_name, row_number, stage_id: stage.id, stage_label: stage.label });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
