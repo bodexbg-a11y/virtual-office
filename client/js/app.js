@@ -1246,7 +1246,7 @@ async function renderClients(el, filters = {}) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>👥 Клиенти от Google таблици</h2>
+      <h2>👥 Клиенты</h2>
       <div class="page-header-actions">
         <button class="btn btn-primary" onclick="pullBusinessSheets()">🔄 Обнови от Google Sheets</button>
       </div>
