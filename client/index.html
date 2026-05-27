@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BODEX Virtual Office</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <!-- SIDEBAR -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">B</div>
+      <div>
+        <div class="logo-text">BODEX</div>
+        <div class="logo-sub">Virtual Office</div>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Основно</div>
+      <a class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+        <span class="nav-icon">📊</span> Дашборд
+      </a>
+      <a class="nav-item" data-page="office" onclick="navigate('office')">
+        <span class="nav-icon">🏢</span> Офис
+      </a>
+      <a class="nav-item admin-only" data-page="goals" onclick="navigate('goals')" style="display:none;">
+        <span class="nav-icon">🎯</span> Цели 2026
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">CRM</div>
+      <a class="nav-item" data-page="leads" onclick="navigate('leads')">
+        <span class="nav-icon">📋</span> Лидове
+        <span class="nav-badge" id="nav-badge-leads">0</span>
+      </a>
+      <a class="nav-item" data-page="clients" onclick="navigate('clients')">
+        <span class="nav-icon">👥</span> Клиенти от таблици
+      </a>
+      <a class="nav-item" data-page="deals" onclick="navigate('deals')">
+        <span class="nav-icon">🤝</span> Сделки
+      </a>
+      <a class="nav-item" data-page="pipeline" onclick="navigate('pipeline')">
+        <span class="nav-icon">🔄</span> Pipeline
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Работники</div>
+      <a class="nav-item" data-page="worker-rostislav" onclick="navigate('worker-rostislav')">
+        <span class="nav-icon">📞</span> Ростислав
+      </a>
+      <a class="nav-item" data-page="worker-mark" onclick="navigate('worker-mark')">
+        <span class="nav-icon">🔎</span> Mark
+      </a>
+      <a class="nav-item" data-page="worker-maria" onclick="navigate('worker-maria')">
+        <span class="nav-icon">📢</span> Maria
+      </a>
+      <a class="nav-item" data-page="worker-steve" onclick="navigate('worker-steve')">
+        <span class="nav-icon">🌐</span> Steve
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Интеграции</div>
+      <a class="nav-item" data-page="facebook" onclick="navigate('facebook')">
+        <span class="nav-icon">📢</span> Facebook Ads
+      </a>
+      <a class="nav-item" data-page="sheets" onclick="navigate('sheets')">
+        <span class="nav-icon">📑</span> Google Sheets
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Каталог</div>
+      <a class="nav-item" data-page="products" onclick="navigate('products')">
+        <span class="nav-icon">📦</span> Продукти
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Настройки</div>
+      <a class="nav-item" data-page="settings" onclick="navigate('settings')">
+        <span class="nav-icon">⚙️</span> Интеграции
+      </a>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="role-panel">
+        <div class="role-label">Режим</div>
+        <div class="role-value" id="role-value">Работник</div>
+        <button class="btn btn-secondary btn-sm" id="admin-login-btn" onclick="openAdminLogin()">Админ</button>
+        <button class="btn btn-danger btn-sm" id="admin-logout-btn" onclick="logoutAdmin()" style="display:none;">Выйти</button>
+      </div>
+      <div class="connection-status">
+        <span class="dot-live"></span>
+        <span id="sidebar-time">--:--</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN CONTENT -->
+  <main class="main" id="main">
+    <!-- Page content loaded dynamically -->
+  </main>
+
+  <!-- LEAD MODAL -->
+  <div class="modal-overlay" id="modal-overlay" onclick="closeModal()">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3 id="modal-title">Нов лид</h3>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

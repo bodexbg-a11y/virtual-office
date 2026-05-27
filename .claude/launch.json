@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "BODEX API Server (dev)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--watch", "server/index.js"],
+      "port": 3000
+    },
+    {
+      "name": "BODEX API Server (prod)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server/index.js"],
+      "port": 3000
+    }
+  ]
+}
