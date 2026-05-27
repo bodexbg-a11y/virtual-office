@@ -114,7 +114,7 @@ router.post('/pull/business', async (req, res) => {
 // GET structured clients imported from operational sheets
 router.get('/clients', async (req, res) => {
   try {
-    const result = googleSheets.getBusinessClients(req.query);
+    const result = await googleSheets.getBusinessClients(req.query);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -124,7 +124,7 @@ router.get('/clients', async (req, res) => {
 // GET actionable recommendations based on current sheet data
 router.get('/recommendations', async (req, res) => {
   try {
-    const result = googleSheets.getTodayRecommendations();
+    const result = await googleSheets.getTodayRecommendations();
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
