@@ -1238,11 +1238,9 @@ function workerChecklist(id) {
 
 // ===== STRUCTURED CLIENTS FROM GOOGLE SHEETS =====
 async function renderClients(el, filters = {}) {
+  filters = { sheet_name: 'МАТЕРИАЛЫ', ...filters };
   const params = new URLSearchParams(filters);
-  const [data, recommendations] = await Promise.all([
-    api(`/api/google/clients?${params}`),
-    api('/api/google/recommendations').catch(() => []),
-  ]);
+  const data = await api(`/api/google/clients?${params}`);
   const stats = data.stats || {};
   const rows = data.rows || [];
 
@@ -1265,36 +1263,30 @@ async function renderClients(el, filters = {}) {
       <div class="stat-card"><div class="stat-label">Висок приоритет</div><div class="stat-value pink">${stats.high_priority || 0}</div></div>
     </div>
 
-    <div class="card fade-in">
-      <div class="card-title">🎯 Препоръки за днес</div>
-      ${recommendations.length ? recommendations.map(r => `
-        <details style="background:rgba(255,255,255,0.02);border-radius:8px;padding:12px;margin-bottom:10px;">
-          <summary style="cursor:pointer;color:#ddd;font-weight:600;font-size:13px;">
-            ${r.title} <span class="badge badge-${r.type === 'hot' ? 'hot' : r.type === 'b2b' ? 'qualified' : 'new'}" style="margin-left:8px;">${r.count}</span>
-          </summary>
-          <div style="font-size:12px;color:#888;margin-top:8px;line-height:1.5;">${r.description}</div>
-          <div style="margin-top:10px;">
-            ${(r.clients || []).map(c => `
-              <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1.8fr;gap:10px;padding:7px 0;border-top:1px solid rgba(255,255,255,0.04);font-size:11px;">
-                <span style="color:#ddd;font-weight:600;">${c.company_name || c.contact_name || '—'}</span>
-                <span>${c.phone || c.email || '—'}</span>
-                <span>${c.sheet_name}</span>
-                <span style="color:#aaa;">${c.action_needed || c.status || c.problem || c.notes || '—'}</span>
-              </div>
-            `).join('')}
-          </div>
-        </details>
-      `).join('') : '<div style="font-size:12px;color:#777;">Няма препоръки. Обновете данните от Google Sheets.</div>'}
-    </div>
-
     <div class="search-bar fade-in">
       <input type="text" placeholder="Търси фирма, човек, телефон, email, проблем..." id="client-search" value="${filters.search || ''}" onkeyup="if(event.key==='Enter')searchClients()">
       <select id="client-sheet" onchange="searchClients()">
-        <option value="">Всички таблици</option>
-        <option value="УСЛУГИ" ${filters.sheet_name==='УСЛУГИ'?'selected':''}>УСЛУГИ</option>
         <option value="МАТЕРИАЛЫ" ${filters.sheet_name==='МАТЕРИАЛЫ'?'selected':''}>МАТЕРИАЛЫ</option>
+        <option value="УСЛУГИ" ${filters.sheet_name==='УСЛУГИ'?'selected':''}>УСЛУГИ</option>
         <option value="ПРОЕКТЫ" ${filters.sheet_name==='ПРОЕКТЫ'?'selected':''}>ПРОЕКТЫ</option>
         <option value="b2b" ${filters.sheet_name==='b2b'?'selected':''}>b2b</option>
+        <option value="" ${filters.sheet_name===''?'selected':''}>Все листы</option>
+      </select>
+      <select id="client-action" onchange="searchClients()">
+        <option value="">Все действия</option>
+        <option value="Отправить каталог" ${filters.action_needed==='Отправить каталог'?'selected':''}>Отправить каталог/презе</option>
+        <option value="комерческое" ${filters.action_needed==='комерческое'?'selected':''}>Отправить коммерческое</option>
+        <option value="Email" ${filters.action_needed==='Email'?'selected':''}>Отправить Email</option>
+        <option value="Перезвонить" ${filters.action_needed==='Перезвонить'?'selected':''}>Перезвонить</option>
+        <option value="Пропинговать" ${filters.action_needed==='Пропинговать'?'selected':''}>Пропинговать ещё раз</option>
+        <option value="Не актуальный" ${filters.action_needed==='Не актуальный'?'selected':''}>Не актуальный</option>
+      </select>
+      <select id="client-status" onchange="searchClients()">
+        <option value="">Все статусы действия</option>
+        <option value="Назначена встреча" ${filters.status==='Назначена встреча'?'selected':''}>Назначена встреча</option>
+        <option value="Готовы закупать" ${filters.status==='Готовы закупать'?'selected':''}>Готовы закупать</option>
+        <option value="Думают" ${filters.status==='Думают'?'selected':''}>Думают</option>
+        <option value="Не готовы" ${filters.status==='Не готовы'?'selected':''}>Не готовы</option>
       </select>
       <select id="client-priority" onchange="searchClients()">
         <option value="">Всички приоритети</option>
@@ -1316,9 +1308,9 @@ async function renderClients(el, filters = {}) {
               <th>Контакт</th>
               <th>Телефон</th>
               <th>Email</th>
-              <th>Статус</th>
+              <th>Действие</th>
+              <th>Статус действия</th>
               <th>Приоритет</th>
-              <th>Следващо действие</th>
               <th>Контекст</th>
             </tr>
           </thead>
@@ -1330,9 +1322,9 @@ async function renderClients(el, filters = {}) {
                 <td>${c.contact_name || '—'}</td>
                 <td>${c.phone || '—'}</td>
                 <td style="font-size:11px;">${c.email || '—'}</td>
-                <td>${c.status || '—'}</td>
+                <td style="max-width:240px;">${clientSheetPill(c.action_needed, 'action')}</td>
+                <td style="max-width:220px;">${clientSheetPill(c.status, 'status')}</td>
                 <td><span class="badge badge-${c.priority === 'high' ? 'hot' : c.priority === 'low' ? 'low' : 'medium'}">${c.priority || 'medium'}</span></td>
-                <td style="max-width:220px;">${c.action_needed || '—'}</td>
                 <td style="max-width:320px;font-size:11px;color:#888;">${c.problem || c.interest || c.notes || '—'}</td>
               </tr>
             `).join('') : '<tr><td colspan="9" style="text-align:center;color:#666;padding:30px;">Няма данни. Натиснете “Обнови от Google Sheets”.</td></tr>'}
@@ -1347,8 +1339,24 @@ function searchClients() {
   renderClients(document.getElementById('main'), {
     search: document.getElementById('client-search').value,
     sheet_name: document.getElementById('client-sheet').value,
+    action_needed: document.getElementById('client-action').value,
+    status: document.getElementById('client-status').value,
     priority: document.getElementById('client-priority').value,
   });
+}
+
+function clientSheetPill(value, type = 'status') {
+  if (!value) return '<span style="color:#666;">—</span>';
+  const text = String(value);
+  const low = text.toLowerCase();
+  let bg = type === 'action' ? 'rgba(56,189,248,0.18)' : 'rgba(245,158,11,0.22)';
+  let color = type === 'action' ? '#38bdf8' : '#facc15';
+  if (/комер|коммер|предлож|оферт/.test(low)) { bg = 'rgba(34,197,94,0.22)'; color = '#86efac'; }
+  if (/email|каталог|презе/.test(low)) { bg = 'rgba(56,189,248,0.20)'; color = '#7dd3fc'; }
+  if (/встреч|срещ|назнач/.test(low)) { bg = 'rgba(37,99,235,0.45)'; color = '#bfdbfe'; }
+  if (/готов/.test(low) && !/не готов/.test(low)) { bg = 'rgba(22,163,74,0.45)'; color = '#bbf7d0'; }
+  if (/не готов|не актуал|отказ/.test(low)) { bg = 'rgba(220,38,38,0.30)'; color = '#fecaca'; }
+  return `<span style="display:inline-flex;align-items:center;border-radius:8px;padding:4px 10px;background:${bg};color:${color};font-weight:800;line-height:1.2;">${text}</span>`;
 }
 
 async function pullBusinessSheets() {
@@ -1359,7 +1367,7 @@ async function pullBusinessSheets() {
     const result = await api('/api/google/pull/business', { method: 'POST' });
     el.className = 'sync-result show ok';
     el.textContent = `✅ Обновено: ${result.rows} реда.`;
-    setTimeout(() => renderClients(document.getElementById('main')), 1200);
+    setTimeout(() => renderClients(document.getElementById('main'), { sheet_name: 'МАТЕРИАЛЫ' }), 1200);
   } catch (err) {
     el.className = 'sync-result show err';
     el.textContent = '❌ ' + err.message;

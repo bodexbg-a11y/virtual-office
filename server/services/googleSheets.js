@@ -449,6 +449,11 @@ class GoogleSheetsService {
       params.push(`%${filters.status.toLowerCase()}%`);
     }
 
+    if (filters.action_needed) {
+      where.push("LOWER(COALESCE(action_needed, '')) LIKE ?");
+      params.push(`%${filters.action_needed.toLowerCase()}%`);
+    }
+
     if (filters.priority) {
       where.push('priority = ?');
       params.push(filters.priority);
