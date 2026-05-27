@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS leads (
   notes TEXT,
   assigned_to VARCHAR(100),
   fb_lead_id VARCHAR(100),
+  google_sheet_name VARCHAR(100),
   google_sheet_row INTEGER,
   last_contact_at TIMESTAMP,
   next_followup_at TIMESTAMP,

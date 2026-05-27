@@ -1,6 +1,122 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const googleSheets = require('../services/googleSheets');
+
+function ensureLeadSheetColumns() {
+  const cols = db.raw.prepare('PRAGMA table_info(leads)').all().map(col => col.name);
+  if (!cols.includes('google_sheet_name')) {
+    db.raw.exec('ALTER TABLE leads ADD COLUMN google_sheet_name TEXT');
+  }
+}
+
+function normalizePhone(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function findSheetMatchForLead(lead) {
+  const phone = normalizePhone(lead.phone);
+  const email = normalizeEmail(lead.email);
+  if (!phone && !email) return null;
+
+  const rows = db.raw.prepare(`
+    SELECT sheet_name, row_number, company_name, contact_name, phone, email, status, action_needed, problem, interest, notes
+    FROM sheet_clients
+    WHERE sheet_name IN ('МАТЕРИАЛЫ', 'УСЛУГИ')
+      AND (
+        (? != '' AND replace(replace(replace(replace(replace(COALESCE(phone, ''), ' ', ''), '+', ''), '-', ''), '(', ''), ')', '') = ?)
+        OR (? != '' AND lower(COALESCE(email, '')) = ?)
+      )
+    ORDER BY CASE sheet_name WHEN 'МАТЕРИАЛЫ' THEN 1 WHEN 'УСЛУГИ' THEN 2 ELSE 3 END, row_number
+    LIMIT 1
+  `).all(phone, phone, email, email);
+
+  return rows[0] || null;
+}
+
+function sheetHasManagerWork(row) {
+  const text = String([
+    row.status,
+    row.action_needed,
+    row.problem,
+    row.notes,
+  ].filter(Boolean).join(' ')).trim();
+  return text.length > 0;
+}
+
+function inferStatusFromSheet(row) {
+  if (!sheetHasManagerWork(row)) return 'new';
+  const text = String([
+    row.status,
+    row.action_needed,
+    row.problem,
+    row.interest,
+    row.notes,
+  ].filter(Boolean).join(' ')).toLowerCase().replace(/ё/g, 'е');
+
+  if (/отказ|не\s+интерес|неинтерес|нет\s+интерес/.test(text)) return 'lost';
+  if (/договор|закуп|готов/.test(text)) return 'negotiation';
+  if (/коммерческ|оферт|предложен|\bкп\b/.test(text)) return 'offer_sent';
+  if (/встреч|срещ|дума|цена|жд[уе]т|ответит/.test(text)) return 'negotiation';
+  return 'contacted';
+}
+
+function syncFacebookLeadsWithSheets() {
+  ensureLeadSheetColumns();
+  const leads = db.raw.prepare("SELECT * FROM leads WHERE source = 'facebook'").all();
+  let matched = 0;
+  let movedFromNew = 0;
+  let materials = 0;
+  let services = 0;
+
+  for (const lead of leads) {
+    const match = findSheetMatchForLead(lead);
+    if (!match) continue;
+    matched += 1;
+    if (match.sheet_name === 'МАТЕРИАЛЫ') materials += 1;
+    if (match.sheet_name === 'УСЛУГИ') services += 1;
+
+    const nextStatus = inferStatusFromSheet(match);
+    const sheetNote = `Google Sheets ${match.sheet_name} row ${match.row_number}: ${[
+      match.status,
+      match.action_needed,
+      match.problem,
+    ].filter(Boolean).join(' / ')}`;
+    const notes = String(lead.notes || '').includes(`Google Sheets ${match.sheet_name} row ${match.row_number}`)
+      ? lead.notes
+      : [lead.notes, sheetNote].filter(Boolean).join(' | ');
+    const interest = match.sheet_name === 'МАТЕРИАЛЫ'
+      ? (lead.interest_products || match.interest || 'Materials')
+      : (lead.interest_products || match.problem || 'Services');
+
+    db.raw.prepare(`
+      UPDATE leads
+      SET status = CASE WHEN status = 'new' THEN ? ELSE status END,
+          google_sheet_name = ?,
+          google_sheet_row = ?,
+          interest_products = COALESCE(NULLIF(?, ''), interest_products),
+          notes = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(nextStatus, match.sheet_name, match.row_number, interest, notes, lead.id);
+
+    if (lead.status === 'new' && nextStatus !== 'new') {
+      movedFromNew += 1;
+      db.raw.prepare(`
+        INSERT INTO lead_activities (lead_id, action, description, old_value, new_value, performed_by)
+        VALUES (?, 'status_change', ?, 'new', ?, 'google_sheets')
+      `).run(lead.id, `Статус обновлён по листу ${match.sheet_name}`, nextStatus);
+    }
+  }
+
+  return { checked: leads.length, matched, moved_from_new: movedFromNew, materials, services };
+}
+
+ensureLeadSheetColumns();
 
 // GET all leads
 router.get('/', async (req, res) => {
@@ -17,10 +133,10 @@ router.get('/', async (req, res) => {
       params.push('facebook');
     }
     if (view === 'materials') {
-      where.push("(COALESCE(interest_products, '') != '' OR LOWER(COALESCE(notes, '')) LIKE '%материал%' OR LOWER(COALESCE(notes, '')) LIKE '%material%')");
+      where.push("(google_sheet_name = 'МАТЕРИАЛЫ' OR LOWER(COALESCE(notes, '')) LIKE '%main material form%' OR LOWER(COALESCE(notes, '')) LIKE '%materials%')");
     }
     if (view === 'services') {
-      where.push("(LOWER(COALESCE(notes, '')) LIKE '%услуг%' OR LOWER(COALESCE(notes, '')) LIKE '%service%' OR LOWER(COALESCE(notes, '')) LIKE '%оглед%')");
+      where.push("(google_sheet_name = 'УСЛУГИ' OR LOWER(COALESCE(notes, '')) LIKE '%услуги%' OR LOWER(COALESCE(notes, '')) LIKE '%service%' OR LOWER(COALESCE(notes, '')) LIKE '%nova%')");
     }
     if (search) {
       where.push("(company_name LIKE ? OR contact_name LIKE ? OR email LIKE ? OR phone LIKE ? OR city LIKE ? OR notes LIKE ? OR interest_products LIKE ?)");
@@ -65,15 +181,16 @@ router.get('/summary', async (req, res) => {
     const week = db.raw.prepare("SELECT COUNT(*) as count FROM leads WHERE datetime(created_at) >= datetime('now', '-7 days')").get()?.count || 0;
     const materials = db.raw.prepare(`
       SELECT COUNT(*) as count FROM leads
-      WHERE COALESCE(interest_products, '') != ''
-         OR LOWER(COALESCE(notes, '')) LIKE '%материал%'
-         OR LOWER(COALESCE(notes, '')) LIKE '%material%'
+      WHERE google_sheet_name = 'МАТЕРИАЛЫ'
+         OR LOWER(COALESCE(notes, '')) LIKE '%main material form%'
+         OR LOWER(COALESCE(notes, '')) LIKE '%materials%'
     `).get()?.count || 0;
     const services = db.raw.prepare(`
       SELECT COUNT(*) as count FROM leads
-      WHERE LOWER(COALESCE(notes, '')) LIKE '%услуг%'
+      WHERE google_sheet_name = 'УСЛУГИ'
+         OR LOWER(COALESCE(notes, '')) LIKE '%услуги%'
          OR LOWER(COALESCE(notes, '')) LIKE '%service%'
-         OR LOWER(COALESCE(notes, '')) LIKE '%оглед%'
+         OR LOWER(COALESCE(notes, '')) LIKE '%nova%'
     `).get()?.count || 0;
 
     res.json({
@@ -86,6 +203,19 @@ router.get('/summary', async (req, res) => {
       statuses: byStatus,
       sources: bySource,
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST sync FB leads against Google Sheets operational tabs
+router.post('/sync-sheets', async (req, res) => {
+  try {
+    if (googleSheets.initialized) {
+      await googleSheets.pullBusinessSheets();
+    }
+    const result = syncFacebookLeadsWithSheets();
+    res.json({ success: true, ...result });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

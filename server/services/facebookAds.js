@@ -152,10 +152,12 @@ class FacebookAdsService {
 
           for (const fbLead of leads) {
             const mapped = mapFacebookLead(fbLead, page, form);
-            const sheetMatch = findMaterialSheetMatch(mapped);
+            const sheetMatch = findOperationalSheetMatch(mapped);
             if (sheetMatch) {
               mapped.status = inferLeadStatusFromSheet(sheetMatch);
-              mapped.notes = `${mapped.notes} | Google Sheets МАТЕРИАЛЫ row ${sheetMatch.row_number}: ${[
+              mapped.google_sheet_name = sheetMatch.sheet_name;
+              mapped.google_sheet_row = sheetMatch.row_number;
+              mapped.notes = `${mapped.notes} | Google Sheets ${sheetMatch.sheet_name} row ${sheetMatch.row_number}: ${[
                 sheetMatch.status,
                 sheetMatch.action_needed,
                 sheetMatch.problem,
@@ -172,6 +174,8 @@ class FacebookAdsService {
                     phone = COALESCE(NULLIF(?, ''), phone),
                     city = COALESCE(NULLIF(?, ''), city),
                     status = CASE WHEN status = 'new' THEN COALESCE(NULLIF(?, ''), status) ELSE status END,
+                    google_sheet_name = COALESCE(NULLIF(?, ''), google_sheet_name),
+                    google_sheet_row = COALESCE(?, google_sheet_row),
                     interest_products = COALESCE(NULLIF(?, ''), interest_products),
                     notes = COALESCE(NULLIF(?, ''), notes),
                     updated_at = datetime('now')
@@ -183,6 +187,8 @@ class FacebookAdsService {
                 mapped.phone,
                 mapped.city,
                 mapped.status,
+                mapped.google_sheet_name || '',
+                mapped.google_sheet_row || null,
                 mapped.interest_products,
                 mapped.notes,
                 existing.id
@@ -191,7 +197,7 @@ class FacebookAdsService {
                 db.raw.prepare(`
                   INSERT INTO lead_activities (lead_id, action, description, old_value, new_value, performed_by)
                   VALUES (?, 'status_change', ?, 'new', ?, 'google_sheets')
-                `).run(existing.id, 'Статус обновлён по листу МАТЕРИАЛЫ', mapped.status);
+                `).run(existing.id, `Статус обновлён по листу ${mapped.google_sheet_name || 'Google Sheets'}`, mapped.status);
               }
               updatedLeads += 1;
               continue;
@@ -200,9 +206,9 @@ class FacebookAdsService {
             const info = db.raw.prepare(`
               INSERT INTO leads (
                 company_name, contact_name, email, phone, city, lead_type, source, status,
-                priority, company_type, interest_products, notes, assigned_to, fb_lead_id, created_at
+                priority, company_type, interest_products, notes, assigned_to, fb_lead_id, google_sheet_name, google_sheet_row, created_at
               )
-              VALUES (?, ?, ?, ?, ?, 'fb_lead', 'facebook', ?, ?, ?, ?, ?, 'rostislav', ?, COALESCE(?, datetime('now')))
+              VALUES (?, ?, ?, ?, ?, 'fb_lead', 'facebook', ?, ?, ?, ?, ?, 'rostislav', ?, ?, ?, COALESCE(?, datetime('now')))
             `).run(
               mapped.company_name,
               mapped.contact_name,
@@ -215,6 +221,8 @@ class FacebookAdsService {
               mapped.interest_products,
               mapped.notes,
               mapped.fb_lead_id,
+              mapped.google_sheet_name || null,
+              mapped.google_sheet_row || null,
               mapped.created_at
             );
 
@@ -226,7 +234,7 @@ class FacebookAdsService {
               db.raw.prepare(`
                 INSERT INTO lead_activities (lead_id, action, description, old_value, new_value, performed_by)
                 VALUES (?, 'status_change', ?, 'new', ?, 'google_sheets')
-              `).run(info.lastInsertRowid, 'Статус обновлён по листу МАТЕРИАЛЫ', mapped.status);
+              `).run(info.lastInsertRowid, `Статус обновлён по листу ${mapped.google_sheet_name || 'Google Sheets'}`, mapped.status);
             }
             newLeads += 1;
           }
@@ -388,18 +396,18 @@ function normalizePhone(value) {
   return String(value || '').replace(/\D/g, '');
 }
 
-function findMaterialSheetMatch(mapped) {
+function findOperationalSheetMatch(mapped) {
   const phone = normalizePhone(mapped.phone);
   const email = normalizeContact(mapped.email);
   const rows = db.raw.prepare(`
-    SELECT row_number, company_name, contact_name, phone, email, status, action_needed, problem, interest, notes
+    SELECT sheet_name, row_number, company_name, contact_name, phone, email, status, action_needed, problem, interest, notes
     FROM sheet_clients
-    WHERE sheet_name = 'МАТЕРИАЛЫ'
+    WHERE sheet_name IN ('МАТЕРИАЛЫ', 'УСЛУГИ')
       AND (
         (? != '' AND replace(replace(replace(replace(replace(COALESCE(phone, ''), ' ', ''), '+', ''), '-', ''), '(', ''), ')', '') = ?)
         OR (? != '' AND lower(COALESCE(email, '')) = ?)
       )
-    ORDER BY row_number
+    ORDER BY CASE sheet_name WHEN 'МАТЕРИАЛЫ' THEN 1 WHEN 'УСЛУГИ' THEN 2 ELSE 3 END, row_number
     LIMIT 1
   `).all(phone, phone, email, email);
   return rows[0] || null;

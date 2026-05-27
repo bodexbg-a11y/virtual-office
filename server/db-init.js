@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS leads (
   notes TEXT,
   assigned_to TEXT,
   fb_lead_id TEXT,
+  google_sheet_name TEXT,
   google_sheet_row INTEGER,
   last_contact_at TEXT,
   next_followup_at TEXT,

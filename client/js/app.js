@@ -1408,6 +1408,7 @@ async function renderLeads(el, filters = {}) {
       <h2>📋 Лидове <span style="color:#666;font-size:14px;">(${data.total})</span></h2>
       <div class="page-header-actions">
         <button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 Синхронизирай FB лиды</button>
+        <button class="btn btn-secondary" onclick="syncLeadsWithSheets()">📑 Синх с таблицами</button>
         <button class="btn btn-primary" onclick="openNewLeadModal()">+ Нов лид</button>
       </div>
     </div>
@@ -1533,6 +1534,21 @@ async function syncFacebookLeadsFromLeadsPage() {
     el.className = 'sync-result show ok';
     el.textContent = `✅ FB лиды: проверено ${result.leads_checked || 0}, новых ${result.new_leads || 0}, обновлено ${result.updated_leads || 0}.`;
     setTimeout(() => renderLeads(document.getElementById('main'), { view: 'facebook' }), 900);
+  } catch (err) {
+    el.className = 'sync-result show err';
+    el.textContent = '❌ ' + err.message;
+  }
+}
+
+async function syncLeadsWithSheets() {
+  const el = document.getElementById('leads-sync-result');
+  el.className = 'sync-result show';
+  el.textContent = 'Сверяю Facebook лиды с листами МАТЕРИАЛЫ и УСЛУГИ...';
+  try {
+    const result = await api('/api/leads/sync-sheets', { method: 'POST' });
+    el.className = 'sync-result show ok';
+    el.textContent = `✅ Проверено ${result.checked || 0} FB лидов. Совпадений ${result.matched || 0}: материалы ${result.materials || 0}, услуги ${result.services || 0}. Из новых убрано ${result.moved_from_new || 0}.`;
+    setTimeout(() => renderLeads(document.getElementById('main'), currentLeadFilters), 900);
   } catch (err) {
     el.className = 'sync-result show err';
     el.textContent = '❌ ' + err.message;
