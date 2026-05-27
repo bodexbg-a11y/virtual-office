@@ -150,8 +150,8 @@ async function ensureProductMetaColumns() {
 }
 
 async function seedProductsFromSiteIfEmpty() {
-  const row = await db.get("SELECT COUNT(*)::int AS total FROM products WHERE sku LIKE 'WEB-%'");
-  if (Number(row?.total || 0) >= 12) return { seeded: false, count: Number(row.total || 0) };
+  const row = await db.get("SELECT COUNT(*)::int AS total FROM products WHERE sku LIKE 'ARCAN-%'");
+  if (Number(row?.total || 0) >= 80) return { seeded: false, count: Number(row.total || 0) };
 
   const scanned = await productCatalog.scanSiteProducts();
   let inserted = 0;
@@ -861,7 +861,11 @@ router.get('/products', async (req, res) => {
   try {
     await ensureProductMetaColumns();
     await seedProductsFromSiteIfEmpty();
-    const { rows } = await db.query('SELECT * FROM products ORDER BY category, name');
+    const arcan = await db.get("SELECT COUNT(*)::int AS total FROM products WHERE sku LIKE 'ARCAN-%'");
+    const sql = Number(arcan?.total || 0) > 0
+      ? "SELECT * FROM products WHERE sku LIKE 'ARCAN-%' OR sku NOT LIKE 'WEB-%' ORDER BY category, name"
+      : 'SELECT * FROM products ORDER BY category, name';
+    const { rows } = await db.query(sql);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });

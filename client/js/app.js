@@ -8,6 +8,7 @@ let adminToken = localStorage.getItem('bodex_admin_token') || '';
 let markAgentPoll = null;
 let currentLeadFilters = {};
 let agentReportsFilters = { agent: 'all', date_from: '', date_to: '', limit: 100 };
+let agentReportsCache = [];
 let currentOfferDraft = null;
 
 // ===== NAVIGATION =====
@@ -1974,7 +1975,7 @@ async function renderProducts(el) {
     <div class="page-header fade-in">
       <h2>📦 Продукти ARCAN</h2>
       <div class="page-header-actions">
-        ${currentRole === 'admin' ? '<button class="btn btn-primary" onclick="syncProductsFromSite()">🌐 Синхронизирай от сайта</button>' : ''}
+        ${currentRole === 'admin' ? '<button class="btn btn-primary" onclick="syncProductsFromSite()">📄 Обнови от ARCAN каталог</button>' : ''}
       </div>
     </div>
     <div id="products-sync-result" class="sync-result"></div>
@@ -2005,7 +2006,7 @@ async function renderProducts(el) {
 async function syncProductsFromSite() {
   const el = document.getElementById('products-sync-result');
   el.className = 'sync-result show';
-  el.textContent = 'Сканирую сайт и загружаю реальные продукты...';
+  el.textContent = 'Загружаю продукты из ARCAN/BODEX каталога...';
   try {
     const result = await api('/api/dashboard/products/sync-site', { method: 'POST' });
     el.className = 'sync-result show ok';
@@ -2711,6 +2712,7 @@ async function renderAgentReports(el) {
   const byAgent = Object.fromEntries((data.summary?.by_agent || []).map((x) => [x.id, x]));
   const reports = data.reports || [];
   const runs = data.runs || [];
+  agentReportsCache = reports;
 
   el.innerHTML = `
     <div class="page-header fade-in">
@@ -2808,6 +2810,11 @@ async function renderAgentReports(el) {
               </div>
               <div style="font-size:12px;color:#aaa;margin-top:4px;">${reportTypeLabel(r.report_type)} · ${formatDateTime(r.created_at)}</div>
               <div style="font-size:12px;color:#ddd;margin-top:6px;">${reportSummary(r)}</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+                <button class="btn btn-primary btn-sm" onclick="openAgentReportDetail(${r.id})">Детально</button>
+                <button class="btn btn-secondary btn-sm" onclick="downloadAgentReport(${r.id}, 'json')">JSON</button>
+                <button class="btn btn-secondary btn-sm" onclick="downloadAgentReport(${r.id}, 'csv')">CSV</button>
+              </div>
             </div>
           `).join('') : '<div style="color:#777;font-size:13px;">В выбранном периоде отчётов нет.</div>'}
         </div>
@@ -2841,6 +2848,7 @@ function reportTypeLabel(type) {
     ads_analysis: 'Анализ рекламы',
     market_scan: 'Скан рынка',
     seo_report: 'SEO отчёт',
+    seo_audit: 'SEO аудит',
   };
   return map[type] || type || 'Отчёт';
 }
@@ -2851,6 +2859,158 @@ function reportSummary(report) {
   if (payload.overview?.golden_recommendation) return payload.overview.golden_recommendation;
   if (Array.isArray(payload.rows)) return `Строк в отчёте: ${payload.rows.length}`;
   return report?.run_message || 'Краткое описание недоступно.';
+}
+
+function openAgentReportDetail(id) {
+  const report = agentReportsCache.find((r) => Number(r.id) === Number(id));
+  if (!report) {
+    alert('Отчёт не найден. Обновите страницу отчётов.');
+    return;
+  }
+
+  openModal(`${agentName(report.agent_id)} · ${reportTypeLabel(report.report_type)}`, `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+      <span class="badge badge-${report.run_status === 'done' ? 'won' : report.run_status === 'error' ? 'lost' : 'new'}">${agentRunLabel(report.run_status || 'done')}</span>
+      <span class="badge badge-qualified">${formatDateTime(report.created_at)}</span>
+      <span class="badge badge-new">Run #${report.run_id || '—'}</span>
+    </div>
+    <div style="font-size:13px;color:#ddd;line-height:1.55;margin-bottom:14px;">${reportSummary(report)}</div>
+    ${renderAgentReportPayload(report)}
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="downloadAgentReport(${report.id}, 'json')">Скачать JSON</button>
+      <button class="btn btn-secondary" onclick="downloadAgentReport(${report.id}, 'csv')">Скачать CSV</button>
+      <div style="flex:1;"></div>
+      <button class="btn btn-primary" onclick="closeModal()">Закрыть</button>
+    </div>
+  `);
+}
+
+function renderAgentReportPayload(report) {
+  const payload = report.payload || {};
+  if (Array.isArray(payload.rows)) return renderRowsReport(payload.rows);
+  if (Array.isArray(payload.checks) || Array.isArray(payload.recommendations)) return renderSeoReport(payload);
+  if (payload.overview || Array.isArray(payload.campaigns)) return renderGenericObjectReport(payload);
+  return renderGenericObjectReport(payload);
+}
+
+function renderRowsReport(rows) {
+  const shown = rows.slice(0, 80);
+  const keys = [...new Set(shown.flatMap(row => Object.keys(row || {})))].slice(0, 10);
+  return `
+    <div class="table-wrap" style="max-height:520px;overflow:auto;">
+      <table>
+        <thead><tr>${keys.map(k => `<th>${k}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${shown.map(row => `
+            <tr>${keys.map(k => `<td style="font-size:12px;max-width:260px;">${formatReportValue(row?.[k])}</td>`).join('')}</tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+    ${rows.length > shown.length ? `<div style="font-size:12px;color:#888;margin-top:8px;">Показано ${shown.length} из ${rows.length}. Полный отчёт можно скачать CSV/JSON.</div>` : ''}
+  `;
+}
+
+function renderSeoReport(payload) {
+  return `
+    ${payload.summary ? `<div class="agent-run-message">${payload.summary}</div>` : ''}
+    ${Array.isArray(payload.checks) ? `
+      <div class="card-title" style="font-size:12px;margin-top:12px;">Проверки</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;">
+        ${payload.checks.map(c => `
+          <div style="border:1px solid var(--border);border-radius:10px;padding:10px;">
+            <div style="font-weight:700;color:${c.ok ? 'var(--green)' : 'var(--red)'};">${c.ok ? 'OK' : 'Нужно исправить'} · ${c.name}</div>
+            <div style="font-size:12px;color:#aaa;margin-top:4px;">${c.detail || ''}</div>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+    ${renderReportList('Рекомендации', payload.recommendations)}
+    ${renderReportList('Линкбилдинг', payload.linkbuilding)}
+    ${renderReportList('Следующие действия', payload.next_actions)}
+  `;
+}
+
+function renderReportList(title, items) {
+  if (!Array.isArray(items) || !items.length) return '';
+  return `
+    <div class="card-title" style="font-size:12px;margin-top:14px;">${title}</div>
+    <div style="display:flex;flex-direction:column;gap:7px;">
+      ${items.map(item => `<div class="goal-rule">${formatReportValue(item)}</div>`).join('')}
+    </div>
+  `;
+}
+
+function renderGenericObjectReport(payload) {
+  return `
+    <pre style="white-space:pre-wrap;max-height:520px;overflow:auto;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:12px;color:#ddd;font-size:12px;">${JSON.stringify(payload || {}, null, 2)}</pre>
+  `;
+}
+
+function downloadAgentReport(id, format) {
+  const report = agentReportsCache.find((r) => Number(r.id) === Number(id));
+  if (!report) {
+    alert('Отчёт не найден. Обновите страницу отчётов.');
+    return;
+  }
+
+  const safeName = `${report.agent_id}-${report.report_type}-${report.id}`.replace(/[^a-z0-9-]+/gi, '-').toLowerCase();
+  if (format === 'csv') {
+    const csv = reportToCsv(report);
+    downloadTextFile(`${safeName}.csv`, csv, 'text/csv;charset=utf-8');
+    return;
+  }
+
+  downloadTextFile(`${safeName}.json`, JSON.stringify(report, null, 2), 'application/json;charset=utf-8');
+}
+
+function reportToCsv(report) {
+  const payload = report.payload || {};
+  let rows = [];
+  if (Array.isArray(payload.rows)) rows = payload.rows;
+  else if (Array.isArray(payload.checks)) rows = payload.checks;
+  else if (Array.isArray(payload.recommendations)) rows = payload.recommendations.map((x, i) => ({ index: i + 1, recommendation: x }));
+  else rows = flattenObject(payload);
+
+  if (!rows.length) rows = [{ message: reportSummary(report) }];
+  const keys = [...new Set(rows.flatMap(row => Object.keys(row || {})))];
+  return [
+    keys.map(csvCell).join(','),
+    ...rows.map(row => keys.map(k => csvCell(row?.[k])).join(',')),
+  ].join('\n');
+}
+
+function flattenObject(obj, prefix = '') {
+  const rows = [];
+  for (const [key, value] of Object.entries(obj || {})) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === 'object' && !Array.isArray(value)) rows.push(...flattenObject(value, path));
+    else rows.push({ field: path, value: Array.isArray(value) ? value.join(' | ') : value });
+  }
+  return rows;
+}
+
+function csvCell(value) {
+  const text = formatReportValue(value).replace(/"/g, '""');
+  return `"${text}"`;
+}
+
+function formatReportValue(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function downloadTextFile(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ===== HELPERS =====

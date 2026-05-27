@@ -106,6 +106,105 @@ const BODEX_SITE_PRODUCTS = [
   },
 ];
 
+const ARCAN_CATALOG_GROUPS = [
+  {
+    group: 'Набъбващи ленти и профили',
+    category: 'water',
+    segment: 'Работни фуги, проходи, тунели',
+    products: ['HydroTape', 'BentoFlex', 'HydroColl Glue 430', 'HydroSeal 355', 'BentoColl Glue 305', 'BentoMastic 307'],
+  },
+  {
+    group: 'Мембрани и инжекционни маркучи',
+    category: 'water',
+    segment: 'Фуги, широки пукнатини, активна защита',
+    products: ['HydroFlex 275 - EVA', 'HydroFlex 276 - EPDM', 'Rokryl Glue 319', 'Silipox 826', 'Pro Inject 403', 'Swellinject 405'],
+  },
+  {
+    group: 'Инжекционни смоли Integral',
+    category: 'water',
+    segment: 'Течове, пукнатини, кухини, маркучи',
+    products: ['HydroBloc 575 Integral', 'HydroBloc 620 nv Integral', 'HydroBloc 510 Integral', 'HydroBloc 600 Integral', 'HydroBloc 601 Integral', 'SuperStop 615'],
+  },
+  {
+    group: 'Полиуретанови инжекционни смоли',
+    category: 'water',
+    segment: 'Пукнатини, работни фуги, инжектиране',
+    products: ['HydroBloc PU 500', 'HydroBloc Rapid 570', 'HydroBloc PU 506', 'HydroBloc PU 507', 'SiliBond 697', 'HydroSoil 517 Integral'],
+  },
+  {
+    group: 'Полиуретанови пяни за водоспиране',
+    category: 'water',
+    segment: 'Активни течове и аварийни ремонти',
+    products: ['HydroBloc Schaum 510', 'HydroBloc 620 nv Standard', 'HydroFlex 621 SuperFlex', 'HydroFlex 622', 'HydroBloc 510 Integral', 'HydroBloc 620 Integral'],
+  },
+  {
+    group: 'Стабилизация, анкериране и почви',
+    category: 'structural',
+    segment: 'Почви, анкериране, стабилизация',
+    products: ['HydroBloc Foam 500-15', 'HydroBloc Schaum 516', 'HydroBloc 1200', 'HydroBloc 1201', 'HydroBloc Ankerharz PU 640', 'HydroBloc PU 641 / 641-T'],
+  },
+  {
+    group: 'Акрилати и гелове',
+    category: 'gel',
+    segment: 'Фини пукнатини, зидария, влажни основи',
+    products: ['HydroBloc AC 555', 'HydroBloc AC 503', 'HydroBloc AC 502', 'BOROX AC-1009', 'HydroBloc Inject 583', 'PUR / Silicate Injection Gels'],
+  },
+  {
+    group: 'Епоксиди, PMMA и специални смоли',
+    category: 'structural',
+    segment: 'Структурно свързване и специални инжекции',
+    products: ['Silox EP 800', 'Silox EP 840', 'Silox Injection 810 / 811 NT', 'Silox Injection 812 / 814 NT', 'PMMA Systems Rokryl', 'Organo Mineral Injection Resins'],
+  },
+  {
+    group: 'Минерални системи и защита',
+    category: 'masonry',
+    segment: 'Зидария, фасади, минерални основи',
+    products: ['Mineral Injection Systems', 'Hydrophobic Building Material Systems', 'Horizontal Barrier Systems', 'Surface Hydrophobisation', 'Fluat Building Protection', 'Special Additives & Accelerators'],
+  },
+  {
+    group: 'Хидроизолационни и защитни покрития',
+    category: 'water',
+    segment: 'Покрития, възстановяване, финална защита',
+    products: ['Sealing Slurry', 'Waterproof Restoration Colour', 'Restoration Plaster', 'Polyurethane / PMMA Coatings', 'Epoxy Coatings', 'Top Coat / Sealing / Impregnation'],
+  },
+  {
+    group: 'Ремонтни разтвори',
+    category: 'masonry',
+    segment: 'Ремонт на бетон и минерални повърхности',
+    products: ['SealFix 930', 'Borehole Mortar', 'Injection Mortars', 'Waterstop Mortar', 'Repair Mortars', 'Anchor Mortars'],
+  },
+  {
+    group: 'Репрофилиране и PCC',
+    category: 'structural',
+    segment: 'Конструктивни ремонти и репрофилиране',
+    products: ['Reprofiling Mortars', 'GeoRock 181', 'Trass Mortars', 'Elastified Mortars', 'PCC Mortars', 'Silex 961 / 962 / 963'],
+  },
+  {
+    group: 'Ремонт на фуги и лепила',
+    category: 'structural',
+    segment: 'Фуги, пукнатини, лепене, детайли',
+    products: ['Joint & Crack Repair - Elastic', 'Joint & Crack Repair - Rigid', 'Rigid Adhesives', 'Flexible Adhesive', 'Swelling Tape Adhesive', 'Permanently Plasticised Mastic'],
+  },
+  {
+    group: 'Изолация, почистване и настилки',
+    category: 'masonry',
+    segment: 'Подготовка, настилки, поддръжка',
+    products: ['Thermal Insulation Systems', 'Paint / Varnish Strippers', 'Appliance / Surface Cleaners', 'Paving Joint Mortar Systems', 'Concrete Skin Remover', 'Protection Against Soiling'],
+  },
+  {
+    group: 'Структурно усилване',
+    category: 'structural',
+    segment: 'Карбон, стъклопласт, анкери',
+    products: ['CFK Carbon Systems', 'GFK Duroglass', 'Spiral Anchor', 'Adhesive for CFK / GFK / Spiral Anchors'],
+  },
+  {
+    group: 'Оборудване, пакери и аксесоари',
+    category: 'equip',
+    segment: 'Професионално инжектиране',
+    products: ['Jekto Pro-1 - 2K Pump', 'Jekto M-3 / M-4 - 1K Pumps', 'Injection Packers', 'Injection Accessories'],
+  },
+];
+
 async function fetchText(url) {
   const res = await axios.get(url, {
     timeout: 15000,
@@ -263,6 +362,43 @@ function mapProductSpecsToItems(specs, sourceBaseUrl) {
   });
 }
 
+function productSku(name) {
+  return `ARCAN-${String(name || 'ITEM')
+    .toUpperCase()
+    .replace(/&/g, ' AND ')
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 72)}`;
+}
+
+function mapArcanCatalogProductsToItems() {
+  const seen = new Set();
+  const items = [];
+
+  for (const group of ARCAN_CATALOG_GROUPS) {
+    for (const name of group.products) {
+      const sku = productSku(name);
+      if (seen.has(sku)) continue;
+      seen.add(sku);
+
+      const basis = `${name} ${group.group} ${group.segment}`;
+      items.push({
+        sku,
+        name,
+        name_bg: name,
+        category: group.category || inferCategory(basis),
+        description_bg: `${group.group}. Основно приложение: ${group.segment}. Цените се изготвят индивидуално според проект, обем, логистика и срок на доставка.`,
+        price_per_kg: null,
+        source_url: 'ARCAN_BODEX_Bulgaria_Catalog_2026_BG_v4.pdf',
+        market_segment: inferSegment(`${group.segment} строителни компании инфраструктура B2B`),
+        call_hint: inferCallHint(`${name} ${group.group} ${group.segment}`),
+      });
+    }
+  }
+
+  return items;
+}
+
 function isLikelyProductUrl(url) {
   const u = String(url || '').toLowerCase();
   return (
@@ -322,6 +458,16 @@ async function discoverProductUrls() {
 }
 
 async function scanSiteProducts() {
+  const arcanItems = mapArcanCatalogProductsToItems();
+  if (arcanItems.length) {
+    return {
+      source: 'ARCAN_BODEX_Bulgaria_Catalog_2026_BG_v4.pdf',
+      total_discovered: arcanItems.length,
+      parsed: arcanItems.length,
+      items: arcanItems,
+    };
+  }
+
   const bundle = await discoverProductBundle();
   if (bundle?.chunk) {
     const bundleProducts = parseBundleProducts(bundle.chunk);
