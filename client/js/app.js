@@ -1,6 +1,6 @@
 // ===== BODEX Virtual Office — Frontend App =====
 
-const API = '';
+const API = 'https://virtual-office-f48m.onrender.com';
 const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings']);
 let currentPage = 'leads';
 let currentRole = 'worker';
