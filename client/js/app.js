@@ -1668,7 +1668,7 @@ async function renderLeads(el, filters = {}) {
               <th>Град</th>
               <th>Статус</th>
               <th>Приоритет</th>
-              <th>Източник</th>
+              <th>Контакт</th>
               <th>Тип / интерес</th>
               <th>Комментарий</th>
               <th>След. звонок</th>
@@ -2747,7 +2747,6 @@ function renderLeadTableContactActions(lead = {}) {
       <a class="lead-contact-btn ${whatsapp ? '' : 'disabled'}" title="WhatsApp" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬</a>
       <a class="lead-contact-btn ${viber ? '' : 'disabled'}" title="Viber" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲</a>
     </div>
-    <div style="font-size:10px;color:#666;margin-top:5px;">${sourceLabel(lead.source)}</div>
   `;
 }
 
