@@ -554,7 +554,7 @@ function renderMarkAgentPanel(status) {
       <div class="agent-run-layout">
         <div>
           <div class="agent-run-copy">
-            Mark берёт список материалов из приложения, ищет рыночные цены по болгарскому рынку, формирует рекомендацию и сохраняет HTML-отчёт в БД. Google Sheets при запуске Марка не используется, чтобы не упираться в quota.
+            Mark анализирует категории материалов, а не наш каталог: инжекционные смолы, полимерные материалы, пакеры и насосы. Он сравнивает Болгарию и Европу, ищет актуальные цены и даёт рекомендацию по оптимальной наценке. Отчёт сохраняется в БД как HTML.
           </div>
           <div id="mark-agent-result" class="sync-result ${status?.error ? 'show err' : ''}">${status?.error ? '❌ ' + status.error : ''}</div>
         </div>

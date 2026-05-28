@@ -4,7 +4,65 @@ const db = require('../db');
 const GOOGLE_CSE_API_KEY = process.env.GOOGLE_CSE_API_KEY || '';
 const GOOGLE_CSE_CX = process.env.GOOGLE_CSE_CX || '';
 const SERPAPI_KEY = process.env.SERPAPI_KEY || '';
+const EUR_TO_BGN = 1.95583;
 let activeRun = null;
+
+const MARKET_CATEGORIES = [
+  {
+    id: 'injection-pu-resin',
+    name: 'Инжекционные полиуретановые смолы',
+    family: 'Полимерные / PU injection',
+    unit: 'kg',
+    bgQuery: 'полиуретанова инжекционна смола цена България kg',
+    euQuery: 'polyurethane injection resin price Europe kg',
+    note: 'Для остановки течей, бетонных трещин и гидроизоляции.',
+  },
+  {
+    id: 'injection-epoxy-resin',
+    name: 'Инжекционные эпоксидные смолы',
+    family: 'Полимерные / Epoxy injection',
+    unit: 'kg',
+    bgQuery: 'епоксидна инжекционна смола цена България kg',
+    euQuery: 'epoxy injection resin price Europe kg',
+    note: 'Для структурного ремонта бетона и заполнения трещин.',
+  },
+  {
+    id: 'acrylic-injection-gel',
+    name: 'Акрилатные инжекционные гели',
+    family: 'Полимерные / Acrylic gel',
+    unit: 'kg',
+    bgQuery: 'акрилатен инжекционен гел цена България kg',
+    euQuery: 'acrylic injection gel price Europe kg',
+    note: 'Для curtain injection, деформационных швов и грунтовой воды.',
+  },
+  {
+    id: 'polymer-cement-waterproofing',
+    name: 'Полимер-цементная гидроизоляция',
+    family: 'Полимерцементные материалы',
+    unit: 'kg',
+    bgQuery: 'полимер циментова хидроизолация цена България kg',
+    euQuery: 'polymer cement waterproofing price Europe kg',
+    note: 'Для поверхностной гидроизоляции бетона и фундамента.',
+  },
+  {
+    id: 'injection-packers',
+    name: 'Инжекционные пакеры',
+    family: 'Инъекционное оборудование',
+    unit: 'pcs',
+    bgQuery: 'инжекционни пакери цена България',
+    euQuery: 'injection packers price Europe',
+    note: 'Расходник к смолам, важен для комплексного коммерческого предложения.',
+  },
+  {
+    id: 'injection-pumps',
+    name: 'Инжекционные насосы',
+    family: 'Инъекционное оборудование',
+    unit: 'pcs',
+    bgQuery: 'инжекционна помпа цена България',
+    euQuery: 'injection pump price Europe',
+    note: 'Оборудование для подрядчиков, можно использовать как B2B upsell.',
+  },
+];
 
 async function ensureAgentTables() {
   await db.exec(`
@@ -49,29 +107,10 @@ async function executeRun() {
   const runId = runInfo.lastInsertRowid;
 
   try {
-    const products = await db.all(`
-      SELECT sku, name, name_bg, category, description_bg, source_url
-      FROM products
-      ORDER BY category, name
-    `);
-
     const reportRows = [];
-    for (const product of products) {
-      const query = buildQuery(product);
-      const result = await scanMarket(product, query);
-      reportRows.push([
-        new Date().toISOString(),
-        product.sku,
-        product.name_bg || product.name,
-        product.category,
-        query,
-        result.source,
-        result.price || '',
-        result.currency || '',
-        result.confidence,
-        result.status,
-        result.recommendation,
-      ]);
+    for (const category of MARKET_CATEGORIES) {
+      const result = await scanCategoryMarket(category);
+      reportRows.push(result);
     }
 
     await saveReportToDb(runId, reportRows);
@@ -79,14 +118,14 @@ async function executeRun() {
       UPDATE agent_runs
       SET status = 'done', message = ?, rows_created = ?, finished_at = NOW()
       WHERE id = ?
-    `, [`Готов отчёт по ${reportRows.length} продуктам`, reportRows.length, runId]);
+    `, [`Готов ценовой отчёт по ${reportRows.length} категориям материалов`, reportRows.length, runId]);
 
     return {
       success: true,
       run_id: runId,
       rows: reportRows.length,
       storage: 'database+html',
-      message: `Mark готов: HTML-отчёт по ${reportRows.length} продуктам сохранён в БД.`,
+      message: `Mark готов: ценовой HTML-отчёт по ${reportRows.length} категориям сохранён в БД.`,
     };
   } catch (err) {
     await db.run(`
@@ -99,93 +138,149 @@ async function executeRun() {
 }
 
 async function saveReportToDb(runId, rows) {
-  const objects = rows.map(r => ({
-    date: r[0],
-    sku: r[1],
-    product: r[2],
-    category: r[3],
-    query: r[4],
-    source: r[5],
-    price: r[6],
-    currency: r[7],
-    confidence: r[8],
-    status: r[9],
-    recommendation: r[10],
-  }));
   await db.run(`
     INSERT INTO agent_reports (agent_id, report_type, run_id, payload_json)
     VALUES ('mark', 'market_scan', ?, ?)
   `, [runId, JSON.stringify({
-    rows: objects,
-    html: buildHtmlReport(objects, runId),
+    summary: buildPriceSummary(rows),
+    rows,
+    html: buildHtmlReport(rows, runId),
   })]);
 }
 
-function buildQuery(product) {
-  const name = product.name_bg || product.name;
-  return `${name} цена България строителни материали`;
+async function scanCategoryMarket(category) {
+  const bg = await scanMarketScope(category, 'bg', category.bgQuery);
+  const eu = await scanMarketScope(category, 'eu', category.euQuery);
+  const markup = recommendMarkup(bg, eu);
+
+  return {
+    date: new Date().toISOString(),
+    category_id: category.id,
+    category: category.name,
+    family: category.family,
+    unit: category.unit,
+    bg_query: category.bgQuery,
+    eu_query: category.euQuery,
+    bg_price_min: bg.min || '',
+    bg_price_max: bg.max || '',
+    bg_avg_bgn: bg.avg_bgn || '',
+    eu_price_min: eu.min || '',
+    eu_price_max: eu.max || '',
+    eu_avg_bgn: eu.avg_bgn || '',
+    currency_note: 'BGN normalized; EUR converted at 1.95583',
+    bg_sources: bg.sources.join('\n'),
+    eu_sources: eu.sources.join('\n'),
+    confidence: confidenceFromScopes(bg, eu),
+    status: statusFromScopes(bg, eu),
+    recommended_markup_pct: markup.range,
+    recommended_pricing_logic: markup.logic,
+    recommendation: markup.recommendation,
+    note: category.note,
+  };
 }
 
-async function scanMarket(product, query) {
-  const sources = await discoverSources(product, query);
-  if (!sources.length) {
+async function scanMarketScope(category, scope, query) {
+  const sources = await discoverSources(query, scope);
+  const prices = [];
+  const sourceNotes = [];
+
+  for (const source of sources.slice(0, 4)) {
+    try {
+      const html = await fetchHtml(source);
+      const found = extractPrices(html)
+        .map(price => ({ ...price, source }))
+        .filter(price => isReasonablePrice(price, category.unit));
+
+      prices.push(...found);
+      sourceNotes.push(`${source}${found.length ? ` (${found.map(p => `${p.value} ${p.currency}`).join(', ')})` : ' (цена не распознана)'}`);
+    } catch (err) {
+      sourceNotes.push(`${source} (scan error: ${err.message})`);
+    }
+  }
+
+  const normalized = prices.map(price => ({
+    ...price,
+    bgn: normalizePriceToBgn(price),
+  })).filter(price => Number.isFinite(price.bgn));
+
+  normalized.sort((a, b) => a.bgn - b.bgn);
+  const values = normalized.map(p => p.bgn);
+
+  return {
+    scope,
+    query,
+    unit: category.unit,
+    sources: sourceNotes,
+    prices: normalized,
+    min: values.length ? roundMoney(values[0]) : '',
+    max: values.length ? roundMoney(values[values.length - 1]) : '',
+    avg_bgn: values.length ? roundMoney(values.reduce((sum, value) => sum + value, 0) / values.length) : '',
+  };
+}
+
+function recommendMarkup(bg, eu) {
+  const bgAvg = Number(bg.avg_bgn || 0);
+  const euAvg = Number(eu.avg_bgn || 0);
+
+  if (!bgAvg && !euAvg) {
     return {
-      source: '',
-      price: '',
-      currency: '',
-      confidence: 'low',
-      status: 'source_missing',
-      recommendation: 'Нет валидного источника для анализа. Добавьте SERPAPI_KEY или GOOGLE_CSE_API_KEY + GOOGLE_CSE_CX на Render, либо заполните source_url у продуктов.',
+      range: 'нет данных',
+      logic: 'Недостаточно рыночных цен для расчёта.',
+      recommendation: 'Добавить SERPAPI_KEY или Google CSE на Render и/или прямые URL конкурентов, затем повторить отчёт.',
     };
   }
-  const source = sources[0];
 
-  try {
-    const html = await fetchHtml(source);
-    const price = extractPrice(html);
-    const text = htmlToText(html).slice(0, 600);
+  const base = euAvg || bgAvg;
+  const bgGap = bgAvg && euAvg ? Math.round(((bgAvg - euAvg) / euAvg) * 100) : null;
+
+  if (bgGap !== null && bgGap >= 35) {
     return {
-      source,
-      price: price?.value || '',
-      currency: price?.currency || '',
-      confidence: price ? 'medium' : 'low',
-      status: price ? 'price_found' : 'no_clear_price',
-      recommendation: price
-        ? `Найдена рыночная цена/упоминание. Проверить вручную источник и сравнить с BODEX условиями. Фрагмент: ${text.slice(0, 220)}`
-        : 'Источник найден, но цена не распознана. Mark должен проверить вручную и добавить точный URL в карточку продукта.',
-    };
-  } catch (err) {
-    return {
-      source,
-      price: '',
-      currency: '',
-      confidence: 'low',
-      status: 'scan_error',
-      recommendation: `Не удалось автоматически прочитать источник: ${err.message}. Добавьте прямой URL поставщика/конкурента в карточку продукта.`,
+      range: '25-40%',
+      logic: `Болгарский рынок примерно на ${bgGap}% выше европейского ориентира; есть место для конкурентной цены.`,
+      recommendation: `Держать BODEX ниже средней BG цены на 5-10%, но выше европейской закупочной базы. Ориентир продажи: ${roundMoney(base * 1.25)}-${roundMoney(base * 1.4)} BGN/${bg.unit || 'unit'}.`,
     };
   }
+
+  if (bgGap !== null && bgGap <= 10) {
+    return {
+      range: '15-25%',
+      logic: `Разница BG/EU небольшая (${bgGap}%), рынок чувствителен к цене.`,
+      recommendation: `Ставить умеренную наценку и выигрывать сервисом: наличие, доставка, консультация. Ориентир продажи: ${roundMoney(base * 1.15)}-${roundMoney(base * 1.25)} BGN/${bg.unit || 'unit'}.`,
+    };
+  }
+
+  return {
+    range: '20-35%',
+    logic: bgGap === null ? 'Есть только один рынок для ориентира.' : `BG/EU gap около ${bgGap}%.`,
+    recommendation: `Оптимально тестировать наценку 20-35%, отдельно для B2B объёма давать скидку. Ориентир продажи: ${roundMoney(base * 1.2)}-${roundMoney(base * 1.35)} BGN.`,
+  };
 }
 
-async function getConfiguredSources(product, query) {
-  const urls = [product.source_url, process.env.MARK_DEFAULT_SOURCE_URL]
-    .filter(isValidHttpUrl);
-  return [...new Set(urls)];
+function confidenceFromScopes(bg, eu) {
+  const count = (bg.prices?.length || 0) + (eu.prices?.length || 0);
+  if (count >= 4) return 'medium';
+  if (count >= 2) return 'low-medium';
+  return 'low';
 }
 
-async function discoverSources(product, query) {
-  const configured = await getConfiguredSources(product, query);
-  if (configured.length) return configured;
+function statusFromScopes(bg, eu) {
+  const count = (bg.prices?.length || 0) + (eu.prices?.length || 0);
+  if (count >= 2) return 'price_range_found';
+  if ((bg.sources?.length || 0) + (eu.sources?.length || 0) > 0) return 'sources_found_no_clear_price';
+  return 'source_missing';
+}
 
-  const serpapi = await searchWithSerpApi(query);
+async function discoverSources(query, scope) {
+  const serpapi = await searchWithSerpApi(query, scope);
   if (serpapi.length) return serpapi;
 
-  const cse = await searchWithGoogleCse(query);
+  const cse = await searchWithGoogleCse(query, scope);
   if (cse.length) return cse;
 
   return [];
 }
 
-async function searchWithSerpApi(query) {
+async function searchWithSerpApi(query, scope = 'bg') {
   if (!SERPAPI_KEY) return [];
   try {
     const res = await axios.get('https://serpapi.com/search.json', {
@@ -193,22 +288,22 @@ async function searchWithSerpApi(query) {
       params: {
         engine: 'google',
         q: query,
-        hl: 'bg',
-        gl: 'bg',
-        num: 5,
+        hl: scope === 'bg' ? 'bg' : 'en',
+        gl: scope === 'bg' ? 'bg' : 'de',
+        num: 8,
         api_key: SERPAPI_KEY,
       },
     });
     return (res.data?.organic_results || [])
       .map(item => item?.link)
       .filter(isValidHttpUrl)
-      .slice(0, 3);
+      .slice(0, 5);
   } catch {
     return [];
   }
 }
 
-async function searchWithGoogleCse(query) {
+async function searchWithGoogleCse(query, scope = 'bg') {
   if (!GOOGLE_CSE_API_KEY || !GOOGLE_CSE_CX) return [];
   try {
     const res = await axios.get('https://www.googleapis.com/customsearch/v1', {
@@ -217,15 +312,15 @@ async function searchWithGoogleCse(query) {
         key: GOOGLE_CSE_API_KEY,
         cx: GOOGLE_CSE_CX,
         q: query,
-        num: 5,
-        gl: 'bg',
-        hl: 'bg',
+        num: 8,
+        gl: scope === 'bg' ? 'bg' : 'de',
+        hl: scope === 'bg' ? 'bg' : 'en',
       },
     });
     return (res.data?.items || [])
       .map(item => item?.link)
       .filter(isValidHttpUrl)
-      .slice(0, 3);
+      .slice(0, 5);
   } catch {
     return [];
   }
@@ -243,14 +338,30 @@ async function fetchHtml(url) {
   return String(res.data || '');
 }
 
-function extractPrice(html) {
+function extractPrices(html) {
   const text = htmlToText(html);
-  const match = text.match(/(?:цена|price)?\s*([0-9]{1,5}(?:[,.][0-9]{1,2})?)\s*(лв\.?|bgn|eur|€)/i);
-  if (!match) return null;
-  return {
-    value: match[1].replace(',', '.'),
+  const matches = [...text.matchAll(/(?:цена|price|preis)?\s*([0-9]{1,5}(?:[,.][0-9]{1,2})?)\s*(лв\.?|bgn|eur|€)/gi)];
+  return matches.slice(0, 12).map(match => ({
+    value: Number(String(match[1]).replace(',', '.')),
     currency: normalizeCurrency(match[2]),
-  };
+  })).filter(price => Number.isFinite(price.value));
+}
+
+function isReasonablePrice(price, unit) {
+  if (!price.value || price.value <= 0) return false;
+  if (unit === 'pcs') return price.value >= 0.1 && price.value <= 20000;
+  return price.value >= 0.1 && price.value <= 1000;
+}
+
+function normalizePriceToBgn(price) {
+  if (price.currency === 'EUR') return price.value * EUR_TO_BGN;
+  if (price.currency === 'BGN') return price.value;
+  return NaN;
+}
+
+function roundMoney(value) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : '';
 }
 
 function htmlToText(html) {
@@ -318,29 +429,38 @@ function buildHtmlReport(rows, runId) {
   <h1>BODEX · Mark Market Report</h1>
   <div class="muted">Run #${escapeHtml(runId)} · ${escapeHtml(generatedAt)} · хранится в БД, без Google Sheets</div>
   <section class="stats">
-    <div class="card"><div class="muted">Продуктов</div><div class="num">${totals.total || 0}</div></div>
-    <div class="card"><div class="muted">Цена найдена</div><div class="num">${totals.price_found || 0}</div></div>
-    <div class="card"><div class="muted">Нужна ручная проверка</div><div class="num">${totals.no_clear_price || 0}</div></div>
+    <div class="card"><div class="muted">Категорий</div><div class="num">${totals.total || 0}</div></div>
+    <div class="card"><div class="muted">Диапазон цен найден</div><div class="num">${totals.price_range_found || 0}</div></div>
+    <div class="card"><div class="muted">Нужна ручная проверка</div><div class="num">${totals.sources_found_no_clear_price || 0}</div></div>
     <div class="card"><div class="muted">Нет источника</div><div class="num">${totals.source_missing || 0}</div></div>
   </section>
   <table>
-    <thead><tr><th>SKU</th><th>Продукт</th><th>Категория</th><th>Запрос</th><th>Источник</th><th>Цена</th><th>Статус</th><th>Рекомендация</th></tr></thead>
+    <thead><tr><th>Категория</th><th>BG рынок</th><th>EU рынок</th><th>Наценка</th><th>Статус</th><th>Рекомендация</th><th>Источники</th></tr></thead>
     <tbody>
       ${rows.map(row => `<tr>
-        <td>${escapeHtml(row.sku)}</td>
-        <td><strong>${escapeHtml(row.product)}</strong></td>
-        <td>${escapeHtml(row.category)}</td>
-        <td>${escapeHtml(row.query)}</td>
-        <td>${row.source ? `<a href="${escapeAttr(row.source)}" target="_blank" rel="noreferrer">${escapeHtml(row.source)}</a>` : '—'}</td>
-        <td>${row.price ? `${escapeHtml(row.price)} ${escapeHtml(row.currency)}` : '—'}</td>
+        <td><strong>${escapeHtml(row.category)}</strong><br><span class="muted">${escapeHtml(row.family)} · ${escapeHtml(row.unit)}</span><br>${escapeHtml(row.note)}</td>
+        <td>${priceRangeText(row.bg_price_min, row.bg_price_max, row.bg_avg_bgn)}<br><span class="muted">${escapeHtml(row.bg_query)}</span></td>
+        <td>${priceRangeText(row.eu_price_min, row.eu_price_max, row.eu_avg_bgn)}<br><span class="muted">${escapeHtml(row.eu_query)}</span></td>
+        <td><strong>${escapeHtml(row.recommended_markup_pct)}</strong><br><span class="muted">${escapeHtml(row.recommended_pricing_logic)}</span></td>
         <td><span class="pill ${escapeAttr(row.status)}">${escapeHtml(row.status)}</span></td>
         <td>${escapeHtml(row.recommendation)}</td>
+        <td><pre>${escapeHtml([row.bg_sources, row.eu_sources].filter(Boolean).join('\n\n'))}</pre></td>
       </tr>`).join('')}
     </tbody>
   </table>
 </main>
 </body>
 </html>`;
+}
+
+function buildPriceSummary(rows) {
+  const priced = rows.filter(r => r.status === 'price_range_found').length;
+  return `Mark проверил ${rows.length} категорий: найден ценовой диапазон по ${priced}, остальные требуют ручной проверки источников. Цель отчёта: определить рыночный коридор BG/EU и оптимальную наценку BODEX.`;
+}
+
+function priceRangeText(min, max, avg) {
+  if (!min && !max && !avg) return '—';
+  return `${escapeHtml(min || '—')} - ${escapeHtml(max || '—')} BGN<br><span class="muted">avg ${escapeHtml(avg || '—')} BGN</span>`;
 }
 
 function escapeHtml(value) {

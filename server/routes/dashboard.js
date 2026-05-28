@@ -340,7 +340,7 @@ function tasksFor(id, data) {
     mark: [
       { title: 'Собрать цены конкурентов по PU смолам, епоксидным смолам, пакерам и помпам', source: 'Market research', status: 'today' },
       { title: 'Сравнить ARCAN/BODEX с конкурентами по цене, упаковке, минимальному заказу', source: 'Products', status: 'today' },
-      { title: `Обновить HTML-отчёт по ${p.total || 0} товарам в БД`, source: 'Products / Reports', status: 'weekly' },
+      { title: 'Обновить ценовой HTML-отчёт по категориям: BG рынок vs EU рынок', source: 'Market pricing / Reports', status: 'daily' },
       { title: 'Найти 5 компаний-поставщиков/конкурентов для анализа цен', source: 'B2B база', status: 'today' },
     ],
     maria: [
