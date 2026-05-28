@@ -1427,7 +1427,7 @@ function renderDealSection(section) {
           </div>
           <div class="deal-col-body" data-stage-id="${stage.id}" ondragover="allowDealDrop(event)" ondrop="dropDealCard(event)">
             ${stage.clients.length ? stage.clients.map(c => `
-              <article class="deal-card" draggable="true" data-sheet-name="${c.sheet_name}" data-row-number="${c.row_number}" ondragstart="dragDealCard(event)" ondragend="endDealDrag(event)">
+              <article class="deal-card" draggable="true" data-lead-id="${c.lead_id || ''}" data-sheet-name="${c.sheet_name || ''}" data-row-number="${c.row_number || ''}" ondragstart="dragDealCard(event)" ondragend="endDealDrag(event)">
                 <div class="deal-card-top">
                   <span class="badge badge-${dealBadgeClass(stage.id)}">${c.sheet_name || 'таблица'}</span>
                   <span class="deal-row">#${c.row_number || c.id}${c.status_override ? ' · saved' : ''}</span>
@@ -1470,8 +1470,9 @@ function dragDealCard(event) {
   card.classList.add('dragging');
   event.dataTransfer.effectAllowed = 'move';
   event.dataTransfer.setData('application/json', JSON.stringify({
+    lead_id: card.dataset.leadId ? Number(card.dataset.leadId) : null,
     sheet_name: card.dataset.sheetName,
-    row_number: Number(card.dataset.rowNumber),
+    row_number: card.dataset.rowNumber ? Number(card.dataset.rowNumber) : null,
   }));
 }
 
@@ -1496,7 +1497,7 @@ async function dropDealCard(event) {
   } catch {
     return;
   }
-  if (!payload.sheet_name || !payload.row_number || !stage_id) return;
+  if ((!payload.lead_id && (!payload.sheet_name || !payload.row_number)) || !stage_id) return;
 
   try {
     await api('/api/dashboard/deals/status', {

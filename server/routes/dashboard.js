@@ -544,12 +544,20 @@ async function buildDealsPayload() {
       sheet_name,
       row_number
   `);
+  const crmLeads = await db.all(`
+    SELECT id, company_name, contact_name, phone, email, city, lead_type, source, status, priority,
+      interest_products, notes, estimated_value, google_sheet_name, google_sheet_row, created_at, updated_at
+    FROM leads
+    WHERE source = 'facebook' OR google_sheet_name IS NULL
+    ORDER BY created_at DESC
+    LIMIT 300
+  `);
   const overrides = await db.all('SELECT sheet_name, row_number, stage_id FROM deal_status_overrides');
   const overrideByKey = new Map(overrides.map(row => [`${row.sheet_name}:${row.row_number}`, row.stage_id]));
 
   const dealRows = rows.filter(row => DEAL_SECTIONS.some(section => section.sheets.includes(row.sheet_name)));
   const summary = {
-    total: dealRows.length,
+    total: 0,
     interested: 0,
     catalog_or_offer: 0,
     contract_purchase_won: 0,
@@ -573,23 +581,19 @@ async function buildDealsPayload() {
   });
   const sectionById = Object.fromEntries(sections.map(section => [section.id, section]));
 
-  dealRows.forEach(row => {
-    const section = sections.find(item => item.sheets.includes(row.sheet_name));
+  const addClientToSection = (section, stageId, client) => {
     if (!section) return;
-    const key = `${row.sheet_name}:${row.row_number}`;
-    const stageId = overrideByKey.get(key) || classifyDeal(row);
     const stage = section.stages.find(item => item.id === stageId) || section.stages[0];
-    const client = {
-      ...row,
+    stage.clients.push({
+      ...client,
       section_id: section.id,
       stage_id: stage.id,
       stage_label: stage.label,
-      status_override: overrideByKey.has(key),
-      next_action: nextDealAction(stage.id, row),
-    };
-    stage.clients.push(client);
+      next_action: client.next_action || nextDealAction(stage.id, client),
+    });
     stage.count += 1;
     section.summary.total += 1;
+    summary.total += 1;
     if (stage.id === 'interested') {
       summary.interested += 1;
       section.summary.interested += 1;
@@ -606,10 +610,66 @@ async function buildDealsPayload() {
       summary.lost += 1;
       section.summary.lost += 1;
     }
+  };
+
+  dealRows.forEach(row => {
+    const section = sections.find(item => item.sheets.includes(row.sheet_name));
+    if (!section) return;
+    const key = `${row.sheet_name}:${row.row_number}`;
+    const stageId = overrideByKey.get(key) || classifyDeal(row);
+    addClientToSection(section, stageId, {
+      ...row,
+      source_type: 'sheet',
+      status_override: overrideByKey.has(key),
+    });
     if (row.synced_at && (!summary.last_sync || row.synced_at > summary.last_sync)) summary.last_sync = row.synced_at;
   });
 
+  crmLeads.forEach(lead => {
+    if (lead.google_sheet_name && lead.google_sheet_row) return;
+    const section = sectionForLead(lead, sections);
+    const stageId = normalizeDealStage(lead.status);
+    addClientToSection(section, stageId, {
+      id: lead.id,
+      lead_id: lead.id,
+      source_type: 'lead',
+      sheet_name: lead.source === 'facebook' ? 'Facebook' : 'CRM',
+      row_number: lead.id,
+      company_name: lead.company_name,
+      contact_name: lead.contact_name,
+      phone: lead.phone,
+      email: lead.email,
+      city: lead.city,
+      interest: lead.interest_products || lead.lead_type,
+      status: lead.status,
+      priority: lead.priority,
+      notes: lead.notes,
+      synced_at: lead.updated_at || lead.created_at,
+      next_action: nextDealAction(stageId, lead),
+    });
+  });
+
   return { summary, sections, stages: sectionById.services?.stages || [] };
+}
+
+function normalizeDealStage(status) {
+  const map = {
+    contacted: 'interested',
+    qualified: 'interested',
+  };
+  const id = map[status] || status || 'new';
+  return DEAL_STAGES.some(stage => stage.id === id) ? id : 'new';
+}
+
+function sectionForLead(lead, sections) {
+  if (lead.google_sheet_name) {
+    return sections.find(section => section.sheets.includes(lead.google_sheet_name)) || sections[0];
+  }
+  const text = String([lead.interest_products, lead.lead_type, lead.notes].filter(Boolean).join(' ')).toLowerCase();
+  if (/услуг|service|ремонт|обект|объект|теч|хидроизолац/.test(text)) {
+    return sections.find(section => section.id === 'services') || sections[0];
+  }
+  return sections.find(section => section.id === 'materials') || sections[0];
 }
 
 router.get('/stats', async (req, res) => {
@@ -705,10 +765,34 @@ router.get('/deals', async (req, res) => {
 router.patch('/deals/status', async (req, res) => {
   try {
     await ensureDealOverrides();
-    const { sheet_name, row_number, stage_id } = req.body || {};
+    const { sheet_name, row_number, stage_id, lead_id } = req.body || {};
     const stage = DEAL_STAGES.find(item => item.id === stage_id);
-    if (!sheet_name || !row_number || !stage) {
-      return res.status(400).json({ error: 'sheet_name, row_number and valid stage_id are required' });
+    if (!stage || (!lead_id && (!sheet_name || !row_number))) {
+      return res.status(400).json({ error: 'lead_id or sheet_name/row_number plus valid stage_id are required' });
+    }
+
+    const nextLeadStatus = leadStatusFromDealStage(stage.id);
+
+    if (lead_id) {
+      const lead = await db.get('SELECT id, status FROM leads WHERE id = ?', [lead_id]);
+      if (!lead) return res.status(404).json({ error: 'Lead not found' });
+      if (lead.status !== nextLeadStatus) {
+        await db.run(`
+          UPDATE leads SET status = ?, updated_at = NOW()
+          WHERE id = ?
+        `, [nextLeadStatus, lead.id]);
+        await db.run(`
+          INSERT INTO lead_activities (lead_id, action, description, old_value, new_value, performed_by)
+          VALUES (?, 'status_change', ?, ?, ?, 'deals')
+        `, [
+          lead.id,
+          `Статус обновлён через сделку CRM lead #${lead.id}`,
+          lead.status,
+          nextLeadStatus,
+        ]);
+      }
+
+      return res.json({ success: true, lead_id: lead.id, stage_id: stage.id, stage_label: stage.label });
     }
 
     const exists = await db.get(`
@@ -726,7 +810,6 @@ router.patch('/deals/status', async (req, res) => {
         updated_at = NOW()
     `, [sheet_name, row_number, stage.id]);
 
-    const nextLeadStatus = leadStatusFromDealStage(stage.id);
     const matchedLeads = await db.all(`
       SELECT id, status FROM leads
       WHERE google_sheet_name = ? AND google_sheet_row = ?
