@@ -36,7 +36,6 @@ class GoogleSheetsService {
       this.sheets = google.sheets({ version: 'v4', auth });
 
       await this.testConnection();
-      await this.ensureStructure();
       await this.ensureBusinessTables();
 
       this.initialized = true;
@@ -67,27 +66,13 @@ class GoogleSheetsService {
 
   async ensureStructure() {
     const meta = await this.testConnection();
-    const requiredSheets = ['Leads', 'Products', 'Stats'];
-    const missing = requiredSheets.filter(name => !meta.sheets.includes(name));
-
-    if (missing.length) {
-      await this.sheets.spreadsheets.batchUpdate({
-        spreadsheetId: this.spreadsheetId,
-        resource: {
-          requests: missing.map(title => ({
-            addSheet: { properties: { title } },
-          })),
-        },
-      });
-    }
-
-    await Promise.all([
-      this.prepareLeadHeaders(),
-      this.prepareProductHeaders(),
-      this.prepareStatsHeaders(),
-    ]);
-
-    return { ok: true, createdSheets: missing };
+    return {
+      ok: true,
+      readOnly: true,
+      createdSheets: [],
+      sheets: meta.sheets,
+      message: 'Google Sheets is read-only. App data stays in Neon DB.',
+    };
   }
 
   async ensureBusinessTables() {

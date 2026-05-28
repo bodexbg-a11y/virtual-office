@@ -103,10 +103,9 @@ router.post('/google/test', async (req, res) => {
       });
     }
     const connection = await googleSheets.testConnection();
-    const setup = await googleSheets.ensureStructure();
     res.json({
       ok: true,
-      message: `Връзката работи. Таблица: ${connection.title}. ${setup.createdSheets.length ? `Създадени листове: ${setup.createdSheets.join(', ')}.` : 'Листовете Leads, Products и Stats са готови.'}`,
+      message: `Връзката работи. Таблица: ${connection.title}. Google Sheets се използва само за четене на работните листове.`,
     });
   } catch (err) {
     res.status(200).json({ ok: false, message: err.message });
