@@ -1624,11 +1624,10 @@ async function renderLeads(el, filters = {}) {
                 <td><span class="badge badge-${l.priority}">${l.priority}</span></td>
                 <td>${sourceLabel(l.source)}</td>
                 <td style="max-width:240px;font-size:11px;color:#aaa;">${l.interest_products || l.lead_type || '—'}</td>
-                <td style="width:180px;max-width:180px;" onclick="event.stopPropagation();">
-                  <div style="display:flex;gap:4px;align-items:center;">
-                    <input id="lead-comment-${l.id}" type="text" placeholder="Комментарий..." title="${escapeAttr(l.latest_comment || 'Комментарий после звонка')}" style="height:28px;font-size:10px;padding:4px 6px;min-width:0;width:135px;" onkeydown="if(event.key==='Enter'){event.preventDefault();saveQuickLeadComment(${l.id})}">
-                    <button class="btn btn-sm btn-secondary" onclick="saveQuickLeadComment(${l.id})">💬</button>
-                  </div>
+                <td style="width:120px;max-width:120px;" onclick="event.stopPropagation();">
+                  <button class="btn btn-sm btn-secondary" title="${escapeAttr(l.latest_comment || 'Добавить комментарий')}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="max-width:112px;display:inline-flex;gap:5px;align-items:center;">
+                    💬 <span style="display:inline-block;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : 'Добавить'}</span>
+                  </button>
                 </td>
                 <td style="color:#666;font-size:11px;">${new Date(l.created_at).toLocaleDateString('bg-BG')}</td>
                 <td style="display:flex;gap:6px;">
@@ -1677,15 +1676,42 @@ async function syncFacebookLeadsFromLeadsPage() {
   }
 }
 
+function openQuickCommentModal(id, encodedLatest = '') {
+  const latest = decodeURIComponent(encodedLatest || '');
+  openModal('Комментарий к лиду', `
+    ${latest ? `<div style="font-size:12px;color:#8dd3ff;margin-bottom:10px;">Последний: ${escapeHtml(latest)}</div>` : ''}
+    <div class="form-group full">
+      <label>Комментарий после звонка</label>
+      <textarea id="quick-lead-comment" rows="4" placeholder="Напишите короткий результат звонка..."></textarea>
+    </div>
+    <div id="quick-comment-result" class="sync-result"></div>
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="saveQuickLeadComment(${id})">Сохранить</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('quick-lead-comment')?.focus(), 50);
+}
+
 async function saveQuickLeadComment(id) {
-  const input = document.getElementById(`lead-comment-${id}`);
+  const input = document.getElementById('quick-lead-comment');
+  const result = document.getElementById('quick-comment-result');
   const comment = input?.value.trim();
   if (!comment) {
-    input?.focus();
+    if (result) {
+      result.className = 'sync-result show err';
+      result.textContent = '❌ Напишите комментарий.';
+    } else {
+      input?.focus();
+    }
     return;
   }
 
-  input.disabled = true;
+  if (result) {
+    result.className = 'sync-result show';
+    result.textContent = 'Сохраняю...';
+  }
+
   try {
     await api(`/api/leads/${id}/comments`, {
       method: 'POST',
@@ -1694,10 +1720,15 @@ async function saveQuickLeadComment(id) {
         performed_by: currentRole === 'admin' ? 'admin' : 'manager',
       },
     });
+    closeModal();
     await renderLeads(document.getElementById('main'), currentLeadFilters);
   } catch (err) {
-    alert('Грешка: ' + err.message);
-    input.disabled = false;
+    if (result) {
+      result.className = 'sync-result show err';
+      result.textContent = '❌ ' + err.message;
+    } else {
+      alert('Грешка: ' + err.message);
+    }
   }
 }
 
