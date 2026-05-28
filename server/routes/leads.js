@@ -27,6 +27,14 @@ async function ensureLeadSheetColumns() {
   if (!cols.includes('google_sheet_action')) {
     await db.query(`ALTER TABLE leads ADD COLUMN google_sheet_action TEXT`);
   }
+
+  if (!cols.includes('next_followup_at')) {
+    await db.query(`ALTER TABLE leads ADD COLUMN next_followup_at TIMESTAMP`);
+  }
+
+  if (!cols.includes('last_contact_at')) {
+    await db.query(`ALTER TABLE leads ADD COLUMN last_contact_at TIMESTAMP`);
+  }
 }
 
 async function ensureDealOverrides() {
@@ -629,7 +637,7 @@ router.put('/:id', async (req, res) => {
     const params = [];
 
     for (const [key, val] of Object.entries(b)) {
-      if (val !== undefined && key !== 'id') {
+      if (val !== undefined && !['id', 'performed_by'].includes(key)) {
         fields.push(`${key} = ?`);
         params.push(val);
       }
@@ -678,6 +686,24 @@ router.put('/:id', async (req, res) => {
           old.google_sheet_name,
           old.google_sheet_row,
           stageId,
+        ]);
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(b, 'next_followup_at')) {
+      const oldFollowup = old.next_followup_at ? new Date(old.next_followup_at).toISOString() : '';
+      const newFollowup = b.next_followup_at ? new Date(b.next_followup_at).toISOString() : '';
+
+      if (oldFollowup !== newFollowup) {
+        await db.query(`
+          INSERT INTO lead_activities (lead_id, action, description, old_value, new_value, performed_by)
+          VALUES (?, 'followup_change', ?, ?, ?, ?)
+        `, [
+          req.params.id,
+          b.next_followup_at ? 'Назначена дата следующего звонка' : 'Дата следующего звонка очищена',
+          old.next_followup_at || '',
+          b.next_followup_at || '',
+          b.performed_by || 'manager',
         ]);
       }
     }

@@ -1606,6 +1606,7 @@ async function renderLeads(el, filters = {}) {
               <th>Източник</th>
               <th>Тип / интерес</th>
               <th>Комментарий</th>
+              <th>След. звонок</th>
               <th>Дата</th>
               <th></th>
             </tr>
@@ -1627,6 +1628,11 @@ async function renderLeads(el, filters = {}) {
                 <td style="width:120px;max-width:120px;" onclick="event.stopPropagation();">
                   <button class="btn btn-sm btn-secondary" title="${escapeAttr(l.latest_comment || 'Добавить комментарий')}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="max-width:112px;display:inline-flex;gap:5px;align-items:center;">
                     💬 <span style="display:inline-block;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : 'Добавить'}</span>
+                  </button>
+                </td>
+                <td style="width:130px;max-width:130px;" onclick="event.stopPropagation();">
+                  <button class="btn btn-sm btn-secondary" title="Назначить следующий звонок" onclick="openFollowupModal(${l.id}, '${encodeURIComponent(l.next_followup_at || '')}')" style="max-width:122px;display:inline-flex;gap:5px;align-items:center;">
+                    📅 <span style="display:inline-block;max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${formatFollowupShort(l.next_followup_at) || 'Назначить'}</span>
                   </button>
                 </td>
                 <td style="color:#666;font-size:11px;">${new Date(l.created_at).toLocaleDateString('bg-BG')}</td>
@@ -1730,6 +1736,59 @@ async function saveQuickLeadComment(id) {
       alert('Грешка: ' + err.message);
     }
   }
+}
+
+function openFollowupModal(id, encodedValue = '') {
+  const value = decodeURIComponent(encodedValue || '');
+  openModal('Следующий звонок', `
+    <div class="form-group full">
+      <label>Дата и время звонка</label>
+      <input id="quick-followup-at" type="datetime-local" value="${toDatetimeLocal(value)}">
+      <div style="font-size:11px;color:#777;margin-top:6px;">Используйте это поле, когда клиент занят и нужно пинговать его в конкретный день/час.</div>
+    </div>
+    <div id="quick-followup-result" class="sync-result"></div>
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="clearLeadFollowup(${id})">Очистить</button>
+      <div style="flex:1;"></div>
+      <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="saveLeadFollowup(${id})">Сохранить</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('quick-followup-at')?.focus(), 50);
+}
+
+async function saveLeadFollowup(id, valueOverride) {
+  const input = document.getElementById('quick-followup-at');
+  const result = document.getElementById('quick-followup-result');
+  const value = valueOverride !== undefined ? valueOverride : input?.value;
+
+  if (result) {
+    result.className = 'sync-result show';
+    result.textContent = 'Сохраняю...';
+  }
+
+  try {
+    await api(`/api/leads/${id}`, {
+      method: 'PUT',
+      body: {
+        next_followup_at: value || null,
+        performed_by: currentRole === 'admin' ? 'admin' : 'manager',
+      },
+    });
+    closeModal();
+    await renderLeads(document.getElementById('main'), currentLeadFilters);
+  } catch (err) {
+    if (result) {
+      result.className = 'sync-result show err';
+      result.textContent = '❌ ' + err.message;
+    } else {
+      alert('Грешка: ' + err.message);
+    }
+  }
+}
+
+function clearLeadFollowup(id) {
+  saveLeadFollowup(id, '');
 }
 
 async function syncLeadsWithSheets() {
@@ -2412,6 +2471,7 @@ async function openLeadDetail(id) {
           </select>
         </div>
         <div class="form-group"><label>Стойност (лв)</label><input id="ld-value" type="number" value="${l.estimated_value || ''}"></div>
+        <div class="form-group"><label>Следующий звонок</label><input id="ld-followup" type="datetime-local" value="${toDatetimeLocal(l.next_followup_at)}"></div>
         <div class="form-group full"><label>Бележки</label><textarea id="ld-notes" rows="2">${l.notes || ''}</textarea></div>
       </div>
 
@@ -2474,6 +2534,7 @@ function leadActivityLabel(action) {
     created: 'создан',
     status_change: 'статус',
     comment: 'комментарий',
+    followup_change: 'следующий звонок',
   };
   return map[action] || action || 'активность';
 }
@@ -2534,6 +2595,7 @@ async function updateLead(id) {
     status: document.getElementById('ld-status').value,
     priority: document.getElementById('ld-priority').value,
     estimated_value: parseFloat(document.getElementById('ld-value').value) || null,
+    next_followup_at: document.getElementById('ld-followup').value || null,
     notes: document.getElementById('ld-notes').value,
   };
   try {
@@ -3167,6 +3229,26 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value).replace(/`/g, '&#096;');
+}
+
+function toDatetimeLocal(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatFollowupShort(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function downloadTextFile(filename, content, type) {
