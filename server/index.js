@@ -50,23 +50,12 @@ async function start() {
   await googleSheets.init();
   facebookAds.init();
 
-  // Cron: sync Google Sheets every 15 minutes
-  cron.schedule('*/15 * * * *', async () => {
-    console.log('[CRON] Syncing Google Sheets...');
-    try {
-      await googleSheets.pushLeads();
-      await googleSheets.pushStats();
-    } catch (err) {
-      console.error('[CRON] Google Sheets sync error:', err.message);
-    }
-  });
-
-  // Cron: pull operational Google Sheets every 5 minutes
+  // Cron: pull operational Google Sheets into Neon every 5 minutes.
+  // Google Sheets is an input source only; app data and agent reports stay in DB.
   cron.schedule('*/5 * * * *', async () => {
     console.log('[CRON] Pulling business sheets...');
     try {
       await googleSheets.pullBusinessSheets();
-      await googleSheets.pullLeads();
     } catch (err) {
       console.error('[CRON] Business Sheets pull error:', err.message);
     }

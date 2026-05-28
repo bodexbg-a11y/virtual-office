@@ -1,9 +1,6 @@
 const db = require('../db');
 const facebookAds = require('./facebookAds');
-const googleSheets = require('./googleSheets');
 
-const REPORT_SHEET = 'Maria Ads Report';
-const WRITE_AGENT_REPORTS_TO_SHEETS = String(process.env.AGENT_REPORTS_TO_SHEETS || '').toLowerCase() === 'true';
 let activeRun = null;
 
 async function ensureAgentTables() {
@@ -54,7 +51,6 @@ async function executeRun() {
     const rows = campaigns.map(analyzeCampaign);
     const overview = buildOverview(rows);
     await saveReportToDb(runId, rows, overview);
-    await writeReport(rows);
 
     const summary = overview.summary;
     await db.run(`
@@ -67,7 +63,7 @@ async function executeRun() {
       success: true,
       run_id: runId,
       rows: rows.length,
-      sheet: REPORT_SHEET,
+      storage: 'database+html',
       message: summary,
     };
   } catch (err) {
@@ -284,74 +280,72 @@ async function saveReportToDb(runId, rows, overview) {
     summary: overview.summary,
     overview,
     rows,
+    html: buildHtmlReport(rows, overview, runId),
   })]);
 }
 
-async function writeReport(rows) {
-  if (!WRITE_AGENT_REPORTS_TO_SHEETS) return;
-  if (!googleSheets.initialized) {
-    await googleSheets.init();
-  }
-  if (!googleSheets.initialized) return;
-
-  await ensureSheet(REPORT_SHEET);
-  const header = [
-    'Дата',
-    'Campaign ID',
-    'Кампания',
-    'Статус',
-    'Цель',
-    'Impressions',
-    'Clicks',
-    'CTR %',
-    'CPC $',
-    'Spend $',
-    'Leads',
-    'CPL $',
-    'Оценка Maria',
-    'Рекомендация',
-    'Качество лидов',
-    'Аудитория',
-    'Креатив',
-    'Конверсия',
-  ];
-
-  const values = rows.map(r => [
-    r.date,
-    r.campaign_id,
-    r.name,
-    r.status,
-    r.objective,
-    r.impressions,
-    r.clicks,
-    r.ctr,
-    r.cpc,
-    r.spend,
-    r.leads,
-    r.cpl,
-    r.verdict,
-    r.recommendation,
-    r.quality_signal,
-    r.audience_recommendation,
-    r.creative_recommendation,
-    r.conversion_recommendation,
-  ]);
-
-  await googleSheets.sheets.spreadsheets.values.update({
-    spreadsheetId: googleSheets.spreadsheetId,
-    range: `'${REPORT_SHEET}'!A1:R${values.length + 1}`,
-    valueInputOption: 'RAW',
-    resource: { values: [header, ...values] },
-  });
+function buildHtmlReport(rows, overview, runId) {
+  const generatedAt = new Date().toLocaleString('bg-BG', { timeZone: 'Europe/Sofia' });
+  return `<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BODEX Maria Ads Report #${escapeHtml(runId)}</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;background:#08081a;color:#f4f4f5}
+    main{max-width:1180px;margin:0 auto;padding:32px}
+    h1{margin:0 0 8px;font-size:28px}
+    .muted{color:#a1a1aa}
+    .summary{border:1px solid #242449;background:#121229;border-radius:10px;padding:16px;margin:22px 0;line-height:1.55}
+    .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:22px 0}
+    .card{border:1px solid #242449;background:#121229;border-radius:10px;padding:16px}
+    .num{font-size:28px;font-weight:800;color:#8b8cff}
+    table{width:100%;border-collapse:collapse;background:#101025;border:1px solid #242449}
+    th,td{padding:10px;border-bottom:1px solid #242449;text-align:left;vertical-align:top;font-size:13px}
+    th{color:#a1a1aa;text-transform:uppercase;font-size:11px;letter-spacing:.08em}
+    .pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#1f2937;color:#e5e7eb;font-weight:700}
+  </style>
+</head>
+<body>
+<main>
+  <h1>BODEX · Maria Ads Report</h1>
+  <div class="muted">Run #${escapeHtml(runId)} · ${escapeHtml(generatedAt)} · хранится в БД, без Google Sheets</div>
+  <section class="stats">
+    <div class="card"><div class="muted">Кампаний</div><div class="num">${overview.total_campaigns || 0}</div></div>
+    <div class="card"><div class="muted">Spend</div><div class="num">$${overview.spend || 0}</div></div>
+    <div class="card"><div class="muted">Leads</div><div class="num">${overview.leads || 0}</div></div>
+    <div class="card"><div class="muted">Avg CPL</div><div class="num">$${overview.avg_cpl || 0}</div></div>
+  </section>
+  <div class="summary"><strong>Золотая рекомендация:</strong><br>${escapeHtml(overview.golden_recommendation || overview.summary || '')}</div>
+  <table>
+    <thead><tr><th>Кампания</th><th>Статус</th><th>Spend</th><th>Leads</th><th>CPL</th><th>CTR</th><th>Оценка</th><th>Рекомендация</th><th>Аудитория/креатив</th></tr></thead>
+    <tbody>
+      ${rows.map(row => `<tr>
+        <td><strong>${escapeHtml(row.name)}</strong><br><span class="muted">${escapeHtml(row.campaign_id)}</span></td>
+        <td>${escapeHtml(row.status)}</td>
+        <td>$${escapeHtml(row.spend)}</td>
+        <td>${escapeHtml(row.leads)}</td>
+        <td>$${escapeHtml(row.cpl)}</td>
+        <td>${escapeHtml(row.ctr)}%</td>
+        <td><span class="pill">${escapeHtml(row.verdict)}</span></td>
+        <td>${escapeHtml(row.recommendation)}</td>
+        <td>${escapeHtml(row.audience_recommendation)}<br><br>${escapeHtml(row.creative_recommendation)}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+</main>
+</body>
+</html>`;
 }
 
-async function ensureSheet(title) {
-  const meta = await googleSheets.testConnection();
-  if (meta.sheets.includes(title)) return;
-  await googleSheets.sheets.spreadsheets.batchUpdate({
-    spreadsheetId: googleSheets.spreadsheetId,
-    resource: { requests: [{ addSheet: { properties: { title } } }] },
-  });
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 async function latestRun() {

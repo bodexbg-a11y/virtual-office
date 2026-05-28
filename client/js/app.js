@@ -596,7 +596,7 @@ function renderMariaAgentPanel(status, analysis = {}) {
       <div class="agent-run-layout">
         <div>
           <div class="agent-run-copy">
-            Maria синхронизирует Facebook Ads, считает spend, impressions, clicks, CTR, CPC, leads и CPL за последние 30 дней. Потом пишет отчёт во вкладку Google Sheets <strong>Maria Ads Report</strong> и отмечает, что усилить, что остановить и где менять креатив/аудиторию.
+            Maria синхронизирует Facebook Ads, считает spend, impressions, clicks, CTR, CPC, leads и CPL за последние 30 дней. Отчёт сохраняется в БД и доступен на странице отчётов, без записи в Google Sheets.
           </div>
           <div id="maria-agent-result" class="sync-result ${status?.error ? 'show err' : ''}">${status?.error ? '❌ ' + status.error : ''}</div>
         </div>
@@ -648,7 +648,7 @@ function renderMariaAgentPanel(status, analysis = {}) {
           </tbody>
         </table>
       </div>
-      <div style="font-size:11px;color:#777;margin-top:10px;">Этот же отчёт записывается в Google Sheets во вкладку Maria Ads Report.</div>
+      <div style="font-size:11px;color:#777;margin-top:10px;">Отчёт хранится в БД и доступен в разделе “Отчёты работников”.</div>
     </div>
   `;
 }
@@ -1849,22 +1849,16 @@ async function renderSheets(el) {
       ${status.lastError ? `<div class="sync-result show err" style="margin-bottom:12px;">❌ ${status.lastError}</div>` : ''}
       <div class="sync-actions">
         <button class="btn btn-secondary" onclick="testSheetsConnection()">🔌 Провери връзката</button>
-        <button class="btn btn-secondary" onclick="setupSheets()">🧱 Подготви листовете</button>
         <button class="btn btn-secondary" onclick="navigate('settings')">⚙️ Настройки</button>
       </div>
       <div id="sheets-setup-result" class="sync-result"></div>
     </div>
 
     <div class="card fade-in">
-      <div class="card-title">🔄 Синхронизация</div>
-      <p style="font-size:12px;color:#888;margin-bottom:14px;">Данните се синхронизират автоматично на всеки 15 минути. Можете и ръчно:</p>
+      <div class="card-title">🔄 Импорт в БД</div>
+      <p style="font-size:12px;color:#888;margin-bottom:14px;">Google Sheets използваме само като източник за работните листове. Лидове, отчёты работников, продукты и статистика не се записват обратно в тази таблица.</p>
       <div class="sync-actions">
-        <button class="btn btn-primary" onclick="syncSheets('all')">📤 Синхронизирай всичко</button>
-        <button class="btn btn-secondary" onclick="syncSheets('leads')">📋 Push Лидове</button>
-        <button class="btn btn-secondary" onclick="syncSheets('products')">📦 Push Продукти</button>
-        <button class="btn btn-secondary" onclick="syncSheets('stats')">📊 Push Статистика</button>
-        <button class="btn btn-secondary" onclick="syncSheetsPull()">📥 Pull Лидове от Sheets</button>
-        <button class="btn btn-secondary" onclick="pullBusinessSheetsFromSheetsPage()">👥 Pull Клиенти/B2B</button>
+        <button class="btn btn-primary" onclick="pullBusinessSheetsFromSheetsPage()">👥 Обновить клиентов, материалы и услуги</button>
       </div>
       <div id="sheets-sync-result" class="sync-result"></div>
     </div>
