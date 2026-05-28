@@ -2526,6 +2526,7 @@ async function openLeadDetail(id) {
     const l = data.lead;
     const offers = offerData.offers || [];
     const formResponses = data.form_responses || [];
+    const leadNotes = formatLeadNotesForEditor(l.notes);
     currentLeadFormResponses = formResponses;
 
     openModal(`${l.company_name || 'Лид #' + l.id}`, `
@@ -2573,7 +2574,7 @@ async function openLeadDetail(id) {
             <button class="btn btn-secondary btn-sm" type="button" onclick="openNativePicker('ld-followup-date')" title="Открыть календарь">📅</button>
           </div>
         </div>
-        <div class="form-group full"><label>Бележки</label><textarea id="ld-notes" rows="2">${l.notes || ''}</textarea></div>
+        <div class="form-group full"><label>Бележки</label><textarea id="ld-notes" rows="2">${escapeHtml(leadNotes)}</textarea></div>
       </div>
 
       <div style="margin-top:16px;padding:12px 14px;border:1px solid rgba(34,197,94,0.25);border-radius:10px;background:rgba(34,197,94,0.06);display:flex;justify-content:space-between;gap:12px;align-items:center;">
@@ -2659,6 +2660,50 @@ function formatFormAnswers(answers = {}) {
       key: escapeHtml(String(key)),
       value: escapeHtml(Array.isArray(value) ? value.join(', ') : String(value)),
     }));
+}
+
+function formatLeadNotesForEditor(notes = '') {
+  const text = String(notes || '').trim();
+  if (!text.includes('Fields:')) return text;
+  const fieldsText = text.split('Fields:').slice(1).join('Fields:');
+  const rows = fieldsText
+    .split('|')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => {
+      const idx = part.indexOf(':');
+      if (idx === -1) return null;
+      const key = part.slice(0, idx).trim();
+      const value = part.slice(idx + 1).trim();
+      if (!value) return null;
+      return `${humanizeLeadFieldName(key)}: ${humanizeLeadAnswer(value, key)}`;
+    })
+    .filter(Boolean);
+
+  return rows.length ? rows.join('\n') : text;
+}
+
+function humanizeLeadFieldName(key = '') {
+  const normalized = String(key).toLowerCase();
+  if (normalized.includes('full_name') || normalized === 'name') return 'Име';
+  if (normalized.includes('phone')) return 'Телефон';
+  if (normalized.includes('email')) return 'Email';
+  if (normalized.includes('company_name')) return 'Компания';
+  if (normalized.includes('какъв_тип_компания') || normalized.includes('тип_компания')) return 'Тип компания';
+  if (normalized.includes('какви_материали') || normalized.includes('материали')) return 'Материалы';
+  if (normalized.includes('какъв_тип_запитване') || normalized.includes('запитване')) return 'Обем / тип запитване';
+  if (normalized.includes('city')) return 'Град';
+  return key.replace(/_/g, ' ').replace(/\?+$/g, '').trim();
+}
+
+function humanizeLeadAnswer(value = '', key = '') {
+  const raw = String(value || '').trim();
+  if (/email/i.test(key) || /phone/i.test(key) || raw.includes('@')) return raw;
+  return raw
+    .split(',')
+    .map(item => item.trim().replace(/_/g, ' '))
+    .filter(Boolean)
+    .join(', ');
 }
 
 function openLeadFormResponsesModal() {

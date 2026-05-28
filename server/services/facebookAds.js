@@ -487,7 +487,7 @@ function mapFacebookLead(lead, page, form) {
   const company = get('company_name', 'company', 'фирма', 'компания', 'company_/_фирма');
   const materialInterest = get('interest_products', 'materials', 'material', 'материали', 'материалы', 'product');
   const serviceInterest = get('service', 'услуга', 'услуги', 'problem', 'проблем');
-  const rawFields = Object.entries(fields).map(([key, value]) => `${key}: ${value}`).join(' | ');
+  const formAnswers = formatFacebookFormAnswers(fields);
   const campaign = lead.campaign_name || lead.ad_name || '';
   const formName = form.name || '';
   const combined = `${materialInterest} ${serviceInterest} ${campaign} ${formName}`.toLowerCase();
@@ -504,13 +504,38 @@ function mapFacebookLead(lead, page, form) {
     priority: combined.includes('urgent') || combined.includes('спеш') ? 'hot' : 'high',
     company_type: company ? 'construction' : 'other',
     interest_products: materialInterest || serviceInterest || campaign || formName,
-    notes: [
-      `FB Page: ${page.name || page.id}`,
-      `Form: ${formName || form.id}`,
-      campaign ? `Campaign/Ad: ${campaign}` : '',
-      rawFields ? `Fields: ${rawFields}` : '',
-    ].filter(Boolean).join(' | '),
+    notes: formAnswers,
   };
+}
+
+function formatFacebookFormAnswers(fields) {
+  return Object.entries(fields || {})
+    .filter(([, value]) => String(value || '').trim())
+    .map(([key, value]) => `${humanizeFacebookFieldName(key)}: ${humanizeFacebookAnswer(value, key)}`)
+    .join('\n');
+}
+
+function humanizeFacebookFieldName(key) {
+  const normalized = String(key || '').toLowerCase();
+  if (normalized.includes('full_name') || normalized === 'name') return 'Име';
+  if (normalized.includes('phone')) return 'Телефон';
+  if (normalized.includes('email')) return 'Email';
+  if (normalized.includes('company_name')) return 'Компания';
+  if (normalized.includes('какъв_тип_компания') || normalized.includes('тип_компания')) return 'Тип компания';
+  if (normalized.includes('какви_материали') || normalized.includes('материали')) return 'Материалы';
+  if (normalized.includes('какъв_тип_запитване') || normalized.includes('запитване')) return 'Обем / тип запитване';
+  if (normalized.includes('city')) return 'Град';
+  return String(key || '').replace(/_/g, ' ').replace(/\?+$/g, '').trim();
+}
+
+function humanizeFacebookAnswer(value, key) {
+  const raw = String(value || '').trim();
+  if (/email/i.test(key) || /phone/i.test(key) || raw.includes('@')) return raw;
+  return raw
+    .split(',')
+    .map(item => item.trim().replace(/_/g, ' '))
+    .filter(Boolean)
+    .join(', ');
 }
 
 function normalizeContact(value) {
