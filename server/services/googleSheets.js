@@ -108,6 +108,34 @@ class GoogleSheetsService {
     `);
   }
 
+  async ensureFormResponseTables() {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS google_form_responses (
+        id SERIAL PRIMARY KEY,
+        lead_id INTEGER REFERENCES leads(id) ON DELETE SET NULL,
+        spreadsheet_id TEXT NOT NULL,
+        spreadsheet_title TEXT,
+        sheet_name TEXT NOT NULL,
+        row_number INTEGER NOT NULL,
+        form_type TEXT,
+        submitted_at TIMESTAMP,
+        email TEXT,
+        phone TEXT,
+        contact_name TEXT,
+        company_name TEXT,
+        city TEXT,
+        interest TEXT,
+        raw_json TEXT NOT NULL DEFAULT '{}',
+        synced_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(spreadsheet_id, sheet_name, row_number)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_google_form_responses_lead ON google_form_responses(lead_id);
+      CREATE INDEX IF NOT EXISTS idx_google_form_responses_email ON google_form_responses(email);
+      CREATE INDEX IF NOT EXISTS idx_google_form_responses_phone ON google_form_responses(phone);
+    `);
+  }
+
   async prepareLeadHeaders() {
     await this.sheets.spreadsheets.values.update({
       spreadsheetId: this.spreadsheetId,
@@ -324,6 +352,209 @@ class GoogleSheetsService {
     await this._log('BusinessSheets', 'pull', total, 'success');
 
     return { success: true, rows: total, summary };
+  }
+
+  async pullGoogleFormResponses() {
+    if (!this.initialized) return this._demo('pull', 'Google Forms');
+
+    await this.ensureFormResponseTables();
+
+    const spreadsheetIds = this.formSpreadsheetIds();
+    const summary = {};
+    let total = 0;
+    let createdLeads = 0;
+    let matchedLeads = 0;
+
+    for (const spreadsheetId of spreadsheetIds) {
+      const result = await this.pullGoogleFormSpreadsheet(spreadsheetId);
+      summary[spreadsheetId] = result;
+      total += result.rows;
+      createdLeads += result.created_leads;
+      matchedLeads += result.matched_leads;
+    }
+
+    await this._log('GoogleForms', 'pull', total, 'success');
+
+    return {
+      success: true,
+      spreadsheets: spreadsheetIds.length,
+      rows: total,
+      created_leads: createdLeads,
+      matched_leads: matchedLeads,
+      summary,
+    };
+  }
+
+  formSpreadsheetIds() {
+    const ids = [
+      this.spreadsheetId,
+      ...(process.env.GOOGLE_FORM_SPREADSHEET_IDS || '').split(','),
+    ]
+      .map(id => String(id || '').trim())
+      .filter(Boolean);
+
+    return [...new Set(ids)];
+  }
+
+  async pullGoogleFormSpreadsheet(spreadsheetId) {
+    const meta = await this.sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: 'spreadsheetId,properties.title,sheets.properties.title',
+    });
+    const spreadsheetTitle = meta.data.properties?.title || 'Google Forms';
+    const sheets = (meta.data.sheets || [])
+      .map(s => s.properties?.title)
+      .filter(Boolean)
+      .filter(isLikelyFormResponseSheet);
+
+    const result = {
+      title: spreadsheetTitle,
+      sheets: sheets.length,
+      rows: 0,
+      created_leads: 0,
+      matched_leads: 0,
+    };
+
+    for (const sheetName of sheets) {
+      const imported = await this.pullGoogleFormSheet(spreadsheetId, spreadsheetTitle, sheetName);
+      result.rows += imported.rows;
+      result.created_leads += imported.created_leads;
+      result.matched_leads += imported.matched_leads;
+    }
+
+    return result;
+  }
+
+  async pullGoogleFormSheet(spreadsheetId, spreadsheetTitle, sheetName) {
+    const res = await this.sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `'${sheetName}'!A1:AZ1000`,
+    });
+
+    const values = res.data.values || [];
+    const header = values[0] || [];
+    if (!isLikelyFormHeader(header)) {
+      return { rows: 0, created_leads: 0, matched_leads: 0 };
+    }
+
+    const rows = values.slice(1);
+    const formType = inferFormType(`${spreadsheetTitle} ${sheetName} ${header.join(' ')}`);
+    let imported = 0;
+    let createdLeads = 0;
+    let matchedLeads = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNumber = i + 2;
+      const raw = rowToObject(header, row);
+      const mapped = mapGoogleFormResponse(raw, formType);
+      const responseType = mapped.form_type || formType;
+      if (!mapped.email && !mapped.phone && !mapped.contact_name && !mapped.company_name) continue;
+
+      const existing = await db.get(`
+        SELECT id, lead_id FROM google_form_responses
+        WHERE spreadsheet_id = ? AND sheet_name = ? AND row_number = ?
+      `, [spreadsheetId, sheetName, rowNumber]);
+
+      let leadId = existing?.lead_id || null;
+      if (!leadId) {
+        const matchedLead = await findLeadForFormResponse(mapped);
+        if (matchedLead) {
+          leadId = matchedLead.id;
+          matchedLeads += 1;
+        }
+      }
+
+      if (!leadId) {
+        const inserted = await db.get(`
+          INSERT INTO leads (
+            company_name, contact_name, email, phone, city, lead_type, source, status,
+            priority, interest_products, notes, assigned_to, created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, 'google_form', 'new', ?, ?, ?, 'rostislav', COALESCE(?::timestamp, NOW()))
+          RETURNING id
+        `, [
+          mapped.company_name,
+          mapped.contact_name,
+          mapped.email,
+          mapped.phone,
+          mapped.city,
+          responseType,
+          mapped.priority,
+          mapped.interest,
+          googleFormLeadNotes(spreadsheetTitle, sheetName, mapped, raw),
+          mapped.submitted_at,
+        ]);
+        leadId = inserted.id;
+        createdLeads += 1;
+      }
+
+      await db.run(`
+        INSERT INTO google_form_responses (
+          lead_id, spreadsheet_id, spreadsheet_title, sheet_name, row_number, form_type,
+          submitted_at, email, phone, contact_name, company_name, city, interest, raw_json, synced_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?::timestamp, ?, ?, ?, ?, ?, ?, ?, NOW())
+        ON CONFLICT(spreadsheet_id, sheet_name, row_number) DO UPDATE SET
+          lead_id = COALESCE(google_form_responses.lead_id, EXCLUDED.lead_id),
+          spreadsheet_title = EXCLUDED.spreadsheet_title,
+          form_type = EXCLUDED.form_type,
+          submitted_at = EXCLUDED.submitted_at,
+          email = EXCLUDED.email,
+          phone = EXCLUDED.phone,
+          contact_name = EXCLUDED.contact_name,
+          company_name = EXCLUDED.company_name,
+          city = EXCLUDED.city,
+          interest = EXCLUDED.interest,
+          raw_json = EXCLUDED.raw_json,
+          synced_at = NOW()
+      `, [
+        leadId,
+        spreadsheetId,
+        spreadsheetTitle,
+        sheetName,
+        rowNumber,
+        responseType,
+        mapped.submitted_at || null,
+        mapped.email,
+        mapped.phone,
+        mapped.contact_name,
+        mapped.company_name,
+        mapped.city,
+        mapped.interest,
+        JSON.stringify(raw),
+      ]);
+
+      if (!existing) {
+        await db.run(`
+          INSERT INTO lead_activities (lead_id, action, description, new_value, performed_by)
+          VALUES (?, 'google_form', ?, ?, 'google_forms')
+        `, [
+          leadId,
+          `Получен ответ Google Form: ${sheetName}`,
+          mapped.interest || mapped.email || mapped.phone || '',
+        ]);
+      }
+
+      imported += 1;
+    }
+
+    return { rows: imported, created_leads: createdLeads, matched_leads: matchedLeads };
+  }
+
+  async getLeadFormResponses(leadId) {
+    await this.ensureFormResponseTables();
+    const { rows } = await db.query(`
+      SELECT *
+      FROM google_form_responses
+      WHERE lead_id = ?
+      ORDER BY COALESCE(submitted_at, synced_at) DESC, id DESC
+    `, [leadId]);
+
+    return rows.map(row => ({
+      ...row,
+      answers: safeJson(row.raw_json, {}),
+    }));
   }
 
   async pullBusinessSheet({ name, headerRow }) {
@@ -974,6 +1205,119 @@ function clientMatchesFilters(row, filters = {}) {
     return haystack.includes(String(filters.search).toLowerCase());
   }
   return true;
+}
+
+function isLikelyFormResponseSheet(sheetName) {
+  return /form responses|ответы|відповіді|отговори|responses|форма|анкета/i.test(sheetName || '');
+}
+
+function isLikelyFormHeader(header = []) {
+  const text = header.join(' ').toLowerCase();
+  return /(timestamp|отметка времени|часова отметка|дата|email|e-mail|имейл|телефон|phone)/i.test(text)
+    && header.length >= 2;
+}
+
+function inferFormType(text) {
+  const value = String(text || '').toLowerCase();
+  if (/услуг|service|ремонт|обект|объект|хидроизолац|теч/.test(value)) return 'services';
+  if (/частник|private|дом|апартамент|къща|квартира/.test(value)) return 'private';
+  return 'materials';
+}
+
+function mapGoogleFormResponse(raw, fallbackType) {
+  const get = (...patterns) => findRawValue(raw, patterns);
+  const email = clean(get(/e-?mail/i, /имейл/i, /почт/i));
+  const phone = cleanPhone(get(/phone/i, /телефон/i, /viber/i, /whatsapp/i));
+  const contactName = clean(get(/name/i, /име/i, /имя/i, /контакт/i));
+  const companyName = clean(get(/company/i, /фирм/i, /компан/i, /дружеств/i));
+  const city = clean(get(/city/i, /град/i, /город/i, /населен/i));
+  const submittedAt = parseFormTimestamp(get(/timestamp/i, /отметка времени/i, /часова отметка/i, /^дата$/i, /time/i));
+  const interest = clean(get(/материал/i, /product/i, /продукт/i, /интерес/i, /нужно/i, /какво/i, /какво ви трябва/i, /опис/i));
+  const allText = Object.values(raw || {}).join(' ');
+  const formType = inferFormType(`${fallbackType} ${allText}`);
+
+  return {
+    email,
+    phone,
+    contact_name: contactName,
+    company_name: companyName,
+    city,
+    submitted_at: submittedAt,
+    interest,
+    priority: /срочно|urgent|спеш|днес|today|high/i.test(allText) ? 'high' : 'medium',
+    form_type: formType || fallbackType || 'materials',
+  };
+}
+
+function findRawValue(raw, patterns) {
+  for (const [key, value] of Object.entries(raw || {})) {
+    if (patterns.some(pattern => pattern.test(String(key)))) {
+      return value;
+    }
+  }
+  return '';
+}
+
+function parseFormTimestamp(value) {
+  const text = clean(value);
+  if (!text) return null;
+
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+
+  const match = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!match) return null;
+  const [, dd, mm, yyyy, hh = '0', min = '0', ss = '0'] = match;
+  const year = yyyy.length === 2 ? `20${yyyy}` : yyyy;
+  const date = new Date(Number(year), Number(mm) - 1, Number(dd), Number(hh), Number(min), Number(ss));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+async function findLeadForFormResponse(mapped) {
+  if (mapped.email) {
+    const byEmail = await db.get(`
+      SELECT id FROM leads
+      WHERE LOWER(COALESCE(email, '')) = LOWER(?)
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `, [mapped.email]);
+    if (byEmail) return byEmail;
+  }
+
+  const phoneDigits = cleanPhone(mapped.phone).replace(/\D/g, '');
+  if (phoneDigits.length >= 6) {
+    const byPhone = await db.get(`
+      SELECT id FROM leads
+      WHERE regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') LIKE ?
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `, [`%${phoneDigits.slice(-8)}%`]);
+    if (byPhone) return byPhone;
+  }
+
+  return null;
+}
+
+function googleFormLeadNotes(spreadsheetTitle, sheetName, mapped, raw) {
+  const useful = Object.entries(raw || {})
+    .filter(([, value]) => clean(value))
+    .slice(0, 8)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(' | ');
+
+  return [
+    `Google Form: ${spreadsheetTitle} / ${sheetName}`,
+    mapped.interest ? `Интерес: ${mapped.interest}` : '',
+    useful,
+  ].filter(Boolean).join(' | ');
+}
+
+function safeJson(value, fallback) {
+  try {
+    return JSON.parse(value || '');
+  } catch {
+    return fallback;
+  }
 }
 
 function formatGoogleError(err) {

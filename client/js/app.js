@@ -1989,6 +1989,7 @@ async function renderSheets(el) {
       <p style="font-size:12px;color:#888;margin-bottom:14px;">Google Sheets използваме само като източник за работните листове. Лидове, отчёты работников, продукты и статистика не се записват обратно в тази таблица.</p>
       <div class="sync-actions">
         <button class="btn btn-primary" onclick="pullBusinessSheetsFromSheetsPage()">👥 Обновить клиентов, материалы и услуги</button>
+        <button class="btn btn-secondary" onclick="pullGoogleFormsFromSheetsPage()">📝 Импорт Google Forms</button>
       </div>
       <div id="sheets-sync-result" class="sync-result"></div>
     </div>
@@ -2036,6 +2037,20 @@ async function pullBusinessSheetsFromSheetsPage() {
     const result = await api('/api/google/pull/business', { method: 'POST' });
     el.className = 'sync-result show ok';
     el.textContent = `✅ Обновени ${result.rows} реда от работните таблици.`;
+  } catch (err) {
+    el.className = 'sync-result show err';
+    el.textContent = '❌ ' + err.message;
+  }
+}
+
+async function pullGoogleFormsFromSheetsPage() {
+  const el = document.getElementById('sheets-sync-result');
+  el.className = 'sync-result show';
+  el.textContent = 'Чета отговорите от Google Forms...';
+  try {
+    const result = await api('/api/google/pull/forms', { method: 'POST' });
+    el.className = 'sync-result show ok';
+    el.textContent = `✅ Google Forms: импортировано ${result.rows || 0}, новых лидов ${result.created_leads || 0}, найдено совпадений ${result.matched_leads || 0}.`;
   } catch (err) {
     el.className = 'sync-result show err';
     el.textContent = '❌ ' + err.message;
@@ -2446,6 +2461,7 @@ async function openLeadDetail(id) {
     const offerData = await api(`/api/offers/lead/${id}`).catch(() => ({ offers: [] }));
     const l = data.lead;
     const offers = offerData.offers || [];
+    const formResponses = data.form_responses || [];
 
     openModal(`${l.company_name || 'Лид #' + l.id}`, `
       ${currentRole === 'admin' ? `
@@ -2494,6 +2510,31 @@ async function openLeadDetail(id) {
         </div>
         <div class="form-group full"><label>Бележки</label><textarea id="ld-notes" rows="2">${l.notes || ''}</textarea></div>
       </div>
+
+      ${formResponses.length ? `
+        <div style="margin-top:16px;padding:14px;border:1px solid rgba(34,197,94,0.25);border-radius:10px;background:rgba(34,197,94,0.06);">
+          <div class="card-title" style="font-size:12px;margin-bottom:10px;">📝 Ответы Google Forms</div>
+          ${formResponses.map(r => `
+            <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+              <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:8px;">
+                <div>
+                  <div style="font-weight:800;color:#ddd;">${r.spreadsheet_title || 'Google Form'} · ${r.sheet_name}</div>
+                  <div style="font-size:11px;color:#777;">${r.submitted_at ? formatDateTime(r.submitted_at) : formatDateTime(r.synced_at)} · ${r.form_type || 'form'}</div>
+                </div>
+                <span class="badge badge-qualified">${r.email || r.phone || 'ответ'}</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
+                ${formatFormAnswers(r.answers).map(item => `
+                  <div style="padding:8px;border-radius:8px;background:rgba(255,255,255,0.04);">
+                    <div style="font-size:10px;color:#777;text-transform:uppercase;">${item.key}</div>
+                    <div style="font-size:12px;color:#ddd;margin-top:3px;">${item.value}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
 
       <div style="margin-top:16px;padding:14px;border:1px solid rgba(56,189,248,0.25);border-radius:10px;background:rgba(56,189,248,0.06);">
         <div class="card-title" style="font-size:12px;margin-bottom:8px;">💬 Комментарий после звонка</div>
@@ -2555,8 +2596,19 @@ function leadActivityLabel(action) {
     status_change: 'статус',
     comment: 'комментарий',
     followup_change: 'следующий звонок',
+    google_form: 'Google Form',
   };
   return map[action] || action || 'активность';
+}
+
+function formatFormAnswers(answers = {}) {
+  return Object.entries(answers || {})
+    .filter(([, value]) => value !== undefined && value !== null && String(value).trim())
+    .slice(0, 12)
+    .map(([key, value]) => ({
+      key: escapeHtml(String(key)),
+      value: escapeHtml(Array.isArray(value) ? value.join(', ') : String(value)),
+    }));
 }
 
 async function saveLeadComment(id) {

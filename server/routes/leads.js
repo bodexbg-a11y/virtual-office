@@ -492,6 +492,7 @@ router.get('/:id', async (req, res) => {
     res.json({
       lead: leads[0],
       activities,
+      form_responses: await googleSheets.getLeadFormResponses(req.params.id),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

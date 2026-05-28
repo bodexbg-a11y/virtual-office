@@ -70,6 +70,16 @@ router.post('/pull/business', async (req, res) => {
   }
 });
 
+// POST pull Google Forms response sheets into CRM leads
+router.post('/pull/forms', async (req, res) => {
+  try {
+    const result = await googleSheets.pullGoogleFormResponses();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET structured clients imported from operational sheets
 router.get('/clients', async (req, res) => {
   try {
