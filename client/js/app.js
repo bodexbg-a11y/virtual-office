@@ -2576,15 +2576,15 @@ async function openLeadDetail(id) {
         <div class="form-group full"><label>Бележки</label><textarea id="ld-notes" rows="2">${l.notes || ''}</textarea></div>
       </div>
 
-      ${formResponses.length ? `
-        <div style="margin-top:16px;padding:12px 14px;border:1px solid rgba(34,197,94,0.25);border-radius:10px;background:rgba(34,197,94,0.06);display:flex;justify-content:space-between;gap:12px;align-items:center;">
-          <div>
-            <div style="font-size:12px;font-weight:800;color:#ddd;">📝 Ответы Google Forms</div>
-            <div style="font-size:11px;color:#8faaa0;margin-top:3px;">${formResponses.length} ответ(ов) клиента по форме${formResponses.some(r => r.form_type === 'materials') ? ' · материалы' : ''}</div>
+      <div style="margin-top:16px;padding:12px 14px;border:1px solid rgba(34,197,94,0.25);border-radius:10px;background:rgba(34,197,94,0.06);display:flex;justify-content:space-between;gap:12px;align-items:center;">
+        <div>
+          <div style="font-size:12px;font-weight:800;color:#ddd;">📝 Ответы Google Forms</div>
+          <div style="font-size:11px;color:#8faaa0;margin-top:3px;">
+            ${formResponses.length ? `${formResponses.length} ответ(ов) клиента по форме${formResponses.some(r => r.form_type === 'materials') ? ' · материалы' : ''}` : 'Ответов пока нет. Можно импортировать Google Forms и проверить совпадение по email.'}
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="openLeadFormResponsesModal()">Посмотреть ответы</button>
         </div>
-      ` : ''}
+        <button class="btn btn-secondary btn-sm" onclick="openLeadFormResponsesModal()">Посмотреть ответы</button>
+      </div>
 
       <div style="margin-top:16px;padding:14px;border:1px solid rgba(56,189,248,0.25);border-radius:10px;background:rgba(56,189,248,0.06);">
         <div class="card-title" style="font-size:12px;margin-bottom:8px;">💬 Комментарий после звонка</div>
