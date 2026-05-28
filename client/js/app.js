@@ -1367,7 +1367,7 @@ async function renderClients(el, filters = {}) {
         <table>
           <thead>
             <tr>
-              <th>Източник</th>
+              <th>Контакт</th>
               <th>Компания / Клиент</th>
               <th>Контакт</th>
               <th>Телефон</th>
@@ -1688,7 +1688,7 @@ async function renderLeads(el, filters = {}) {
                   ${l.google_sheet_status || l.google_sheet_action ? `<div style="font-size:10px;color:#888;margin-top:4px;">${[l.google_sheet_status, l.google_sheet_action].filter(Boolean).join(' · ')}</div>` : ''}
                 </td>
                 <td><span class="badge badge-${l.priority}">${l.priority}</span></td>
-                <td>${sourceLabel(l.source)}</td>
+                <td onclick="event.stopPropagation();" style="min-width:116px;">${renderLeadTableContactActions(l)}</td>
                 <td style="max-width:240px;font-size:11px;color:#aaa;">${l.interest_products || l.lead_type || '—'}</td>
                 <td style="width:120px;max-width:120px;" onclick="event.stopPropagation();">
                   <button class="btn btn-sm btn-secondary" title="${escapeAttr(l.latest_comment || 'Добавить комментарий')}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="max-width:112px;display:inline-flex;gap:5px;align-items:center;">
@@ -2730,6 +2730,24 @@ function renderLeadContactActions(lead = {}) {
         </div>
       </div>
     </div>
+  `;
+}
+
+function renderLeadTableContactActions(lead = {}) {
+  const email = String(lead.email || '').trim();
+  const phone = String(lead.phone || '').trim();
+  const whatsapp = whatsappUrl(phone);
+  const viber = viberUrl(phone);
+  const subject = encodeURIComponent(`BODEX Bulgaria - ${lead.company_name || lead.contact_name || 'материали'}`);
+  const body = encodeURIComponent(defaultLeadMessage(lead));
+
+  return `
+    <div class="lead-contact-actions">
+      <a class="lead-contact-btn ${email ? '' : 'disabled'}" title="Email" ${email ? `href="mailto:${escapeAttr(email)}?subject=${subject}&body=${body}"` : ''}>✉️</a>
+      <a class="lead-contact-btn ${whatsapp ? '' : 'disabled'}" title="WhatsApp" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬</a>
+      <a class="lead-contact-btn ${viber ? '' : 'disabled'}" title="Viber" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲</a>
+    </div>
+    <div style="font-size:10px;color:#666;margin-top:5px;">${sourceLabel(lead.source)}</div>
   `;
 }
 
