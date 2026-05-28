@@ -255,6 +255,7 @@ router.get('/', async (req, res) => {
       search,
       view,
       date_range,
+      followup,
       sort = 'date_desc',
       limit = 50,
       offset = 0,
@@ -314,9 +315,27 @@ router.get('/', async (req, res) => {
       where.push("created_at >= NOW() - INTERVAL '7 days'");
     }
 
+    if (followup === 'due') {
+      where.push("next_followup_at IS NOT NULL AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day')");
+      where.push("status NOT IN ('won', 'lost')");
+    }
+
+    if (followup === 'today') {
+      where.push('next_followup_at::date = CURRENT_DATE');
+      where.push("status NOT IN ('won', 'lost')");
+    }
+
     const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
-    const orderBy = sort === 'date_asc'
+    const orderBy = followup
+      ? `next_followup_at ASC,
+          CASE priority
+            WHEN 'hot' THEN 0
+            WHEN 'high' THEN 1
+            WHEN 'medium' THEN 2
+            ELSE 3
+          END`
+      : sort === 'date_asc'
       ? 'created_at ASC'
       : sort === 'status'
         ? `CASE status
@@ -415,6 +434,13 @@ router.get('/summary', async (req, res) => {
       services: servicesRes.rows[0]?.count || 0,
       today: todayRes.rows[0]?.count || 0,
       week: weekRes.rows[0]?.count || 0,
+      followups_due: (await db.query(`
+        SELECT COUNT(*)::int as count
+        FROM leads
+        WHERE next_followup_at IS NOT NULL
+          AND status NOT IN ('won', 'lost')
+          AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day')
+      `)).rows[0]?.count || 0,
       statuses: byStatus,
       sources: bySource,
     });

@@ -164,6 +164,7 @@ async function renderDashboard(el) {
   ]);
   const leads = data.leads || {};
   const fb = data.fb || {};
+  const followups = data.followups || { stats: {}, leads: [] };
   const hasFbData = Number(fb.campaigns || 0) > 0;
 
   el.innerHTML = `
@@ -206,6 +207,32 @@ async function renderDashboard(el) {
         <div class="stat-sub">${hasFbData ? `${fb.leads || 0} лида · CPL $${fb.avg_cpl || 0}` : 'нет данных из Meta'}</div>
       </div>
     </div>
+
+    ${(followups.stats?.due_total || 0) ? `
+      <div class="card fade-in" style="border-color:rgba(245,158,11,0.35);background:rgba(245,158,11,0.06);">
+        <div class="card-title">☎️ Позвонить сегодня</div>
+        <div style="font-size:12px;color:#aaa;margin-bottom:12px;">
+          ${followups.stats.today || 0} на сегодня · ${followups.stats.overdue || 0} просрочено
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Время</th><th>Клиент</th><th>Контакт</th><th>Статус</th><th></th></tr></thead>
+            <tbody>
+              ${followups.leads.map(l => `
+                <tr>
+                  <td style="color:#facc15;font-weight:700;">${formatDateTime(l.next_followup_at)}</td>
+                  <td style="font-weight:700;color:#ddd;">${l.company_name || l.contact_name || ('Лид #' + l.id)}<div style="font-size:10px;color:#777;">${l.city || ''}</div></td>
+                  <td>${l.phone || l.email || '—'}</td>
+                  <td><span class="badge badge-${l.status || 'new'}">${statusLabel(l.status)}</span></td>
+                  <td><button class="btn btn-secondary btn-sm" onclick="openLeadDetail(${l.id})">Открыть</button></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        <button class="btn btn-secondary" style="margin-top:12px;" onclick="renderLeads(document.getElementById('main'), { followup: 'due' })">Показать все звонки</button>
+      </div>
+    ` : ''}
 
     <div class="grid-2 fade-in">
       <div class="card">
@@ -1549,13 +1576,14 @@ async function renderLeads(el, filters = {}) {
     <div id="leads-sync-result" class="sync-result"></div>
 
     <div class="lead-tabs fade-in">
-      ${leadTab('Все', { }, summary.total || 0, !filters.view && !filters.status && !filters.source)}
+      ${leadTab('Все', { }, summary.total || 0, !filters.view && !filters.status && !filters.source && !filters.followup)}
       ${leadTab('Facebook', { view: 'facebook' }, summary.facebook || 0, filters.view === 'facebook')}
       ${leadTab('Новые', { status: 'new' }, statusCounts.new || 0, filters.status === 'new' && !filters.view)}
       ${leadTab('Материалы', { view: 'materials' }, summary.materials || 0, filters.view === 'materials')}
       ${leadTab('Услуги', { view: 'services' }, summary.services || 0, filters.view === 'services')}
       ${leadTab('Сегодня', { date_range: 'today' }, summary.today || 0, filters.date_range === 'today')}
       ${leadTab('7 дней', { date_range: 'week' }, summary.week || 0, filters.date_range === 'week')}
+      ${leadTab('Звонки сегодня', { followup: 'due' }, summary.followups_due || 0, filters.followup === 'due')}
     </div>
 
     <div class="lead-status-tabs fade-in">

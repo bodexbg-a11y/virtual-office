@@ -1,6 +1,10 @@
 const { google } = require('googleapis');
 const db = require('../db');
 
+const DEFAULT_FORM_SPREADSHEET_IDS = [
+  '1GYnp3movRGa1G18ruG5bpiv9B4FBTL1fkv12AnBUJdg',
+];
+
 class GoogleSheetsService {
   constructor() {
     this.sheets = null;
@@ -388,6 +392,7 @@ class GoogleSheetsService {
   formSpreadsheetIds() {
     const ids = [
       this.spreadsheetId,
+      ...DEFAULT_FORM_SPREADSHEET_IDS,
       ...(process.env.GOOGLE_FORM_SPREADSHEET_IDS || '').split(','),
     ]
       .map(id => String(id || '').trim())

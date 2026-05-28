@@ -710,6 +710,29 @@ router.get('/stats', async (req, res) => {
       ORDER BY date(created_at)
     `);
 
+    const followups = await db.query(`
+      SELECT id, company_name, contact_name, phone, email, city, status, priority, next_followup_at
+      FROM leads
+      WHERE next_followup_at IS NOT NULL
+        AND status NOT IN ('won', 'lost')
+        AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day')
+      ORDER BY
+        CASE WHEN next_followup_at < NOW() THEN 0 ELSE 1 END,
+        next_followup_at ASC
+      LIMIT 12
+    `);
+
+    const followupStats = await db.query(`
+      SELECT
+        COUNT(*)::int as due_total,
+        COALESCE(SUM(CASE WHEN next_followup_at::date = CURRENT_DATE THEN 1 ELSE 0 END), 0)::int as today,
+        COALESCE(SUM(CASE WHEN next_followup_at < NOW() THEN 1 ELSE 0 END), 0)::int as overdue
+      FROM leads
+      WHERE next_followup_at IS NOT NULL
+        AND status NOT IN ('won', 'lost')
+        AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day')
+    `);
+
     await ensureWorkers();
     const agents = await db.query('SELECT * FROM agents ORDER BY id');
 
@@ -719,6 +742,10 @@ router.get('/stats', async (req, res) => {
       fb: fbStats.rows[0] || {},
       trend: trend.rows,
       agents: agents.rows,
+      followups: {
+        stats: followupStats.rows[0] || {},
+        leads: followups.rows,
+      },
       worker_summary: await getWorkerSummary(),
     });
   } catch (err) {
