@@ -2713,8 +2713,7 @@ function renderLeadContactActions(lead = {}) {
   const phone = String(lead.phone || '').trim();
   const whatsapp = whatsappUrl(phone);
   const viber = viberUrl(phone);
-  const subject = encodeURIComponent(`BODEX Bulgaria - ${lead.company_name || lead.contact_name || 'материали'}`);
-  const body = encodeURIComponent(defaultLeadMessage(lead));
+  const gmail = gmailComposeUrl(lead);
 
   return `
     <div style="margin-top:16px;padding:12px 14px;border:1px solid rgba(99,102,241,0.28);border-radius:10px;background:rgba(99,102,241,0.07);">
@@ -2724,7 +2723,7 @@ function renderLeadContactActions(lead = {}) {
           <div style="font-size:11px;color:#9ca3af;margin-top:3px;">Email, WhatsApp и Viber откроются от имени менеджера на этом устройстве.</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <a class="btn btn-secondary btn-sm ${email ? '' : 'disabled'}" ${email ? `href="mailto:${escapeAttr(email)}?subject=${subject}&body=${body}"` : ''}>✉️ Отправить e-mail</a>
+          <a class="btn btn-secondary btn-sm ${gmail ? '' : 'disabled'}" ${gmail ? `href="${escapeAttr(gmail)}" target="_blank" rel="noopener"` : ''}>✉️ Написать в Gmail</a>
           <a class="btn btn-secondary btn-sm ${whatsapp ? '' : 'disabled'}" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬 WhatsApp</a>
           <a class="btn btn-secondary btn-sm ${viber ? '' : 'disabled'}" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲 Viber</a>
         </div>
@@ -2738,12 +2737,11 @@ function renderLeadTableContactActions(lead = {}) {
   const phone = String(lead.phone || '').trim();
   const whatsapp = whatsappUrl(phone);
   const viber = viberUrl(phone);
-  const subject = encodeURIComponent(`BODEX Bulgaria - ${lead.company_name || lead.contact_name || 'материали'}`);
-  const body = encodeURIComponent(defaultLeadMessage(lead));
+  const gmail = gmailComposeUrl(lead);
 
   return `
     <div class="lead-contact-actions">
-      <a class="lead-contact-btn ${email ? '' : 'disabled'}" title="Email" ${email ? `href="mailto:${escapeAttr(email)}?subject=${subject}&body=${body}"` : ''}>✉️</a>
+      <a class="lead-contact-btn ${gmail ? '' : 'disabled'}" title="Gmail" ${gmail ? `href="${escapeAttr(gmail)}" target="_blank" rel="noopener"` : ''}>✉️</a>
       <a class="lead-contact-btn ${whatsapp ? '' : 'disabled'}" title="WhatsApp" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬</a>
       <a class="lead-contact-btn ${viber ? '' : 'disabled'}" title="Viber" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲</a>
     </div>
@@ -2763,6 +2761,21 @@ function defaultLeadMessage(lead = {}) {
     'Поздрави,',
     'BODEX Bulgaria',
   ].filter(line => line !== '').join('\n');
+}
+
+function gmailComposeUrl(lead = {}) {
+  const email = String(lead.email || '').trim();
+  if (!email) return '';
+  const subject = `BODEX Bulgaria - ${lead.company_name || lead.contact_name || 'материали'}`;
+  const body = defaultLeadMessage(lead);
+  const params = new URLSearchParams({
+    view: 'cm',
+    fs: '1',
+    to: email,
+    su: subject,
+    body,
+  });
+  return `https://mail.google.com/mail/?${params.toString()}`;
 }
 
 function phoneDigits(value = '') {
