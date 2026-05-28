@@ -8,6 +8,7 @@ const googleSheets = require('./services/googleSheets');
 const facebookAds = require('./services/facebookAds');
 const markAgent = require('./services/markAgent');
 const steveAgent = require('./services/steveAgent');
+const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,6 +34,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
+    uptime: Math.round(process.uptime()),
     services: {
       google_sheets: googleSheets.initialized ? 'connected' : 'demo',
       facebook_ads: facebookAds.initialized ? 'connected' : 'demo',
@@ -47,6 +49,30 @@ app.get('*', (req, res) => {
 
 // Initialize services
 async function start() {
+  app.listen(PORT, () => {
+    console.log(`
+╔═══════════════════════════════════════════╗
+║   BODEX Virtual Office                    ║
+║   http://localhost:${PORT}                    ║
+║                                           ║
+║   API: listening                          ║
+╚═══════════════════════════════════════════╝
+    `);
+  });
+
+  initializeServices().catch(err => {
+    console.error('[STARTUP] Background init error:', err.message);
+  });
+}
+
+async function initializeServices() {
+  try {
+    await db.query('SELECT 1');
+    console.log('✅ Database connected');
+  } catch (err) {
+    console.error('❌ Database warmup error:', err.message);
+  }
+
   await googleSheets.init();
   facebookAds.init();
 
@@ -92,17 +118,7 @@ async function start() {
     }
   }, { timezone: 'Europe/Sofia' });
 
-  app.listen(PORT, () => {
-    console.log(`
-╔═══════════════════════════════════════════╗
-║   BODEX Virtual Office                    ║
-║   http://localhost:${PORT}                    ║
-║                                           ║
-║   Google Sheets: ${googleSheets.initialized ? '✅ Connected' : '⚠️  Demo mode'}         ║
-║   Facebook Ads:  ${facebookAds.initialized ? '✅ Connected' : '⚠️  Demo mode'}         ║
-╚═══════════════════════════════════════════╝
-    `);
-  });
+  console.log(`✅ Background services ready. Google Sheets: ${googleSheets.initialized ? 'connected' : 'demo'}, Facebook Ads: ${facebookAds.initialized ? 'connected' : 'demo'}`);
 }
 
 start().catch(console.error);
