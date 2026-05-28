@@ -10,6 +10,7 @@ let currentLeadFilters = {};
 let agentReportsFilters = { agent: 'all', date_from: '', date_to: '', limit: 100 };
 let agentReportsCache = [];
 let currentOfferDraft = null;
+let currentLeadFormResponses = [];
 const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent', 'negotiation', 'contract', 'purchase', 'won', 'lost'];
 
 // ===== NAVIGATION =====
@@ -2525,6 +2526,7 @@ async function openLeadDetail(id) {
     const l = data.lead;
     const offers = offerData.offers || [];
     const formResponses = data.form_responses || [];
+    currentLeadFormResponses = formResponses;
 
     openModal(`${l.company_name || 'Лид #' + l.id}`, `
       ${currentRole === 'admin' ? `
@@ -2575,27 +2577,12 @@ async function openLeadDetail(id) {
       </div>
 
       ${formResponses.length ? `
-        <div style="margin-top:16px;padding:14px;border:1px solid rgba(34,197,94,0.25);border-radius:10px;background:rgba(34,197,94,0.06);">
-          <div class="card-title" style="font-size:12px;margin-bottom:10px;">📝 Ответы Google Forms</div>
-          ${formResponses.map(r => `
-            <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
-              <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:8px;">
-                <div>
-                  <div style="font-weight:800;color:#ddd;">${r.spreadsheet_title || 'Google Form'} · ${r.sheet_name}</div>
-                  <div style="font-size:11px;color:#777;">${r.submitted_at ? formatDateTime(r.submitted_at) : formatDateTime(r.synced_at)} · ${r.form_type || 'form'}</div>
-                </div>
-                <span class="badge badge-qualified">${r.email || r.phone || 'ответ'}</span>
-              </div>
-              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
-                ${formatFormAnswers(r.answers).map(item => `
-                  <div style="padding:8px;border-radius:8px;background:rgba(255,255,255,0.04);">
-                    <div style="font-size:10px;color:#777;text-transform:uppercase;">${item.key}</div>
-                    <div style="font-size:12px;color:#ddd;margin-top:3px;">${item.value}</div>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          `).join('')}
+        <div style="margin-top:16px;padding:12px 14px;border:1px solid rgba(34,197,94,0.25);border-radius:10px;background:rgba(34,197,94,0.06);display:flex;justify-content:space-between;gap:12px;align-items:center;">
+          <div>
+            <div style="font-size:12px;font-weight:800;color:#ddd;">📝 Ответы Google Forms</div>
+            <div style="font-size:11px;color:#8faaa0;margin-top:3px;">${formResponses.length} ответ(ов) клиента по форме${formResponses.some(r => r.form_type === 'materials') ? ' · материалы' : ''}</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="openLeadFormResponsesModal()">Посмотреть ответы</button>
         </div>
       ` : ''}
 
@@ -2667,11 +2654,42 @@ function leadActivityLabel(action) {
 function formatFormAnswers(answers = {}) {
   return Object.entries(answers || {})
     .filter(([, value]) => value !== undefined && value !== null && String(value).trim())
-    .slice(0, 12)
+    .slice(0, 30)
     .map(([key, value]) => ({
       key: escapeHtml(String(key)),
       value: escapeHtml(Array.isArray(value) ? value.join(', ') : String(value)),
     }));
+}
+
+function openLeadFormResponsesModal() {
+  const responses = currentLeadFormResponses || [];
+  openModal('Ответы Google Forms', `
+    ${responses.length ? responses.map(r => `
+      <div style="padding:14px;border:1px solid rgba(34,197,94,0.22);border-radius:10px;background:rgba(34,197,94,0.06);margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px;">
+          <div>
+            <div style="font-weight:800;color:#ddd;">${r.spreadsheet_title || 'Google Form'} · ${r.sheet_name}</div>
+            <div style="font-size:11px;color:#777;margin-top:4px;">${r.submitted_at ? formatDateTime(r.submitted_at) : formatDateTime(r.synced_at)}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+            <span class="badge badge-qualified">${r.form_type === 'materials' ? 'Материалы' : (r.form_type || 'Форма')}</span>
+            <span class="badge badge-new">${r.email || r.phone || 'ответ'}</span>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;">
+          ${formatFormAnswers(r.answers).map(item => `
+            <div style="padding:9px;border-radius:8px;background:rgba(255,255,255,0.04);">
+              <div style="font-size:10px;color:#777;text-transform:uppercase;line-height:1.25;">${item.key}</div>
+              <div style="font-size:12px;color:#ddd;margin-top:4px;line-height:1.35;">${item.value}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `).join('') : '<div style="color:#777;font-size:13px;">Ответов формы по этому лиду пока нет.</div>'}
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal()">Закрыть</button>
+    </div>
+  `);
 }
 
 async function saveLeadComment(id) {
