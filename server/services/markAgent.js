@@ -1,10 +1,6 @@
 const axios = require('axios');
 const db = require('../db');
-const googleSheets = require('./googleSheets');
 
-const REPORT_SHEET = 'Mark Market Report';
-const SOURCES_SHEET = 'Mark Sources';
-const WRITE_AGENT_REPORTS_TO_SHEETS = String(process.env.AGENT_REPORTS_TO_SHEETS || '').toLowerCase() === 'true';
 const GOOGLE_CSE_API_KEY = process.env.GOOGLE_CSE_API_KEY || '';
 const GOOGLE_CSE_CX = process.env.GOOGLE_CSE_CX || '';
 const SERPAPI_KEY = process.env.SERPAPI_KEY || '';
@@ -54,7 +50,7 @@ async function executeRun() {
 
   try {
     const products = await db.all(`
-      SELECT sku, name, name_bg, category, description_bg
+      SELECT sku, name, name_bg, category, description_bg, source_url
       FROM products
       ORDER BY category, name
     `);
@@ -79,7 +75,6 @@ async function executeRun() {
     }
 
     await saveReportToDb(runId, reportRows);
-    await writeReport(reportRows);
     await db.run(`
       UPDATE agent_runs
       SET status = 'done', message = ?, rows_created = ?, finished_at = NOW()
@@ -90,8 +85,8 @@ async function executeRun() {
       success: true,
       run_id: runId,
       rows: reportRows.length,
-      storage: WRITE_AGENT_REPORTS_TO_SHEETS ? 'database+google_sheets' : 'database',
-      message: `Mark готов: отчёт по ${reportRows.length} продуктам сохранён в БД.`,
+      storage: 'database+html',
+      message: `Mark готов: HTML-отчёт по ${reportRows.length} продуктам сохранён в БД.`,
     };
   } catch (err) {
     await db.run(`
@@ -120,65 +115,10 @@ async function saveReportToDb(runId, rows) {
   await db.run(`
     INSERT INTO agent_reports (agent_id, report_type, run_id, payload_json)
     VALUES ('mark', 'market_scan', ?, ?)
-  `, [runId, JSON.stringify({ rows: objects })]);
-}
-
-async function writeReport(rows) {
-  if (!WRITE_AGENT_REPORTS_TO_SHEETS) return;
-  if (!googleSheets.initialized) {
-    await googleSheets.init();
-  }
-  if (!googleSheets.initialized) {
-    throw new Error(googleSheets.lastError || 'Google Sheets не подключен');
-  }
-
-  await ensureSheet(REPORT_SHEET);
-  await ensureSheet(SOURCES_SHEET);
-
-  const header = [
-    'Дата',
-    'SKU',
-    'Продукт',
-    'Категория',
-    'Запрос',
-    'Источник',
-    'Цена',
-    'Валюта',
-    'Уверенность',
-    'Статус',
-    'Рекомендация Mark',
-  ];
-
-  await googleSheets.sheets.spreadsheets.values.update({
-    spreadsheetId: googleSheets.spreadsheetId,
-    range: `'${REPORT_SHEET}'!A1:K${rows.length + 1}`,
-    valueInputOption: 'RAW',
-    resource: { values: [header, ...rows] },
-  });
-
-  const sourcesHeader = [['SKU/Keyword', 'Source URL', 'Notes']];
-  const existing = await googleSheets.sheets.spreadsheets.values.get({
-    spreadsheetId: googleSheets.spreadsheetId,
-    range: `'${SOURCES_SHEET}'!A1:C2`,
-  }).catch(() => ({ data: { values: [] } }));
-
-  if (!existing.data.values || !existing.data.values.length) {
-    await googleSheets.sheets.spreadsheets.values.update({
-      spreadsheetId: googleSheets.spreadsheetId,
-      range: `'${SOURCES_SHEET}'!A1:C1`,
-      valueInputOption: 'RAW',
-      resource: { values: sourcesHeader },
-    });
-  }
-}
-
-async function ensureSheet(title) {
-  const meta = await googleSheets.testConnection();
-  if (meta.sheets.includes(title)) return;
-  await googleSheets.sheets.spreadsheets.batchUpdate({
-    spreadsheetId: googleSheets.spreadsheetId,
-    resource: { requests: [{ addSheet: { properties: { title } } }] },
-  });
+  `, [runId, JSON.stringify({
+    rows: objects,
+    html: buildHtmlReport(objects, runId),
+  })]);
 }
 
 function buildQuery(product) {
@@ -195,7 +135,7 @@ async function scanMarket(product, query) {
       currency: '',
       confidence: 'low',
       status: 'source_missing',
-      recommendation: 'Нет валидного источника для анализа. Добавьте URL в Mark Sources или подключите SERPAPI_KEY / GOOGLE_CSE_API_KEY + GOOGLE_CSE_CX.',
+      recommendation: 'Нет валидного источника для анализа. Добавьте SERPAPI_KEY или GOOGLE_CSE_API_KEY + GOOGLE_CSE_CX на Render, либо заполните source_url у продуктов.',
     };
   }
   const source = sources[0];
@@ -212,7 +152,7 @@ async function scanMarket(product, query) {
       status: price ? 'price_found' : 'no_clear_price',
       recommendation: price
         ? `Найдена рыночная цена/упоминание. Проверить вручную источник и сравнить с BODEX условиями. Фрагмент: ${text.slice(0, 220)}`
-        : `Источник найден, но цена не распознана. Mark должен проверить вручную и добавить точный URL в ${SOURCES_SHEET}.`,
+        : 'Источник найден, но цена не распознана. Mark должен проверить вручную и добавить точный URL в карточку продукта.',
     };
   } catch (err) {
     return {
@@ -221,24 +161,15 @@ async function scanMarket(product, query) {
       currency: '',
       confidence: 'low',
       status: 'scan_error',
-      recommendation: `Не удалось автоматически прочитать источник: ${err.message}. Добавьте прямой URL поставщика/конкурента во вкладку ${SOURCES_SHEET}.`,
+      recommendation: `Не удалось автоматически прочитать источник: ${err.message}. Добавьте прямой URL поставщика/конкурента в карточку продукта.`,
     };
   }
 }
 
 async function getConfiguredSources(product, query) {
-  if (!googleSheets.initialized) return [];
-  await ensureSheet(SOURCES_SHEET);
-  const res = await googleSheets.sheets.spreadsheets.values.get({
-    spreadsheetId: googleSheets.spreadsheetId,
-    range: `'${SOURCES_SHEET}'!A2:C200`,
-  }).catch(() => ({ data: { values: [] } }));
-
-  const key = String(product.sku || '').toLowerCase();
-  const name = String(product.name_bg || product.name || '').toLowerCase();
-  return (res.data.values || [])
-    .filter(row => row[1] && matchesSourceRow(row[0], key, name, query))
-    .map(row => row[1]);
+  const urls = [product.source_url, process.env.MARK_DEFAULT_SOURCE_URL]
+    .filter(isValidHttpUrl);
+  return [...new Set(urls)];
 }
 
 async function discoverSources(product, query) {
@@ -300,12 +231,6 @@ async function searchWithGoogleCse(query) {
   }
 }
 
-function matchesSourceRow(pattern, sku, name, query) {
-  const p = String(pattern || '').toLowerCase().trim();
-  if (!p) return false;
-  return sku.includes(p) || name.includes(p) || query.toLowerCase().includes(p);
-}
-
 async function fetchHtml(url) {
   const res = await axios.get(url, {
     timeout: 9000,
@@ -354,6 +279,81 @@ function isValidHttpUrl(value) {
   } catch {
     return false;
   }
+}
+
+function buildHtmlReport(rows, runId) {
+  const generatedAt = new Date().toLocaleString('bg-BG', { timeZone: 'Europe/Sofia' });
+  const totals = rows.reduce((acc, row) => {
+    acc.total += 1;
+    acc[row.status] = (acc[row.status] || 0) + 1;
+    return acc;
+  }, { total: 0 });
+
+  return `<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BODEX Mark Market Report #${escapeHtml(runId)}</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;background:#08081a;color:#f4f4f5}
+    main{max-width:1180px;margin:0 auto;padding:32px}
+    h1{margin:0 0 8px;font-size:28px}
+    .muted{color:#a1a1aa}
+    .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:22px 0}
+    .card{border:1px solid #242449;background:#121229;border-radius:10px;padding:16px}
+    .num{font-size:28px;font-weight:800;color:#8b8cff}
+    table{width:100%;border-collapse:collapse;background:#101025;border:1px solid #242449}
+    th,td{padding:10px;border-bottom:1px solid #242449;text-align:left;vertical-align:top;font-size:13px}
+    th{color:#a1a1aa;text-transform:uppercase;font-size:11px;letter-spacing:.08em}
+    a{color:#7dd3fc}
+    .pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#1f2937;color:#e5e7eb;font-weight:700}
+    .price_found{background:#14532d;color:#bbf7d0}
+    .source_missing,.scan_error{background:#7f1d1d;color:#fecaca}
+    .no_clear_price{background:#713f12;color:#fde68a}
+  </style>
+</head>
+<body>
+<main>
+  <h1>BODEX · Mark Market Report</h1>
+  <div class="muted">Run #${escapeHtml(runId)} · ${escapeHtml(generatedAt)} · хранится в БД, без Google Sheets</div>
+  <section class="stats">
+    <div class="card"><div class="muted">Продуктов</div><div class="num">${totals.total || 0}</div></div>
+    <div class="card"><div class="muted">Цена найдена</div><div class="num">${totals.price_found || 0}</div></div>
+    <div class="card"><div class="muted">Нужна ручная проверка</div><div class="num">${totals.no_clear_price || 0}</div></div>
+    <div class="card"><div class="muted">Нет источника</div><div class="num">${totals.source_missing || 0}</div></div>
+  </section>
+  <table>
+    <thead><tr><th>SKU</th><th>Продукт</th><th>Категория</th><th>Запрос</th><th>Источник</th><th>Цена</th><th>Статус</th><th>Рекомендация</th></tr></thead>
+    <tbody>
+      ${rows.map(row => `<tr>
+        <td>${escapeHtml(row.sku)}</td>
+        <td><strong>${escapeHtml(row.product)}</strong></td>
+        <td>${escapeHtml(row.category)}</td>
+        <td>${escapeHtml(row.query)}</td>
+        <td>${row.source ? `<a href="${escapeAttr(row.source)}" target="_blank" rel="noreferrer">${escapeHtml(row.source)}</a>` : '—'}</td>
+        <td>${row.price ? `${escapeHtml(row.price)} ${escapeHtml(row.currency)}` : '—'}</td>
+        <td><span class="pill ${escapeAttr(row.status)}">${escapeHtml(row.status)}</span></td>
+        <td>${escapeHtml(row.recommendation)}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+</main>
+</body>
+</html>`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replace(/`/g, '&#096;');
 }
 
 async function latestRun() {

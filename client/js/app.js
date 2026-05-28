@@ -554,7 +554,7 @@ function renderMarkAgentPanel(status) {
       <div class="agent-run-layout">
         <div>
           <div class="agent-run-copy">
-            Mark берёт список материалов из приложения, ищет рыночные цены по болгарскому рынку, формирует рекомендацию и сохраняет отчёт в БД. Для точных источников можно добавить прямые URL во вкладку <strong>Mark Sources</strong>.
+            Mark берёт список материалов из приложения, ищет рыночные цены по болгарскому рынку, формирует рекомендацию и сохраняет HTML-отчёт в БД. Google Sheets при запуске Марка не используется, чтобы не упираться в quota.
           </div>
           <div id="mark-agent-result" class="sync-result ${status?.error ? 'show err' : ''}">${status?.error ? '❌ ' + status.error : ''}</div>
         </div>
@@ -818,7 +818,7 @@ async function runMarkAgent() {
   const result = document.getElementById('mark-agent-result');
   if (result) {
     result.className = 'sync-result show';
-    result.textContent = 'Mark запущен. Он сканирует рынок и запишет отчёт в Google Sheets...';
+    result.textContent = 'Mark запущен. Он сканирует рынок и сохранит HTML-отчёт в БД...';
   }
   try {
     await api('/api/agents/mark/run', { method: 'POST' });
@@ -2899,6 +2899,7 @@ function openAgentReportDetail(id) {
     <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
       <button class="btn btn-secondary" onclick="downloadAgentReport(${report.id}, 'json')">Скачать JSON</button>
       <button class="btn btn-secondary" onclick="downloadAgentReport(${report.id}, 'csv')">Скачать CSV</button>
+      ${report.payload?.html ? `<button class="btn btn-secondary" onclick="downloadAgentReport(${report.id}, 'html')">Скачать HTML</button>` : ''}
       <div style="flex:1;"></div>
       <button class="btn btn-primary" onclick="closeModal()">Закрыть</button>
     </div>
@@ -2981,7 +2982,17 @@ function downloadAgentReport(id, format) {
     return;
   }
 
+  if (format === 'html') {
+    const html = report.payload?.html || renderReportAsHtml(report);
+    downloadTextFile(`${safeName}.html`, html, 'text/html;charset=utf-8');
+    return;
+  }
+
   downloadTextFile(`${safeName}.json`, JSON.stringify(report, null, 2), 'application/json;charset=utf-8');
+}
+
+function renderReportAsHtml(report) {
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${agentName(report.agent_id)} report</title></head><body><pre>${JSON.stringify(report, null, 2)}</pre></body></html>`;
 }
 
 function reportToCsv(report) {
