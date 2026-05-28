@@ -195,7 +195,7 @@ async function workerData() {
     SELECT
       COUNT(*) as total,
       SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_leads,
-      SUM(CASE WHEN status IN ('qualified','offer_sent','negotiation') THEN 1 ELSE 0 END) as active,
+      SUM(CASE WHEN status IN ('interested','catalog_sent','thinking','offer_sent','negotiation','contract','purchase') THEN 1 ELSE 0 END) as active,
       COALESCE(SUM(CASE WHEN status != 'lost' THEN estimated_value ELSE 0 END), 0) as pipeline
     FROM leads
   `);
@@ -519,17 +519,17 @@ function nextDealAction(stageId, row) {
 function leadStatusFromDealStage(stageId) {
   const map = {
     new: 'new',
-    interested: 'contacted',
-    catalog_sent: 'contacted',
-    thinking: 'contacted',
+    interested: 'interested',
+    catalog_sent: 'catalog_sent',
+    thinking: 'thinking',
     offer_sent: 'offer_sent',
     negotiation: 'negotiation',
-    contract: 'negotiation',
-    purchase: 'negotiation',
+    contract: 'contract',
+    purchase: 'purchase',
     won: 'won',
     lost: 'lost',
   };
-  return map[stageId] || 'contacted';
+  return map[stageId] || 'interested';
 }
 
 async function buildDealsPayload() {
@@ -618,7 +618,7 @@ router.get('/stats', async (req, res) => {
       SELECT
         COUNT(*) as total_leads,
         SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_leads,
-        SUM(CASE WHEN status IN ('qualified','offer_sent','negotiation') THEN 1 ELSE 0 END) as active_leads,
+        SUM(CASE WHEN status IN ('interested','catalog_sent','thinking','offer_sent','negotiation','contract','purchase') THEN 1 ELSE 0 END) as active_leads,
         SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) as won_deals,
         SUM(CASE WHEN date(created_at) = CURRENT_DATE THEN 1 ELSE 0 END) as today_leads,
         COALESCE(SUM(CASE WHEN status != 'lost' THEN estimated_value ELSE 0 END), 0) as pipeline_value,

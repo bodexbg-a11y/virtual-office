@@ -54,10 +54,15 @@ async function ensureIgnoredFacebookLeads() {
 function dealStageFromLeadStatus(status) {
   const map = {
     new: 'new',
+    interested: 'interested',
     contacted: 'interested',
     qualified: 'interested',
+    catalog_sent: 'catalog_sent',
+    thinking: 'thinking',
     offer_sent: 'offer_sent',
     negotiation: 'negotiation',
+    contract: 'contract',
+    purchase: 'purchase',
     won: 'won',
     lost: 'lost',
   };
@@ -129,11 +134,15 @@ function inferStatusFromSheet(row) {
   ].filter(Boolean).join(' ')).toLowerCase().replace(/ё/g, 'е');
 
   if (/отказ|не\s+интерес|неинтерес|нет\s+интерес/.test(text)) return 'lost';
-  if (/договор|закуп|готов/.test(text)) return 'negotiation';
+  if (/закрыт|заключен|спечел|оплат|купил/.test(text)) return 'won';
+  if (/закуп|готов/.test(text)) return 'purchase';
+  if (/договор|contract/.test(text)) return 'contract';
   if (/коммерческ|оферт|предложен|\bкп\b/.test(text)) return 'offer_sent';
+  if (/каталог|презентац|presentation|catalog/.test(text)) return 'catalog_sent';
+  if (/дума/.test(text)) return 'thinking';
   if (/встреч|срещ|дума|цена|жд[уе]т|ответит/.test(text)) return 'negotiation';
 
-  return 'contacted';
+  return 'interested';
 }
 
 async function syncFacebookLeadsWithSheets() {
@@ -304,13 +313,18 @@ router.get('/', async (req, res) => {
       : sort === 'status'
         ? `CASE status
             WHEN 'new' THEN 1
+            WHEN 'interested' THEN 2
             WHEN 'contacted' THEN 2
-            WHEN 'qualified' THEN 3
-            WHEN 'offer_sent' THEN 4
-            WHEN 'negotiation' THEN 5
-            WHEN 'won' THEN 6
-            WHEN 'lost' THEN 7
-            ELSE 8
+            WHEN 'qualified' THEN 2
+            WHEN 'catalog_sent' THEN 3
+            WHEN 'thinking' THEN 4
+            WHEN 'offer_sent' THEN 5
+            WHEN 'negotiation' THEN 6
+            WHEN 'contract' THEN 7
+            WHEN 'purchase' THEN 8
+            WHEN 'won' THEN 9
+            WHEN 'lost' THEN 10
+            ELSE 11
           END, created_at DESC`
         : `created_at DESC,
           CASE priority
@@ -428,13 +442,18 @@ router.get('/stats/pipeline', async (req, res) => {
       GROUP BY status
       ORDER BY CASE status
         WHEN 'new' THEN 1
+        WHEN 'interested' THEN 2
         WHEN 'contacted' THEN 2
-        WHEN 'qualified' THEN 3
-        WHEN 'offer_sent' THEN 4
-        WHEN 'negotiation' THEN 5
-        WHEN 'won' THEN 6
-        WHEN 'lost' THEN 7
-        ELSE 8
+        WHEN 'qualified' THEN 2
+        WHEN 'catalog_sent' THEN 3
+        WHEN 'thinking' THEN 4
+        WHEN 'offer_sent' THEN 5
+        WHEN 'negotiation' THEN 6
+        WHEN 'contract' THEN 7
+        WHEN 'purchase' THEN 8
+        WHEN 'won' THEN 9
+        WHEN 'lost' THEN 10
+        ELSE 11
       END
     `);
 
@@ -680,6 +699,18 @@ router.delete('/:id', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+async function normalizeLegacyLeadStatuses() {
+  await db.query(`
+    UPDATE leads
+    SET status = 'interested', updated_at = NOW()
+    WHERE status IN ('contacted', 'qualified')
+  `);
+}
+
+normalizeLegacyLeadStatuses().catch(err => {
+  console.error('❌ normalizeLegacyLeadStatuses error:', err.message);
 });
 
 module.exports = router;

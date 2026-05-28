@@ -259,10 +259,15 @@ tr:hover td { background: rgba(99,102,241,0.04); }
 }
 
 .badge-new { background: rgba(99,102,241,0.15); color: var(--brand-light); }
+.badge-interested { background: rgba(251,191,36,0.15); color: var(--yellow); }
 .badge-contacted { background: rgba(66,165,245,0.15); color: var(--blue); }
 .badge-qualified { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.badge-catalog_sent { background: rgba(66,165,245,0.15); color: var(--blue); }
+.badge-thinking { background: rgba(251,191,36,0.15); color: var(--yellow); }
 .badge-offer_sent { background: rgba(167,139,250,0.15); color: var(--purple); }
 .badge-negotiation { background: rgba(244,114,182,0.15); color: var(--pink); }
+.badge-contract { background: rgba(74,222,128,0.12); color: var(--green); }
+.badge-purchase { background: rgba(74,222,128,0.18); color: var(--green); }
 .badge-won { background: rgba(74,222,128,0.15); color: var(--green); }
 .badge-lost { background: rgba(248,113,113,0.15); color: var(--red); }
 

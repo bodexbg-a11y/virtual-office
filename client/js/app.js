@@ -10,6 +10,7 @@ let currentLeadFilters = {};
 let agentReportsFilters = { agent: 'all', date_from: '', date_to: '', limit: 100 };
 let agentReportsCache = [];
 let currentOfferDraft = null;
+const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent', 'negotiation', 'contract', 'purchase', 'won', 'lost'];
 
 // ===== NAVIGATION =====
 function navigate(page) {
@@ -1557,7 +1558,7 @@ async function renderLeads(el, filters = {}) {
     </div>
 
     <div class="lead-status-tabs fade-in">
-      ${['new','contacted','qualified','offer_sent','negotiation','won','lost'].map(status =>
+      ${CRM_STAGES.map(status =>
         `<button class="lead-status-tab ${filters.status === status ? 'active' : ''}" onclick="renderLeads(document.getElementById('main'), {...currentLeadFilters, status: '${status}'})">
           ${statusLabel(status)} <span>${statusCounts[status] || 0}</span>
         </button>`
@@ -1568,13 +1569,7 @@ async function renderLeads(el, filters = {}) {
       <input type="text" placeholder="Търси по фирма, контакт, email, град..." id="lead-search" value="${filters.search || ''}" onkeyup="if(event.key==='Enter')searchLeads()">
       <select id="lead-filter-status" onchange="searchLeads()">
         <option value="">Всички статуси</option>
-        <option value="new" ${filters.status==='new'?'selected':''}>Нов</option>
-        <option value="contacted" ${filters.status==='contacted'?'selected':''}>Контактуван</option>
-        <option value="qualified" ${filters.status==='qualified'?'selected':''}>Квалифициран</option>
-        <option value="offer_sent" ${filters.status==='offer_sent'?'selected':''}>Оферта</option>
-        <option value="negotiation" ${filters.status==='negotiation'?'selected':''}>Преговори</option>
-        <option value="won" ${filters.status==='won'?'selected':''}>Спечелен</option>
-        <option value="lost" ${filters.status==='lost'?'selected':''}>Загубен</option>
+        ${CRM_STAGES.map(status => `<option value="${status}" ${filters.status===status?'selected':''}>${statusLabel(status)}</option>`).join('')}
       </select>
       <select id="lead-filter-source" onchange="searchLeads()">
         <option value="">Всички източници</option>
@@ -1623,8 +1618,8 @@ async function renderLeads(el, filters = {}) {
                 <td style="font-size:11px;">${l.phone || l.email || '—'}</td>
                 <td>${l.city || '—'}</td>
                 <td>
-                  <span class="badge badge-${l.status}">${l.google_sheet_status || statusLabel(l.status)}</span>
-                  ${l.google_sheet_action ? `<div style="font-size:10px;color:#888;margin-top:4px;">${l.google_sheet_action}</div>` : ''}
+                  <span class="badge badge-${l.status}">${statusLabel(l.status)}</span>
+                  ${l.google_sheet_status || l.google_sheet_action ? `<div style="font-size:10px;color:#888;margin-top:4px;">${[l.google_sheet_status, l.google_sheet_action].filter(Boolean).join(' · ')}</div>` : ''}
                 </td>
                 <td><span class="badge badge-${l.priority}">${l.priority}</span></td>
                 <td>${sourceLabel(l.source)}</td>
@@ -1729,7 +1724,7 @@ async function renderPipeline(el) {
     api('/api/leads?limit=200'),
   ]);
 
-  const stages = ['new', 'contacted', 'qualified', 'offer_sent', 'negotiation', 'won', 'lost'];
+  const stages = CRM_STAGES;
   const leadsByStatus = {};
   stages.forEach(s => leadsByStatus[s] = []);
   (leadsData.leads || []).forEach(l => {
@@ -2372,7 +2367,7 @@ async function openLeadDetail(id) {
         <div class="form-group">
           <label>Статус</label>
           <select id="ld-status">
-            ${['new','contacted','qualified','offer_sent','negotiation','won','lost'].map(s =>
+            ${CRM_STAGES.map(s =>
               `<option value="${s}" ${l.status===s?'selected':''}>${statusLabel(s)}</option>`
             ).join('')}
           </select>
@@ -3146,8 +3141,18 @@ function downloadTextFile(filename, content, type) {
 // ===== HELPERS =====
 function statusLabel(s) {
   const map = {
-    new: 'Нов', contacted: 'Контактуван', qualified: 'Квалифициран',
-    offer_sent: 'Оферта', negotiation: 'Преговори', won: 'Спечелен', lost: 'Загубен'
+    new: 'Новый лид',
+    interested: 'Интерес / горячий',
+    contacted: 'Интерес / горячий',
+    qualified: 'Интерес / горячий',
+    catalog_sent: 'Каталог / презентация',
+    thinking: 'Думают',
+    offer_sent: 'Коммерческое',
+    negotiation: 'Переговоры',
+    contract: 'Договор',
+    purchase: 'Закупка',
+    won: 'Закрыто успешно',
+    lost: 'Отказ / неактуально'
   };
   return map[s] || s;
 }
