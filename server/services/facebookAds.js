@@ -175,6 +175,7 @@ class FacebookAdsService {
       let fbLeadsChecked = 0;
       let newLeads = 0;
       let updatedLeads = 0;
+      let skippedExisting = 0;
       let skippedLegacyUnmatched = 0;
 
       for (const page of pages) {
@@ -199,6 +200,18 @@ class FacebookAdsService {
               continue;
             }
 
+            const existingRes = await db.query(
+              'SELECT id, status FROM leads WHERE fb_lead_id = ?',
+              [mapped.fb_lead_id]
+            );
+
+            const existing = existingRes.rows[0];
+
+            if (existing) {
+              skippedExisting += 1;
+              continue;
+            }
+
             const sheetMatch = await findOperationalSheetMatch(mapped);
 
             if (sheetMatch) {
@@ -214,67 +227,6 @@ class FacebookAdsService {
 
             if (!sheetMatch && mapped.created_at && mapped.created_at < LEGACY_UNMATCHED_FB_CUTOFF) {
               skippedLegacyUnmatched += 1;
-              continue;
-            }
-
-            const existingRes = await db.query(
-              'SELECT id, status FROM leads WHERE fb_lead_id = ?',
-              [mapped.fb_lead_id]
-            );
-
-            const existing = existingRes.rows[0];
-
-            if (existing) {
-              await db.query(`
-                UPDATE leads
-                SET company_name = COALESCE(NULLIF(?, ''), company_name),
-                    contact_name = COALESCE(NULLIF(?, ''), contact_name),
-                    email = COALESCE(NULLIF(?, ''), email),
-                    phone = COALESCE(NULLIF(?, ''), phone),
-                    city = COALESCE(NULLIF(?, ''), city),
-                    status = CASE
-                      WHEN status = 'new' THEN COALESCE(NULLIF(?, ''), status)
-                      ELSE status
-                    END,
-                    google_sheet_name = COALESCE(NULLIF(?, ''), google_sheet_name),
-                    google_sheet_row = COALESCE(?, google_sheet_row),
-                    interest_products = COALESCE(NULLIF(?, ''), interest_products),
-                    notes = COALESCE(NULLIF(?, ''), notes),
-                    updated_at = NOW()
-                WHERE id = ?
-              `, [
-                mapped.company_name,
-                mapped.contact_name,
-                mapped.email,
-                mapped.phone,
-                mapped.city,
-                mapped.status,
-                mapped.google_sheet_name || '',
-                mapped.google_sheet_row || null,
-                mapped.interest_products,
-                mapped.notes,
-                existing.id,
-              ]);
-
-              if (existing.status === 'new' && mapped.status && mapped.status !== 'new') {
-                await db.query(`
-                  INSERT INTO lead_activities (
-                    lead_id,
-                    action,
-                    description,
-                    old_value,
-                    new_value,
-                    performed_by
-                  )
-                  VALUES (?, 'status_change', ?, 'new', ?, 'google_sheets')
-                `, [
-                  existing.id,
-                  `Статус обновлён по листу ${mapped.google_sheet_name || 'Google Sheets'}`,
-                  mapped.status,
-                ]);
-              }
-
-              updatedLeads += 1;
               continue;
             }
 
@@ -364,6 +316,7 @@ class FacebookAdsService {
         leads_checked: fbLeadsChecked,
         new_leads: newLeads,
         updated_leads: updatedLeads,
+        skipped_existing: skippedExisting,
         skipped_legacy_unmatched: skippedLegacyUnmatched,
       };
     } catch (err) {

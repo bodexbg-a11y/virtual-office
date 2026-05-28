@@ -1675,7 +1675,7 @@ async function syncFacebookLeadsFromLeadsPage() {
   try {
     const result = await api('/api/facebook/sync/leads', { method: 'POST' });
     el.className = 'sync-result show ok';
-    el.textContent = `✅ FB лиды: проверено ${result.leads_checked || 0}, новых ${result.new_leads || 0}, обновлено ${result.updated_leads || 0}.`;
+    el.textContent = `✅ FB лиды: проверено ${result.leads_checked || 0}, новых добавлено ${result.new_leads || 0}, существующих пропущено ${result.skipped_existing || 0}.`;
     setTimeout(() => renderLeads(document.getElementById('main'), { view: 'facebook' }), 900);
   } catch (err) {
     el.className = 'sync-result show err';
