@@ -2577,6 +2577,8 @@ async function openLeadDetail(id) {
         <div class="form-group full"><label>Бележки</label><textarea id="ld-notes" rows="2">${escapeHtml(leadNotes)}</textarea></div>
       </div>
 
+      ${renderLeadContactActions(l)}
+
       <div style="margin-top:16px;padding:12px 14px;border:1px solid rgba(34,197,94,0.25);border-radius:10px;background:rgba(34,197,94,0.06);display:flex;justify-content:space-between;gap:12px;align-items:center;">
         <div>
           <div style="font-size:12px;font-weight:800;color:#ddd;">📝 Ответы Google Forms</div>
@@ -2704,6 +2706,62 @@ function humanizeLeadAnswer(value = '', key = '') {
     .map(item => item.trim().replace(/_/g, ' '))
     .filter(Boolean)
     .join(', ');
+}
+
+function renderLeadContactActions(lead = {}) {
+  const email = String(lead.email || '').trim();
+  const phone = String(lead.phone || '').trim();
+  const whatsapp = whatsappUrl(phone);
+  const viber = viberUrl(phone);
+  const subject = encodeURIComponent(`BODEX Bulgaria - ${lead.company_name || lead.contact_name || 'материали'}`);
+  const body = encodeURIComponent(defaultLeadMessage(lead));
+
+  return `
+    <div style="margin-top:16px;padding:12px 14px;border:1px solid rgba(99,102,241,0.28);border-radius:10px;background:rgba(99,102,241,0.07);">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:12px;font-weight:800;color:#ddd;">⚡ Быстрый контакт</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:3px;">Email, WhatsApp и Viber откроются от имени менеджера на этом устройстве.</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <a class="btn btn-secondary btn-sm ${email ? '' : 'disabled'}" ${email ? `href="mailto:${escapeAttr(email)}?subject=${subject}&body=${body}"` : ''}>✉️ Отправить e-mail</a>
+          <a class="btn btn-secondary btn-sm ${whatsapp ? '' : 'disabled'}" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬 WhatsApp</a>
+          <a class="btn btn-secondary btn-sm ${viber ? '' : 'disabled'}" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲 Viber</a>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function defaultLeadMessage(lead = {}) {
+  const name = lead.contact_name || lead.company_name || '';
+  const interest = lead.interest_products || '';
+  return [
+    name ? `Здравейте, ${name},` : 'Здравейте,',
+    '',
+    'Пиша Ви от BODEX Bulgaria относно Вашето запитване за строителни материали.',
+    interest ? `Виждам, че се интересувате от: ${interest}.` : '',
+    'Можем да уточним нужния материал, обем и срок, за да подготвим оферта.',
+    '',
+    'Поздрави,',
+    'BODEX Bulgaria',
+  ].filter(line => line !== '').join('\n');
+}
+
+function phoneDigits(value = '') {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function whatsappUrl(phone) {
+  const digits = phoneDigits(phone);
+  if (digits.length < 6) return '';
+  return `https://wa.me/${digits}`;
+}
+
+function viberUrl(phone) {
+  const digits = phoneDigits(phone);
+  if (digits.length < 6) return '';
+  return `viber://chat?number=%2B${digits}`;
 }
 
 function openLeadFormResponsesModal() {

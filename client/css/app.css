@@ -1190,6 +1190,12 @@ tr:hover td { background: rgba(99,102,241,0.04); }
   cursor: not-allowed;
 }
 
+.btn.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 /* ===== SYNC SECTION ===== */
 .sync-actions {
   display: flex;
