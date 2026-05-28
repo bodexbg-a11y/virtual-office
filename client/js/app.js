@@ -653,6 +653,7 @@ function renderMariaAgentPanel(status, analysis = {}) {
             <tr>
               <th>Кампания</th>
               <th>Статус</th>
+              <th>Период</th>
               <th>Spend</th>
               <th>Охват</th>
               <th>Клики</th>
@@ -668,6 +669,7 @@ function renderMariaAgentPanel(status, analysis = {}) {
               <tr>
                 <td style="font-weight:600;color:#ddd;">${row.name}</td>
                 <td><span class="badge badge-${row.status}">${row.status}</span></td>
+                <td>${insightWindowLabel(row.insight_window)}</td>
                 <td>$${Number(row.spend || 0).toLocaleString()}</td>
                 <td>${Number(row.reach || 0).toLocaleString()}</td>
                 <td>${Number(row.clicks || 0).toLocaleString()}</td>
@@ -677,7 +679,7 @@ function renderMariaAgentPanel(status, analysis = {}) {
                 <td><span class="maria-verdict">${row.decision || row.verdict}</span></td>
                 <td style="min-width:260px;color:#aaa;line-height:1.45;">${row.recommendation}</td>
               </tr>
-            `).join('') : '<tr><td colspan="10" style="text-align:center;color:#666;padding:26px;">Нет отчёта. Нажмите “Запустить агента”.</td></tr>'}
+            `).join('') : '<tr><td colspan="11" style="text-align:center;color:#666;padding:26px;">Нет отчёта. Нажмите “Запустить агента”.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -825,6 +827,15 @@ function renderMariaCampaignDeepDive(rows = []) {
       `).join('')}
     </div>
   `;
+}
+
+function insightWindowLabel(value) {
+  const map = {
+    today: 'сегодня',
+    last_7d: '7 дней',
+    last_30d: '30 дней',
+  };
+  return map[value] || value || '—';
 }
 
 function agentRunLabel(status) {

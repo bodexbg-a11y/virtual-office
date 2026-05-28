@@ -37,6 +37,7 @@ class FacebookAdsService {
 
     try {
       await db.query(`ALTER TABLE fb_campaigns ADD COLUMN IF NOT EXISTS reach INTEGER DEFAULT 0`);
+      await db.query(`ALTER TABLE fb_campaigns ADD COLUMN IF NOT EXISTS insight_window TEXT`);
 
       const res = await axios.get(`${this.baseUrl}/${this.adAccountId}/campaigns`, {
         params: {
@@ -60,6 +61,7 @@ class FacebookAdsService {
             objective,
             daily_budget,
             lifetime_budget,
+            insight_window,
             reach,
             impressions,
             clicks,
@@ -72,13 +74,14 @@ class FacebookAdsService {
             end_date,
             synced_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
           ON CONFLICT(fb_campaign_id) DO UPDATE SET
             name = EXCLUDED.name,
             status = EXCLUDED.status,
             objective = EXCLUDED.objective,
             daily_budget = EXCLUDED.daily_budget,
             lifetime_budget = EXCLUDED.lifetime_budget,
+            insight_window = EXCLUDED.insight_window,
             reach = EXCLUDED.reach,
             impressions = EXCLUDED.impressions,
             clicks = EXCLUDED.clicks,
@@ -98,6 +101,7 @@ class FacebookAdsService {
           c.objective,
           centsToMoney(c.daily_budget),
           centsToMoney(c.lifetime_budget),
+          insights.date_preset,
           insights.reach,
           insights.impressions,
           insights.clicks,
@@ -122,10 +126,23 @@ class FacebookAdsService {
   }
 
   async getCampaignInsights(campaignId) {
+    const presets = ['today', 'last_7d', 'last_30d'];
+    let fallback = null;
+
+    for (const preset of presets) {
+      const insights = await this.fetchCampaignInsights(campaignId, preset);
+      if (!fallback && insights.hasData) fallback = insights;
+      if (hasUsefulInsights(insights)) return insights;
+    }
+
+    return fallback || emptyInsights();
+  }
+
+  async fetchCampaignInsights(campaignId, datePreset) {
     const res = await axios.get(`${this.baseUrl}/${campaignId}/insights`, {
       params: {
         fields: 'reach,impressions,clicks,ctr,cpc,spend,actions,cost_per_action_type',
-        date_preset: 'last_30d',
+        date_preset: datePreset,
         access_token: this.accessToken,
         limit: 1,
       },
@@ -150,6 +167,7 @@ class FacebookAdsService {
 
     return {
       hasData: true,
+      date_preset: datePreset,
       reach: toInt(row.reach),
       impressions: toInt(row.impressions),
       clicks: toInt(row.clicks),
@@ -408,6 +426,7 @@ class FacebookAdsService {
 function emptyInsights() {
   return {
     hasData: false,
+    date_preset: '',
     reach: 0,
     impressions: 0,
     clicks: 0,
@@ -417,6 +436,16 @@ function emptyInsights() {
     leads: 0,
     cpl: 0,
   };
+}
+
+function hasUsefulInsights(insights) {
+  return Boolean(
+    Number(insights.reach || 0) > 0 ||
+    Number(insights.impressions || 0) > 0 ||
+    Number(insights.clicks || 0) > 0 ||
+    Number(insights.spend || 0) > 0 ||
+    Number(insights.leads || 0) > 0
+  );
 }
 
 function centsToMoney(value) {

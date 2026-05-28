@@ -174,6 +174,7 @@ function analyzeCampaign(campaign) {
     name: campaign.name,
     status: campaign.status,
     objective: campaign.objective || '',
+    insight_window: campaign.insight_window || '',
     impressions,
     reach,
     clicks,
@@ -371,11 +372,12 @@ function buildHtmlReport(rows, overview, runId) {
   </section>
   <div class="summary"><strong>Золотая рекомендация:</strong><br>${escapeHtml(overview.golden_recommendation || overview.summary || '')}</div>
   <table>
-    <thead><tr><th>Кампания</th><th>Статус</th><th>Spend</th><th>Охват</th><th>Клики</th><th>Leads</th><th>CPL</th><th>CTR</th><th>Решение</th><th>Рекомендация</th><th>Аудитория/креатив</th></tr></thead>
+    <thead><tr><th>Кампания</th><th>Статус</th><th>Период</th><th>Spend</th><th>Охват</th><th>Клики</th><th>Leads</th><th>CPL</th><th>CTR</th><th>Решение</th><th>Рекомендация</th><th>Аудитория/креатив</th></tr></thead>
     <tbody>
       ${rows.map(row => `<tr>
         <td><strong>${escapeHtml(row.name)}</strong><br><span class="muted">${escapeHtml(row.campaign_id)}</span></td>
         <td>${escapeHtml(row.status)}</td>
+        <td>${escapeHtml(row.insight_window || '')}</td>
         <td>$${escapeHtml(row.spend)}</td>
         <td>${escapeHtml(row.reach || 0)}</td>
         <td>${escapeHtml(row.clicks || 0)}</td>
