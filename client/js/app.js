@@ -1261,7 +1261,7 @@ async function renderClients(el, filters = {}) {
       <div class="stat-card"><div class="stat-label">Материали</div><div class="stat-value green">${stats.materials || 0}</div></div>
       <div class="stat-card"><div class="stat-label">B2B база</div><div class="stat-value purple">${stats.b2b || 0}</div></div>
       <div class="stat-card"><div class="stat-label">Проекти</div><div class="stat-value yellow">${stats.projects || 0}</div></div>
-      <div class="stat-card"><div class="stat-label">Висок приоритет</div><div class="stat-value pink">${stats.high_priority || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">CRM клиенти</div><div class="stat-value pink">${stats.crm || 0}</div></div>
     </div>
 
     <div class="search-bar fade-in">
@@ -1318,7 +1318,7 @@ async function renderClients(el, filters = {}) {
           <tbody>
             ${rows.length ? rows.map(c => `
               <tr>
-                <td><span class="badge badge-new">${c.sheet_name}</span></td>
+                <td><span class="badge badge-new">${c.source_type === 'crm' ? (c.segment || 'CRM') : c.sheet_name}</span></td>
                 <td style="font-weight:600;color:#ddd;">${c.company_name || '—'}<div style="font-size:10px;color:#666;">${c.city || c.segment || ''}</div></td>
                 <td>${c.contact_name || '—'}</td>
                 <td>${c.phone || '—'}</td>
@@ -1328,7 +1328,7 @@ async function renderClients(el, filters = {}) {
                 <td><span class="badge badge-${c.priority === 'high' ? 'hot' : c.priority === 'low' ? 'low' : 'medium'}">${c.priority || 'medium'}</span></td>
                 <td style="max-width:320px;font-size:11px;color:#888;">${c.problem || c.interest || c.notes || '—'}</td>
               </tr>
-            `).join('') : '<tr><td colspan="9" style="text-align:center;color:#666;padding:30px;">Няма данни. Натиснете “Обнови от Google Sheets”.</td></tr>'}
+            `).join('') : '<tr><td colspan="9" style="text-align:center;color:#666;padding:30px;">Няма данни. Синхронизирайте Google Sheets или обработайте лид в CRM.</td></tr>'}
           </tbody>
         </table>
       </div>

@@ -478,6 +478,16 @@ class GoogleSheetsService {
     params.push(Number(filters.limit || 300));
 
     const { rows } = await db.query(sql, params);
+    const crmClients = await getCrmClients(filters);
+    const combinedRows = [...rows, ...crmClients]
+      .sort((a, b) => {
+        const priorityOrder = { hot: 1, high: 2, medium: 3, low: 4 };
+        const pa = priorityOrder[a.priority] || 5;
+        const pb = priorityOrder[b.priority] || 5;
+        if (pa !== pb) return pa - pb;
+        return new Date(b.synced_at || 0) - new Date(a.synced_at || 0);
+      })
+      .slice(0, Number(filters.limit || 300));
 
     const statsRes = await db.query(`
       SELECT
@@ -490,10 +500,20 @@ class GoogleSheetsService {
         MAX(synced_at) as last_sync
       FROM sheet_clients
     `);
+    const stats = statsRes.rows[0] || {};
+    const crmStats = await getCrmClientStats();
+    stats.total = Number(stats.total || 0) + crmStats.total;
+    stats.services = Number(stats.services || 0) + crmStats.services;
+    stats.materials = Number(stats.materials || 0) + crmStats.materials;
+    stats.high_priority = Number(stats.high_priority || 0) + crmStats.high_priority;
+    stats.crm = crmStats.total;
+    if (crmStats.last_sync && (!stats.last_sync || new Date(crmStats.last_sync) > new Date(stats.last_sync))) {
+      stats.last_sync = crmStats.last_sync;
+    }
 
     return {
-      rows,
-      stats: statsRes.rows[0] || {},
+      rows: combinedRows,
+      stats,
     };
   }
 
@@ -782,6 +802,178 @@ function normalizePriority(value) {
   if (/низ|low/.test(text)) return 'low';
 
   return 'medium';
+}
+
+async function getCrmClients(filters = {}) {
+  const limit = Number(filters.limit || 300);
+  const { rows } = await db.query(`
+    SELECT
+      l.id,
+      l.company_name,
+      l.contact_name,
+      l.phone,
+      l.email,
+      l.city,
+      l.lead_type,
+      l.source,
+      l.status,
+      l.priority,
+      l.interest_products,
+      l.notes,
+      l.estimated_value,
+      l.next_followup_at,
+      l.google_sheet_name,
+      l.google_sheet_row,
+      l.created_at,
+      l.updated_at,
+      latest_comment.description as latest_comment
+    FROM leads l
+    LEFT JOIN LATERAL (
+      SELECT description
+      FROM lead_activities a
+      WHERE a.lead_id = l.id AND a.action = 'comment'
+      ORDER BY a.created_at DESC
+      LIMIT 1
+    ) latest_comment ON true
+    WHERE
+      (
+        l.status IS NOT NULL AND l.status != 'new'
+        OR l.next_followup_at IS NOT NULL
+        OR EXISTS (
+          SELECT 1 FROM lead_activities a
+          WHERE a.lead_id = l.id
+            AND a.action IN ('comment', 'status_change', 'followup_change')
+        )
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM sheet_clients sc
+        WHERE sc.sheet_name = l.google_sheet_name
+          AND sc.row_number = l.google_sheet_row
+      )
+    ORDER BY
+      CASE l.priority
+        WHEN 'hot' THEN 1
+        WHEN 'high' THEN 2
+        WHEN 'medium' THEN 3
+        ELSE 4
+      END,
+      l.updated_at DESC
+    LIMIT ?
+  `, [Math.max(limit, 300)]);
+
+  return rows
+    .map(mapCrmLeadToClient)
+    .filter(row => clientMatchesFilters(row, filters))
+    .slice(0, limit);
+}
+
+async function getCrmClientStats() {
+  const rows = await getCrmClients({ sheet_name: '', limit: 10000 });
+  return {
+    total: rows.length,
+    services: rows.filter(row => row.sheet_name === 'УСЛУГИ').length,
+    materials: rows.filter(row => row.sheet_name === 'МАТЕРИАЛЫ').length,
+    high_priority: rows.filter(row => ['hot', 'high'].includes(row.priority)).length,
+    last_sync: rows.reduce((latest, row) => {
+      if (!row.synced_at) return latest;
+      return !latest || new Date(row.synced_at) > new Date(latest) ? row.synced_at : latest;
+    }, null),
+  };
+}
+
+function mapCrmLeadToClient(lead) {
+  const sheetName = lead.google_sheet_name || crmLeadSheetName(lead);
+  const statusLabel = crmStatusLabel(lead.status);
+  const actionNeeded = crmActionNeeded(lead);
+  const context = [
+    lead.interest_products,
+    lead.latest_comment ? `Комментарий: ${lead.latest_comment}` : '',
+    lead.next_followup_at ? `Следующий звонок: ${new Date(lead.next_followup_at).toLocaleString('ru-RU')}` : '',
+    lead.notes,
+  ].filter(Boolean).join(' | ');
+
+  return {
+    id: `crm-${lead.id}`,
+    lead_id: lead.id,
+    sheet_name: sheetName,
+    row_number: lead.google_sheet_row || lead.id,
+    segment: lead.source === 'facebook' ? 'Facebook lead' : 'CRM',
+    company_name: lead.company_name,
+    contact_name: lead.contact_name,
+    phone: lead.phone,
+    email: lead.email,
+    city: lead.city,
+    object_type: lead.lead_type,
+    problem: context,
+    interest: lead.interest_products || lead.lead_type,
+    action_needed: actionNeeded,
+    status: statusLabel,
+    crm_status: lead.status,
+    priority: lead.priority || 'medium',
+    result: lead.status === 'won' ? 'Закрыто успешно' : '',
+    deal: lead.estimated_value,
+    notes: lead.latest_comment || lead.notes,
+    source_type: 'crm',
+    synced_at: lead.updated_at || lead.created_at,
+  };
+}
+
+function crmLeadSheetName(lead) {
+  const text = `${lead.lead_type || ''} ${lead.interest_products || ''} ${lead.notes || ''}`.toLowerCase();
+  if (/услуг|service|ремонт|обект|объект|теч|хидроизолац/.test(text)) return 'УСЛУГИ';
+  return 'МАТЕРИАЛЫ';
+}
+
+function crmStatusLabel(status) {
+  const labels = {
+    new: 'Новый',
+    interested: 'Контактирован / интерес',
+    catalog_sent: 'Каталог отправлен',
+    thinking: 'Думают',
+    offer_sent: 'Оферта',
+    negotiation: 'Переговоры',
+    contract: 'Договор',
+    purchase: 'Закупка',
+    won: 'Закрыто успешно',
+    lost: 'Отказ',
+  };
+  return labels[status] || status || '—';
+}
+
+function crmActionNeeded(lead) {
+  const map = {
+    interested: 'Уточнить потребность',
+    catalog_sent: 'Пропинговать после каталога',
+    thinking: 'Перезвонить',
+    offer_sent: 'Обсудить коммерческое',
+    negotiation: 'Дожать переговоры',
+    contract: 'Подготовить договор',
+    purchase: 'Сопроводить закупку',
+    won: 'Закрыто',
+    lost: 'Не актуальный',
+  };
+  if (lead.next_followup_at) return 'Перезвонить';
+  return map[lead.status] || 'Связаться';
+}
+
+function clientMatchesFilters(row, filters = {}) {
+  if (filters.sheet_name && row.sheet_name !== filters.sheet_name) return false;
+  if (filters.priority && row.priority !== filters.priority) return false;
+  if (filters.status && !String(row.status || '').toLowerCase().includes(String(filters.status).toLowerCase())) return false;
+  if (filters.action_needed && !String(row.action_needed || '').toLowerCase().includes(String(filters.action_needed).toLowerCase())) return false;
+  if (filters.search) {
+    const haystack = [
+      row.company_name,
+      row.contact_name,
+      row.phone,
+      row.email,
+      row.problem,
+      row.notes,
+      row.interest,
+    ].join(' ').toLowerCase();
+    return haystack.includes(String(filters.search).toLowerCase());
+  }
+  return true;
 }
 
 function formatGoogleError(err) {
