@@ -72,7 +72,7 @@ class FacebookAdsService {
             end_date,
             synced_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
           ON CONFLICT(fb_campaign_id) DO UPDATE SET
             name = EXCLUDED.name,
             status = EXCLUDED.status,
