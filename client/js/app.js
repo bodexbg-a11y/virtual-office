@@ -1631,7 +1631,10 @@ async function renderLeads(el, filters = {}) {
                 <td style="max-width:240px;font-size:11px;color:#aaa;">${l.interest_products || l.lead_type || '—'}</td>
                 <td style="color:var(--green);font-weight:500;">${l.estimated_value ? l.estimated_value + ' лв' : '—'}</td>
                 <td style="color:#666;font-size:11px;">${new Date(l.created_at).toLocaleDateString('bg-BG')}</td>
-                <td><button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadDetail(${l.id})">👁</button></td>
+                <td style="display:flex;gap:6px;">
+                  <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadDetail(${l.id})">👁</button>
+                  <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadComment(${l.id})">💬</button>
+                </td>
               </tr>
             `).join('') : '<tr><td colspan="11" style="text-align:center;color:#666;padding:30px;">Нет лидов по этому фильтру.</td></tr>'}
           </tbody>
@@ -2357,12 +2360,21 @@ async function openLeadDetail(id) {
         <div class="form-group full"><label>Бележки</label><textarea id="ld-notes" rows="2">${l.notes || ''}</textarea></div>
       </div>
 
+      <div style="margin-top:16px;padding:14px;border:1px solid rgba(56,189,248,0.25);border-radius:10px;background:rgba(56,189,248,0.06);">
+        <div class="card-title" style="font-size:12px;margin-bottom:8px;">💬 Комментарий после звонка</div>
+        <textarea id="ld-comment" rows="3" placeholder="Например: Позвонил, клиенту нужны PU смолы 20 кг, просит цену сегодня. Следующий шаг: отправить КП." style="width:100%;"></textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+          <button class="btn btn-secondary btn-sm" onclick="saveLeadComment(${l.id})">Добавить комментарий</button>
+        </div>
+        <div id="ld-comment-result" class="sync-result"></div>
+      </div>
+
       <div style="margin-top:16px;">
         <div class="card-title" style="font-size:12px;">📜 История</div>
         ${(data.activities || []).map(a => `
           <div style="font-size:11px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03);color:#888;">
             <span style="color:#555;">${new Date(a.created_at).toLocaleString('bg-BG')}</span> —
-            <strong style="color:#aaa;">${a.action}</strong>: ${a.description || ''}
+            <strong style="color:${a.action === 'comment' ? 'var(--brand-light)' : '#aaa'};">${leadActivityLabel(a.action)}</strong>${a.performed_by ? ` · ${a.performed_by}` : ''}: ${a.description || ''}
           </div>
         `).join('') || '<div style="font-size:11px;color:#555;">Няма активност</div>'}
       </div>
@@ -2391,6 +2403,56 @@ async function openLeadDetail(id) {
     `);
   } catch (err) {
     alert('Грешка: ' + err.message);
+  }
+}
+
+function openLeadComment(id) {
+  openLeadDetail(id);
+  setTimeout(() => document.getElementById('ld-comment')?.focus(), 250);
+}
+
+function leadActivityLabel(action) {
+  const map = {
+    created: 'создан',
+    status_change: 'статус',
+    comment: 'комментарий',
+  };
+  return map[action] || action || 'активность';
+}
+
+async function saveLeadComment(id) {
+  const textarea = document.getElementById('ld-comment');
+  const result = document.getElementById('ld-comment-result');
+  const comment = textarea?.value.trim();
+  if (!comment) {
+    if (result) {
+      result.className = 'sync-result show err';
+      result.textContent = '❌ Напишите комментарий.';
+    }
+    return;
+  }
+
+  if (result) {
+    result.className = 'sync-result show';
+    result.textContent = 'Сохраняю комментарий...';
+  }
+
+  try {
+    await api(`/api/leads/${id}/comments`, {
+      method: 'POST',
+      body: {
+        comment,
+        performed_by: currentRole === 'admin' ? 'admin' : 'manager',
+      },
+    });
+    await openLeadDetail(id);
+  } catch (err) {
+    if (result) {
+      result.className = 'sync-result show err';
+      result.textContent = '❌ ' + err.message;
+    } else {
+      alert('Грешка: ' + err.message);
+    }
   }
 }
 

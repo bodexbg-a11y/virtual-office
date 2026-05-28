@@ -456,6 +456,42 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// POST add lead comment/activity
+router.post('/:id/comments', async (req, res) => {
+  try {
+    const comment = String(req.body.comment || '').trim();
+    const performedBy = String(req.body.performed_by || 'manager').trim() || 'manager';
+
+    if (!comment) {
+      return res.status(400).json({ error: 'Comment is required' });
+    }
+
+    const { rows: leads } = await db.query(
+      'SELECT id FROM leads WHERE id = ?',
+      [req.params.id]
+    );
+
+    if (!leads.length) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    const { rows } = await db.query(`
+      INSERT INTO lead_activities (lead_id, action, description, performed_by)
+      VALUES (?, 'comment', ?, ?)
+      RETURNING *
+    `, [req.params.id, comment, performedBy]);
+
+    await db.query(
+      'UPDATE leads SET updated_at = NOW() WHERE id = ?',
+      [req.params.id]
+    );
+
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST create lead
 router.post('/', async (req, res) => {
   try {
