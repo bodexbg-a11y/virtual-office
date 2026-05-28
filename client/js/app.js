@@ -1624,12 +1624,11 @@ async function renderLeads(el, filters = {}) {
                 <td><span class="badge badge-${l.priority}">${l.priority}</span></td>
                 <td>${sourceLabel(l.source)}</td>
                 <td style="max-width:240px;font-size:11px;color:#aaa;">${l.interest_products || l.lead_type || '—'}</td>
-                <td style="min-width:260px;max-width:320px;" onclick="event.stopPropagation();">
-                  <div style="display:flex;gap:6px;align-items:center;">
-                    <input id="lead-comment-${l.id}" type="text" placeholder="Комментарий после звонка..." style="height:34px;font-size:11px;padding:6px 8px;" onkeydown="if(event.key==='Enter'){event.preventDefault();saveQuickLeadComment(${l.id})}">
+                <td style="width:180px;max-width:180px;" onclick="event.stopPropagation();">
+                  <div style="display:flex;gap:4px;align-items:center;">
+                    <input id="lead-comment-${l.id}" type="text" placeholder="Комментарий..." title="${escapeAttr(l.latest_comment || 'Комментарий после звонка')}" style="height:28px;font-size:10px;padding:4px 6px;min-width:0;width:135px;" onkeydown="if(event.key==='Enter'){event.preventDefault();saveQuickLeadComment(${l.id})}">
                     <button class="btn btn-sm btn-secondary" onclick="saveQuickLeadComment(${l.id})">💬</button>
                   </div>
-                  ${l.latest_comment ? `<div style="font-size:10px;color:#8dd3ff;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeAttr(l.latest_comment)}">${escapeHtml(l.latest_comment)}</div>` : '<div style="font-size:10px;color:#555;margin-top:5px;">Нет комментария</div>'}
                 </td>
                 <td style="color:#666;font-size:11px;">${new Date(l.created_at).toLocaleDateString('bg-BG')}</td>
                 <td style="display:flex;gap:6px;">
@@ -2397,9 +2396,12 @@ async function openLeadDetail(id) {
       <div style="margin-top:16px;">
         <div class="card-title" style="font-size:12px;">📜 История</div>
         ${(data.activities || []).map(a => `
-          <div style="font-size:11px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03);color:#888;">
-            <span style="color:#555;">${new Date(a.created_at).toLocaleString('bg-BG')}</span> —
-            <strong style="color:${a.action === 'comment' ? 'var(--brand-light)' : '#aaa'};">${leadActivityLabel(a.action)}</strong>${a.performed_by ? ` · ${a.performed_by}` : ''}: ${a.description || ''}
+          <div style="display:flex;gap:8px;align-items:flex-start;font-size:11px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03);color:#888;">
+            <div style="flex:1;">
+              <span style="color:#555;">${new Date(a.created_at).toLocaleString('bg-BG')}</span> —
+              <strong style="color:${a.action === 'comment' ? 'var(--brand-light)' : '#aaa'};">${leadActivityLabel(a.action)}</strong>${a.performed_by ? ` · ${a.performed_by}` : ''}: ${a.description || ''}
+            </div>
+            ${a.action === 'comment' ? `<button class="btn btn-sm btn-secondary" style="padding:2px 7px;font-size:10px;" onclick="deleteLeadComment(${l.id}, ${a.id})">Удалить</button>` : ''}
           </div>
         `).join('') || '<div style="font-size:11px;color:#555;">Няма активност</div>'}
       </div>
@@ -2478,6 +2480,16 @@ async function saveLeadComment(id) {
     } else {
       alert('Грешка: ' + err.message);
     }
+  }
+}
+
+async function deleteLeadComment(leadId, commentId) {
+  if (!confirm('Удалить комментарий?')) return;
+  try {
+    await api(`/api/leads/${leadId}/comments/${commentId}`, { method: 'DELETE' });
+    await openLeadDetail(leadId);
+  } catch (err) {
+    alert('Грешка: ' + err.message);
   }
 }
 

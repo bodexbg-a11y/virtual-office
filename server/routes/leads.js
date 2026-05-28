@@ -526,6 +526,30 @@ router.post('/:id/comments', async (req, res) => {
   }
 });
 
+// DELETE lead comment/activity
+router.delete('/:id/comments/:commentId', async (req, res) => {
+  try {
+    const { rows } = await db.query(`
+      DELETE FROM lead_activities
+      WHERE id = ? AND lead_id = ? AND action = 'comment'
+      RETURNING id
+    `, [req.params.commentId, req.params.id]);
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    await db.query(
+      'UPDATE leads SET updated_at = NOW() WHERE id = ?',
+      [req.params.id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST create lead
 router.post('/', async (req, res) => {
   try {
