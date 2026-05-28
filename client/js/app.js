@@ -1742,10 +1742,21 @@ async function saveQuickLeadComment(id) {
 function openFollowupModal(id, encodedValue = '') {
   const value = decodeURIComponent(encodedValue || '');
   openModal('Следующий звонок', `
-    <div class="form-group full">
-      <label>Дата и время звонка</label>
-      <input id="quick-followup-at" type="datetime-local" value="${toDatetimeLocal(value)}">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Дата звонка</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="quick-followup-date" type="date" value="${toDateInput(value)}" style="flex:1;">
+          <button class="btn btn-secondary btn-sm" type="button" onclick="openNativePicker('quick-followup-date')" title="Открыть календарь">📅</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Время</label>
+        <input id="quick-followup-time" type="time" value="${toTimeInput(value) || '09:00'}">
+      </div>
+      <div class="form-group full">
       <div style="font-size:11px;color:#777;margin-top:6px;">Используйте это поле, когда клиент занят и нужно пинговать его в конкретный день/час.</div>
+      </div>
     </div>
     <div id="quick-followup-result" class="sync-result"></div>
     <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
@@ -1755,13 +1766,14 @@ function openFollowupModal(id, encodedValue = '') {
       <button class="btn btn-primary" onclick="saveLeadFollowup(${id})">Сохранить</button>
     </div>
   `);
-  setTimeout(() => document.getElementById('quick-followup-at')?.focus(), 50);
+  setTimeout(() => openNativePicker('quick-followup-date'), 80);
 }
 
 async function saveLeadFollowup(id, valueOverride) {
-  const input = document.getElementById('quick-followup-at');
   const result = document.getElementById('quick-followup-result');
-  const value = valueOverride !== undefined ? valueOverride : input?.value;
+  const value = valueOverride !== undefined
+    ? valueOverride
+    : combineDateAndTime('quick-followup-date', 'quick-followup-time');
 
   if (result) {
     result.className = 'sync-result show';
@@ -2472,7 +2484,14 @@ async function openLeadDetail(id) {
           </select>
         </div>
         <div class="form-group"><label>Стойност (лв)</label><input id="ld-value" type="number" value="${l.estimated_value || ''}"></div>
-        <div class="form-group"><label>Следующий звонок</label><input id="ld-followup" type="datetime-local" value="${toDatetimeLocal(l.next_followup_at)}"></div>
+        <div class="form-group">
+          <label>Следующий звонок</label>
+          <div style="display:grid;grid-template-columns:minmax(145px,1fr) 92px 38px;gap:8px;align-items:center;">
+            <input id="ld-followup-date" type="date" value="${toDateInput(l.next_followup_at)}">
+            <input id="ld-followup-time" type="time" value="${toTimeInput(l.next_followup_at) || '09:00'}">
+            <button class="btn btn-secondary btn-sm" type="button" onclick="openNativePicker('ld-followup-date')" title="Открыть календарь">📅</button>
+          </div>
+        </div>
         <div class="form-group full"><label>Бележки</label><textarea id="ld-notes" rows="2">${l.notes || ''}</textarea></div>
       </div>
 
@@ -2596,7 +2615,7 @@ async function updateLead(id) {
     status: document.getElementById('ld-status').value,
     priority: document.getElementById('ld-priority').value,
     estimated_value: parseFloat(document.getElementById('ld-value').value) || null,
-    next_followup_at: document.getElementById('ld-followup').value || null,
+    next_followup_at: combineDateAndTime('ld-followup-date', 'ld-followup-time'),
     notes: document.getElementById('ld-notes').value,
   };
   try {
@@ -3238,6 +3257,36 @@ function toDatetimeLocal(value) {
   if (Number.isNaN(date.getTime())) return '';
   const pad = (n) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function toDateInput(value) {
+  return toDatetimeLocal(value).slice(0, 10);
+}
+
+function toTimeInput(value) {
+  return toDatetimeLocal(value).slice(11, 16);
+}
+
+function combineDateAndTime(dateId, timeId) {
+  const date = document.getElementById(dateId)?.value || '';
+  if (!date) return null;
+  const time = document.getElementById(timeId)?.value || '09:00';
+  return `${date}T${time}`;
+}
+
+function openNativePicker(id) {
+  const input = document.getElementById(id);
+  if (!input) return;
+  input.focus();
+  if (typeof input.showPicker === 'function') {
+    try {
+      input.showPicker();
+    } catch {
+      input.click();
+    }
+  } else {
+    input.click();
+  }
 }
 
 function formatFollowupShort(value) {
