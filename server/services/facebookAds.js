@@ -580,9 +580,15 @@ function inferLeadStatusFromSheet(row) {
 }
 
 function facebookErrorMessage(err) {
-  return err.response?.data?.error?.message ||
+  const message = err.response?.data?.error?.message ||
     err.response?.data?.error?.error_user_msg ||
     err.message;
+
+  if (/api access blocked/i.test(message)) {
+    return 'Meta API access blocked. Facebook заблокировал API-доступ для этого токена или приложения. Проверьте, что приложение Maria активно, токен создан от пользователя/системного пользователя с доступом к рекламному аккаунту, а permissions ads_read, ads_management, leads_retrieval и business_management реально выданы для этого ad account.';
+  }
+
+  return message;
 }
 
 module.exports = new FacebookAdsService();

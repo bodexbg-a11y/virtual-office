@@ -1806,8 +1806,16 @@ async function syncFB() {
     setTimeout(() => renderFacebook(document.getElementById('main')), 1500);
   } catch (err) {
     el.className = 'sync-result show err';
-    el.textContent = '❌ Грешка: ' + err.message;
+    el.textContent = '❌ ' + facebookSyncErrorText(err.message);
   }
+}
+
+function facebookSyncErrorText(message) {
+  if (/api access blocked/i.test(message)) {
+    return 'Meta заблокировала API-доступ. Данные в отчёте из БД показываются, но новая синхронизация FB сейчас не проходит. Проверьте токен Maria, доступ к рекламному аккаунту и permissions: ads_read, ads_management, leads_retrieval, business_management.';
+  }
+
+  return 'Грешка: ' + message;
 }
 
 // ===== GOOGLE SHEETS =====
