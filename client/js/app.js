@@ -1610,7 +1610,7 @@ async function renderLeads(el, filters = {}) {
               <th>Приоритет</th>
               <th>Източник</th>
               <th>Тип / интерес</th>
-              <th>Стойност</th>
+              <th>Комментарий</th>
               <th>Дата</th>
               <th></th>
             </tr>
@@ -1629,7 +1629,13 @@ async function renderLeads(el, filters = {}) {
                 <td><span class="badge badge-${l.priority}">${l.priority}</span></td>
                 <td>${sourceLabel(l.source)}</td>
                 <td style="max-width:240px;font-size:11px;color:#aaa;">${l.interest_products || l.lead_type || '—'}</td>
-                <td style="color:var(--green);font-weight:500;">${l.estimated_value ? l.estimated_value + ' лв' : '—'}</td>
+                <td style="min-width:260px;max-width:320px;" onclick="event.stopPropagation();">
+                  <div style="display:flex;gap:6px;align-items:center;">
+                    <input id="lead-comment-${l.id}" type="text" placeholder="Комментарий после звонка..." style="height:34px;font-size:11px;padding:6px 8px;" onkeydown="if(event.key==='Enter'){event.preventDefault();saveQuickLeadComment(${l.id})}">
+                    <button class="btn btn-sm btn-secondary" onclick="saveQuickLeadComment(${l.id})">💬</button>
+                  </div>
+                  ${l.latest_comment ? `<div style="font-size:10px;color:#8dd3ff;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeAttr(l.latest_comment)}">${escapeHtml(l.latest_comment)}</div>` : '<div style="font-size:10px;color:#555;margin-top:5px;">Нет комментария</div>'}
+                </td>
                 <td style="color:#666;font-size:11px;">${new Date(l.created_at).toLocaleDateString('bg-BG')}</td>
                 <td style="display:flex;gap:6px;">
                   <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadDetail(${l.id})">👁</button>
@@ -1674,6 +1680,30 @@ async function syncFacebookLeadsFromLeadsPage() {
   } catch (err) {
     el.className = 'sync-result show err';
     el.textContent = '❌ ' + err.message;
+  }
+}
+
+async function saveQuickLeadComment(id) {
+  const input = document.getElementById(`lead-comment-${id}`);
+  const comment = input?.value.trim();
+  if (!comment) {
+    input?.focus();
+    return;
+  }
+
+  input.disabled = true;
+  try {
+    await api(`/api/leads/${id}/comments`, {
+      method: 'POST',
+      body: {
+        comment,
+        performed_by: currentRole === 'admin' ? 'admin' : 'manager',
+      },
+    });
+    await renderLeads(document.getElementById('main'), currentLeadFilters);
+  } catch (err) {
+    alert('Грешка: ' + err.message);
+    input.disabled = false;
   }
 }
 
@@ -3086,6 +3116,19 @@ function formatReportValue(value) {
   if (value === null || value === undefined) return '';
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replace(/`/g, '&#096;');
 }
 
 function downloadTextFile(filename, content, type) {

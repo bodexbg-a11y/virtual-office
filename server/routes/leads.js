@@ -321,7 +321,22 @@ router.get('/', async (req, res) => {
           END`;
 
     const { rows } = await db.query(`
-      SELECT * FROM leads ${whereClause}
+      SELECT leads.*,
+        (
+          SELECT description
+          FROM lead_activities
+          WHERE lead_id = leads.id AND action = 'comment'
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) as latest_comment,
+        (
+          SELECT created_at
+          FROM lead_activities
+          WHERE lead_id = leads.id AND action = 'comment'
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) as latest_comment_at
+      FROM leads ${whereClause}
       ORDER BY ${orderBy}
       LIMIT ? OFFSET ?
     `, [...params, Number(limit), Number(offset)]);
