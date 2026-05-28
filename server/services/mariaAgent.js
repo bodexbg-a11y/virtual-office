@@ -30,27 +30,41 @@ async function ensureAgentTables() {
 
 async function run() {
   if (activeRun) return activeRun;
-  activeRun = executeRun().finally(() => {
+  activeRun = executeRun({ activeOnly: false }).finally(() => {
     activeRun = null;
   });
   return activeRun;
 }
 
-async function executeRun() {
+async function runActiveCampaignReport() {
+  if (activeRun) return activeRun;
+  activeRun = executeRun({ activeOnly: true }).finally(() => {
+    activeRun = null;
+  });
+  return activeRun;
+}
+
+async function executeRun(options = {}) {
+  const activeOnly = Boolean(options.activeOnly);
   await ensureAgentTables();
   const runInfo = await db.run(`
     INSERT INTO agent_runs (agent_id, status, message)
-    VALUES ('maria', 'running', 'Maria синхронизирует Facebook Ads и считает CPL/CTR/CPC')
+    VALUES ('maria', 'running', ?)
     RETURNING id
-  `);
+  `, [
+    activeOnly
+      ? 'Maria анализирует активные Facebook кампании и готовит решение: продолжать или выключить'
+      : 'Maria синхронизирует Facebook Ads и считает CPL/CTR/CPC',
+  ]);
   const runId = runInfo.lastInsertRowid;
 
   try {
     await facebookAds.syncCampaigns();
     const campaigns = await facebookAds.getCampaigns();
-    const rows = campaigns.map(analyzeCampaign);
-    const overview = buildOverview(rows);
-    await saveReportToDb(runId, rows, overview);
+    const sourceCampaigns = activeOnly ? campaigns.filter(c => c.status === 'ACTIVE') : campaigns;
+    const rows = sourceCampaigns.map(analyzeCampaign);
+    const overview = buildOverview(rows, { activeOnly });
+    await saveReportToDb(runId, rows, overview, activeOnly ? 'ads_active_decision' : 'ads_analysis');
 
     const summary = overview.summary;
     await db.run(`
@@ -64,6 +78,7 @@ async function executeRun() {
       run_id: runId,
       rows: rows.length,
       storage: 'database+html',
+      mode: activeOnly ? 'active_campaigns' : 'all_campaigns',
       message: summary,
     };
   } catch (err) {
@@ -81,7 +96,7 @@ async function getAnalysis() {
   const latestStored = await db.get(`
     SELECT payload_json
     FROM agent_reports
-    WHERE agent_id = 'maria' AND report_type = 'ads_analysis'
+    WHERE agent_id = 'maria' AND report_type IN ('ads_active_decision', 'ads_analysis')
     ORDER BY id DESC
     LIMIT 1
   `);
@@ -113,6 +128,7 @@ function analyzeCampaign(campaign) {
   const ctr = Number(campaign.ctr || 0);
   const clicks = Number(campaign.clicks || 0);
   const impressions = Number(campaign.impressions || 0);
+  const reach = Number(campaign.reach || 0);
   const active = campaign.status === 'ACTIVE';
 
   let verdict = 'Наблюдать';
@@ -159,6 +175,7 @@ function analyzeCampaign(campaign) {
     status: campaign.status,
     objective: campaign.objective || '',
     impressions,
+    reach,
     clicks,
     ctr,
     cpc: Number(campaign.cpc || 0),
@@ -167,6 +184,7 @@ function analyzeCampaign(campaign) {
     cpl,
     verdict,
     recommendation,
+    decision: campaignDecision({ active, spend, leads, cpl, ctr, clicks, impressions }),
     quality_signal: playbook.quality_signal,
     audience_recommendation: playbook.audience_recommendation,
     creative_recommendation: playbook.creative_recommendation,
@@ -177,6 +195,17 @@ function analyzeCampaign(campaign) {
 
 function summarize(rows) {
   return buildOverview(rows).summary;
+}
+
+function campaignDecision({ active, spend, leads, cpl, ctr, clicks, impressions }) {
+  if (!active) return 'Не активна';
+  if (leads >= 3 && cpl > 0 && cpl <= 50 && ctr >= 1) return 'Продолжать и аккуратно масштабировать';
+  if (leads > 0 && cpl > 80) return 'Оставить только после оптимизации CPL';
+  if (spend >= 20 && clicks >= 20 && leads === 0) return 'Выключить и создать новую';
+  if (impressions >= 1000 && ctr > 0 && ctr < 0.7) return 'Выключить креатив, тестировать новый';
+  if (leads > 0) return 'Продолжать под контролем качества лидов';
+  if (clicks < 20 || spend < 20) return 'Дать ещё данных, не выключать раньше времени';
+  return 'Оптимизировать аудиторию и форму';
 }
 
 function campaignPlaybook(row) {
@@ -224,10 +253,14 @@ function campaignPlaybook(row) {
   return common;
 }
 
-function buildOverview(rows) {
+function buildOverview(rows, options = {}) {
+  const activeOnly = Boolean(options.activeOnly);
   const active = rows.filter(r => r.status === 'ACTIVE').length;
   const spend = rows.reduce((sum, r) => sum + r.spend, 0);
   const leads = rows.reduce((sum, r) => sum + r.leads, 0);
+  const reach = rows.reduce((sum, r) => sum + Number(r.reach || 0), 0);
+  const impressions = rows.reduce((sum, r) => sum + Number(r.impressions || 0), 0);
+  const clicks = rows.reduce((sum, r) => sum + Number(r.clicks || 0), 0);
   const avgCpl = leads > 0 ? Math.round((spend / leads) * 100) / 100 : 0;
   const bad = rows.filter(r => ['Плохо', 'Дорого', 'Слабый CTR'].includes(r.verdict)).length;
   const sortedByLeads = [...rows].sort((a, b) => b.leads - a.leads);
@@ -253,9 +286,15 @@ function buildOverview(rows) {
   }
 
   return {
-    summary: `Maria готова: ${rows.length} кампаний, активных ${active}, spend $${spend.toFixed(2)}, leads ${leads}, CPL $${avgCpl}, требуют внимания ${bad}.`,
+    summary: activeOnly
+      ? `Maria проверила активные кампании: ${rows.length} активных, охват ${reach.toLocaleString('ru-RU')}, показы ${impressions.toLocaleString('ru-RU')}, клики ${clicks.toLocaleString('ru-RU')}, leads ${leads}, CPL $${avgCpl}. Решение: ${activeCampaignSummaryDecision(rows)}.`
+      : `Maria готова: ${rows.length} кампаний, активных ${active}, spend $${spend.toFixed(2)}, leads ${leads}, CPL $${avgCpl}, требуют внимания ${bad}.`,
+    mode: activeOnly ? 'active_campaigns' : 'all_campaigns',
     total_campaigns: rows.length,
     active_campaigns: active,
+    reach,
+    impressions,
+    clicks,
     spend: Number(spend.toFixed(2)),
     leads,
     avg_cpl: avgCpl,
@@ -263,8 +302,12 @@ function buildOverview(rows) {
     best_campaign: best,
     weakest_campaign: weakest,
     golden_recommendation: best
-      ? `Золотая рекомендация Maria: запускать сейчас “${best.name}”, но с фильтрацией качества лидов. Цель не просто дешёвый CPL, а B2B лиды, которым реально нужны материалы/поставка.`
-      : 'Золотая рекомендация Maria: сначала собрать данные по кампаниям, потом запускать лучший тест.',
+      ? activeOnly
+        ? `Золотая рекомендация Maria: по активным кампаниям главный фокус “${best.name}”. Если качество лидов у Ростислава подтверждается, продолжать; если лиды мусорные — не масштабировать, а менять форму и аудиторию.`
+        : `Золотая рекомендация Maria: запускать сейчас “${best.name}”, но с фильтрацией качества лидов. Цель не просто дешёвый CPL, а B2B лиды, которым реально нужны материалы/поставка.`
+      : activeOnly
+        ? 'Золотая рекомендация Maria: активных кампаний нет или данных недостаточно. Создать новую кампанию с узкой B2B аудиторией и квалифицирующей формой.'
+        : 'Золотая рекомендация Maria: сначала собрать данные по кампаниям, потом запускать лучший тест.',
     launch,
     optimize,
     stop,
@@ -272,11 +315,18 @@ function buildOverview(rows) {
   };
 }
 
-async function saveReportToDb(runId, rows, overview) {
+function activeCampaignSummaryDecision(rows) {
+  if (!rows.length) return 'активных кампаний нет, нужно создать новую тестовую кампанию';
+  if (rows.some(r => /выключить/i.test(r.decision))) return 'часть кампаний лучше выключить и заменить новым тестом';
+  if (rows.some(r => /масштабировать|продолжать/i.test(r.decision))) return 'продолжать лучшие кампании под контролем CPL и качества лидов';
+  return 'пока оптимизировать и собрать больше данных';
+}
+
+async function saveReportToDb(runId, rows, overview, reportType = 'ads_analysis') {
   await db.run(`
     INSERT INTO agent_reports (agent_id, report_type, run_id, payload_json)
-    VALUES ('maria', 'ads_analysis', ?, ?)
-  `, [runId, JSON.stringify({
+    VALUES ('maria', ?, ?, ?)
+  `, [reportType, runId, JSON.stringify({
     summary: overview.summary,
     overview,
     rows,
@@ -313,22 +363,26 @@ function buildHtmlReport(rows, overview, runId) {
   <div class="muted">Run #${escapeHtml(runId)} · ${escapeHtml(generatedAt)} · хранится в БД, без Google Sheets</div>
   <section class="stats">
     <div class="card"><div class="muted">Кампаний</div><div class="num">${overview.total_campaigns || 0}</div></div>
+    <div class="card"><div class="muted">Охват</div><div class="num">${overview.reach || 0}</div></div>
+    <div class="card"><div class="muted">Клики</div><div class="num">${overview.clicks || 0}</div></div>
     <div class="card"><div class="muted">Spend</div><div class="num">$${overview.spend || 0}</div></div>
     <div class="card"><div class="muted">Leads</div><div class="num">${overview.leads || 0}</div></div>
     <div class="card"><div class="muted">Avg CPL</div><div class="num">$${overview.avg_cpl || 0}</div></div>
   </section>
   <div class="summary"><strong>Золотая рекомендация:</strong><br>${escapeHtml(overview.golden_recommendation || overview.summary || '')}</div>
   <table>
-    <thead><tr><th>Кампания</th><th>Статус</th><th>Spend</th><th>Leads</th><th>CPL</th><th>CTR</th><th>Оценка</th><th>Рекомендация</th><th>Аудитория/креатив</th></tr></thead>
+    <thead><tr><th>Кампания</th><th>Статус</th><th>Spend</th><th>Охват</th><th>Клики</th><th>Leads</th><th>CPL</th><th>CTR</th><th>Решение</th><th>Рекомендация</th><th>Аудитория/креатив</th></tr></thead>
     <tbody>
       ${rows.map(row => `<tr>
         <td><strong>${escapeHtml(row.name)}</strong><br><span class="muted">${escapeHtml(row.campaign_id)}</span></td>
         <td>${escapeHtml(row.status)}</td>
         <td>$${escapeHtml(row.spend)}</td>
+        <td>${escapeHtml(row.reach || 0)}</td>
+        <td>${escapeHtml(row.clicks || 0)}</td>
         <td>${escapeHtml(row.leads)}</td>
         <td>$${escapeHtml(row.cpl)}</td>
         <td>${escapeHtml(row.ctr)}%</td>
-        <td><span class="pill">${escapeHtml(row.verdict)}</span></td>
+        <td><span class="pill">${escapeHtml(row.decision || row.verdict)}</span></td>
         <td>${escapeHtml(row.recommendation)}</td>
         <td>${escapeHtml(row.audience_recommendation)}<br><br>${escapeHtml(row.creative_recommendation)}</td>
       </tr>`).join('')}
@@ -361,6 +415,7 @@ async function latestRun() {
 
 module.exports = {
   run,
+  runActiveCampaignReport,
   isRunning: () => Boolean(activeRun),
   latestRun,
   getAnalysis,

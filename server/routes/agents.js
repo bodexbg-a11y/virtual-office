@@ -58,6 +58,17 @@ router.post('/maria/run', async (req, res) => {
     .catch(err => console.error('[Maria Agent] error:', err.message));
 });
 
+router.post('/maria/run-active', async (req, res) => {
+  if (mariaAgent.isRunning()) {
+    return res.status(409).json({ error: 'Maria agent is already running' });
+  }
+
+  res.status(202).json({ success: true, message: 'Maria active campaign report started' });
+
+  mariaAgent.runActiveCampaignReport()
+    .catch(err => console.error('[Maria Active Campaign Report] error:', err.message));
+});
+
 router.get('/steve/status', async (req, res) => {
   try {
     res.json({

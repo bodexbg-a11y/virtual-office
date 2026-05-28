@@ -36,6 +36,8 @@ class FacebookAdsService {
     }
 
     try {
+      await db.query(`ALTER TABLE fb_campaigns ADD COLUMN IF NOT EXISTS reach INTEGER DEFAULT 0`);
+
       const res = await axios.get(`${this.baseUrl}/${this.adAccountId}/campaigns`, {
         params: {
           fields: 'id,name,status,objective,daily_budget,lifetime_budget,start_time,stop_time',
@@ -58,6 +60,7 @@ class FacebookAdsService {
             objective,
             daily_budget,
             lifetime_budget,
+            reach,
             impressions,
             clicks,
             ctr,
@@ -76,6 +79,7 @@ class FacebookAdsService {
             objective = EXCLUDED.objective,
             daily_budget = EXCLUDED.daily_budget,
             lifetime_budget = EXCLUDED.lifetime_budget,
+            reach = EXCLUDED.reach,
             impressions = EXCLUDED.impressions,
             clicks = EXCLUDED.clicks,
             ctr = EXCLUDED.ctr,
@@ -94,6 +98,7 @@ class FacebookAdsService {
           c.objective,
           centsToMoney(c.daily_budget),
           centsToMoney(c.lifetime_budget),
+          insights.reach,
           insights.impressions,
           insights.clicks,
           insights.ctr,
@@ -119,7 +124,7 @@ class FacebookAdsService {
   async getCampaignInsights(campaignId) {
     const res = await axios.get(`${this.baseUrl}/${campaignId}/insights`, {
       params: {
-        fields: 'impressions,clicks,ctr,cpc,spend,actions,cost_per_action_type',
+        fields: 'reach,impressions,clicks,ctr,cpc,spend,actions,cost_per_action_type',
         date_preset: 'last_30d',
         access_token: this.accessToken,
         limit: 1,
@@ -145,6 +150,7 @@ class FacebookAdsService {
 
     return {
       hasData: true,
+      reach: toInt(row.reach),
       impressions: toInt(row.impressions),
       clicks: toInt(row.clicks),
       ctr: round(row.ctr),
@@ -402,6 +408,7 @@ class FacebookAdsService {
 function emptyInsights() {
   return {
     hasData: false,
+    reach: 0,
     impressions: 0,
     clicks: 0,
     ctr: 0,

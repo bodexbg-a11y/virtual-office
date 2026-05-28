@@ -636,6 +636,7 @@ function renderMariaAgentPanel(status, analysis = {}) {
       <div class="agent-run-message">${message}</div>
       <div class="agent-run-actions">
         <button class="btn btn-primary" onclick="runMariaAgent()" ${isRunning ? 'disabled' : ''}>▶ Запустить агента</button>
+        <button class="btn btn-primary" onclick="runMariaActiveCampaignReport()" ${isRunning ? 'disabled' : ''}>🔥 Отчёт активной кампании</button>
         <button class="btn btn-secondary" onclick="refreshMariaAgent()">Обновить статус</button>
         <button class="btn btn-secondary" onclick="navigate('facebook')">Facebook Ads</button>
       </div>
@@ -653,6 +654,8 @@ function renderMariaAgentPanel(status, analysis = {}) {
               <th>Кампания</th>
               <th>Статус</th>
               <th>Spend</th>
+              <th>Охват</th>
+              <th>Клики</th>
               <th>Leads</th>
               <th>CPL</th>
               <th>CTR</th>
@@ -666,13 +669,15 @@ function renderMariaAgentPanel(status, analysis = {}) {
                 <td style="font-weight:600;color:#ddd;">${row.name}</td>
                 <td><span class="badge badge-${row.status}">${row.status}</span></td>
                 <td>$${Number(row.spend || 0).toLocaleString()}</td>
+                <td>${Number(row.reach || 0).toLocaleString()}</td>
+                <td>${Number(row.clicks || 0).toLocaleString()}</td>
                 <td style="color:var(--green);font-weight:700;">${row.leads || 0}</td>
                 <td>$${row.cpl || 0}</td>
                 <td>${row.ctr || 0}%</td>
-                <td><span class="maria-verdict">${row.verdict}</span></td>
+                <td><span class="maria-verdict">${row.decision || row.verdict}</span></td>
                 <td style="min-width:260px;color:#aaa;line-height:1.45;">${row.recommendation}</td>
               </tr>
-            `).join('') : '<tr><td colspan="8" style="text-align:center;color:#666;padding:26px;">Нет отчёта. Нажмите “Запустить агента”.</td></tr>'}
+            `).join('') : '<tr><td colspan="10" style="text-align:center;color:#666;padding:26px;">Нет отчёта. Нажмите “Запустить агента”.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -729,6 +734,8 @@ function renderMariaExecutiveReport(overview = {}) {
     <div class="maria-executive-grid">
       <div class="maria-kpi"><span>${overview.total_campaigns || 0}</span><small>кампаний</small></div>
       <div class="maria-kpi"><span>${overview.active_campaigns || 0}</span><small>активных</small></div>
+      <div class="maria-kpi"><span>${Number(overview.reach || 0).toLocaleString()}</span><small>охват</small></div>
+      <div class="maria-kpi"><span>${Number(overview.clicks || 0).toLocaleString()}</span><small>клики</small></div>
       <div class="maria-kpi"><span>$${overview.spend || 0}</span><small>потрачено</small></div>
       <div class="maria-kpi"><span>${overview.leads || 0}</span><small>лидов</small></div>
       <div class="maria-kpi"><span>$${overview.avg_cpl || 0}</span><small>средний CPL</small></div>
@@ -793,7 +800,7 @@ function renderMariaCampaignDeepDive(rows = []) {
         <details class="maria-campaign-detail" ${row.verdict === 'Запустить снова' ? 'open' : ''}>
           <summary>
             <span>${row.name}</span>
-            <small>${row.leads} лидов · CPL $${row.cpl} · CTR ${row.ctr}% · ${row.verdict}</small>
+            <small>${Number(row.reach || 0).toLocaleString()} охват · ${row.clicks} кликов · ${row.leads} лидов · CPL $${row.cpl} · ${row.decision || row.verdict}</small>
           </summary>
           <div class="maria-detail-grid">
             <div>
@@ -888,6 +895,23 @@ async function runMariaAgent() {
   }
   try {
     await api('/api/agents/maria/run', { method: 'POST' });
+    pollMariaAgent();
+  } catch (err) {
+    if (result) {
+      result.className = 'sync-result show err';
+      result.textContent = '❌ ' + err.message;
+    }
+  }
+}
+
+async function runMariaActiveCampaignReport() {
+  const result = document.getElementById('maria-agent-result');
+  if (result) {
+    result.className = 'sync-result show';
+    result.textContent = 'Maria проверяет только активные кампании: охват, показы, клики, CTR, CPL и решение продолжать или выключить...';
+  }
+  try {
+    await api('/api/agents/maria/run-active', { method: 'POST' });
     pollMariaAgent();
   } catch (err) {
     if (result) {
@@ -3152,6 +3176,7 @@ function agentName(id) {
 function reportTypeLabel(type) {
   const map = {
     ads_analysis: 'Анализ рекламы',
+    ads_active_decision: 'Активная кампания',
     market_scan: 'Скан рынка',
     seo_report: 'SEO отчёт',
     seo_audit: 'SEO аудит',

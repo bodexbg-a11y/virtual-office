@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS fb_campaigns (
   objective TEXT,
   daily_budget NUMERIC,
   lifetime_budget NUMERIC,
+  reach INTEGER DEFAULT 0,
   impressions INTEGER DEFAULT 0,
   clicks INTEGER DEFAULT 0,
   ctr NUMERIC DEFAULT 0,
