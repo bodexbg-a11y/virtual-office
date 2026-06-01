@@ -114,4 +114,92 @@ router.get('/goals', async (req, res) => {
   }
 });
 
+router.get('/weekly-report', async (req, res) => {
+  try {
+    const summary = await db.get(`
+      SELECT
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int as new_leads,
+        COUNT(*) FILTER (WHERE updated_at >= NOW() - INTERVAL '7 days' AND status <> 'new')::int as touched_leads,
+        COUNT(*) FILTER (WHERE status = 'won' AND updated_at >= NOW() - INTERVAL '7 days')::int as won_leads,
+        COUNT(*) FILTER (WHERE status NOT IN ('won','lost'))::int as active_leads,
+        COALESCE(SUM(CASE WHEN status NOT IN ('won','lost') THEN estimated_value ELSE 0 END), 0) as pipeline_value
+      FROM leads
+    `);
+
+    const premium = await db.get(`
+      SELECT COUNT(*)::int as premium_leads
+      FROM leads
+      WHERE (
+        lower(COALESCE(notes, '')) ~ '(регулярн\\w*\\s+месечн\\w*\\s+доставк\\w*|ежемес\\w*\\s+доставк\\w*|regular\\s+monthly\\s+deliver\\w*|monthly\\s+supply|регулярни\\s+месечни)'
+        OR lower(COALESCE(notes, '')) ~ '(обем\\s*/\\s*тип\\s*запитване[^\\n:]*:\\s*.*(400\\s*\\+|1000\\s*\\+|над\\s*400|над\\s*1000|от\\s*400|от\\s*1000))'
+      )
+    `);
+
+    const waitingOffers = await db.get(`
+      SELECT COUNT(*)::int as waiting_offer
+      FROM (
+        SELECT l.id
+        FROM leads l
+        LEFT JOIN offers o ON o.lead_id = l.id
+        WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation')
+          AND l.status NOT IN ('won', 'lost')
+        GROUP BY l.id
+        HAVING COUNT(o.id) = 0
+      ) q
+    `);
+
+    const offers = await db.get(`
+      SELECT COUNT(*)::int as offers_sent
+      FROM offers
+      WHERE created_at >= NOW() - INTERVAL '7 days'
+    `);
+
+    const followups = await db.get(`
+      SELECT COUNT(*)::int as overdue_followups
+      FROM leads
+      WHERE next_followup_at IS NOT NULL
+        AND next_followup_at < NOW()
+        AND status NOT IN ('won', 'lost')
+    `);
+
+    const tasks = await db.get(`
+      SELECT COUNT(*)::int as manager_done
+      FROM worker_tasks
+      WHERE worker_id = 'rostislav'
+        AND status = 'done'
+        AND updated_at >= NOW() - INTERVAL '7 days'
+    `).catch(() => ({ manager_done: 0 }));
+
+    const topLeads = await db.all(`
+      SELECT id, company_name, contact_name, status, priority, next_followup_at, estimated_value
+      FROM leads
+      WHERE status NOT IN ('won','lost')
+      ORDER BY
+        CASE priority WHEN 'hot' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+        updated_at DESC NULLS LAST
+      LIMIT 5
+    `);
+
+    res.json({
+      period: 'last_7_days',
+      summary: {
+        ...(summary || {}),
+        premium_leads: Number(premium?.premium_leads || 0),
+        waiting_offer: Number(waitingOffers?.waiting_offer || 0),
+        offers_sent: Number(offers?.offers_sent || 0),
+        overdue_followups: Number(followups?.overdue_followups || 0),
+        manager_done: Number(tasks?.manager_done || 0),
+      },
+      top_leads: topLeads || [],
+      actions: [
+        `Проверить ${Number(waitingOffers?.waiting_offer || 0)} лидов, которые ждут КП.`,
+        `Закрыть ${Number(followups?.overdue_followups || 0)} просроченных follow-up.`,
+        `Сфокусироваться на premium-лидах: ${Number(premium?.premium_leads || 0)} активных.`,
+      ],
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

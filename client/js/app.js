@@ -11,6 +11,7 @@ let agentReportsFilters = { agent: 'all', date_from: '', date_to: '', limit: 100
 let agentReportsCache = [];
 let currentOfferDraft = null;
 let currentLeadFormResponses = [];
+let currentLeadDetail = null;
 const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent', 'negotiation', 'contract', 'purchase', 'won', 'lost'];
 
 // ===== NAVIGATION =====
@@ -159,13 +160,16 @@ async function renderAdminGate(el) {
 
 // ===== DASHBOARD =====
 async function renderDashboard(el) {
-  const [data, recommendations] = await Promise.all([
+  const [data, recommendations, weeklyAdmin] = await Promise.all([
     api('/api/dashboard/stats'),
     api('/api/google/recommendations').catch(() => []),
+    currentRole === 'admin' ? api('/api/admin/weekly-report').catch(() => null) : Promise.resolve(null),
   ]);
   const leads = data.leads || {};
   const fb = data.fb || {};
   const followups = data.followups || { stats: {}, leads: [] };
+  const waitingOffers = data.waiting_offers || { total: 0, leads: [] };
+  const alerts = data.alerts || [];
   const hasFbData = Number(fb.campaigns || 0) > 0;
 
   el.innerHTML = `
@@ -209,6 +213,20 @@ async function renderDashboard(el) {
       </div>
     </div>
 
+    ${alerts.length ? `
+      <div class="card fade-in" style="border-color:rgba(239,68,68,0.25);background:rgba(239,68,68,0.05);">
+        <div class="card-title">🚨 Напоминания менеджеру</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;">
+          ${alerts.map(alert => `
+            <div style="padding:12px;border:1px solid rgba(255,255,255,0.06);border-radius:10px;background:rgba(255,255,255,0.03);">
+              <div style="font-weight:800;color:#fcd34d;">${alert.title}</div>
+              <div style="font-size:12px;color:#b9bcc7;margin-top:4px;line-height:1.45;">${alert.note}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : ''}
+
     ${(followups.stats?.due_total || 0) ? `
       <div class="card fade-in" style="border-color:rgba(245,158,11,0.35);background:rgba(245,158,11,0.06);">
         <div class="card-title">☎️ Задачи менеджера на сегодня</div>
@@ -237,6 +255,32 @@ async function renderDashboard(el) {
       </div>
     ` : ''}
 
+    ${waitingOffers.leads?.length ? `
+      <div class="card fade-in" style="border-color:rgba(99,102,241,0.35);background:rgba(99,102,241,0.06);">
+        <div class="card-title">📄 Ждут КП</div>
+        <div style="font-size:12px;color:#aaa;margin-bottom:12px;">${waitingOffers.leads.length} лидов по материалам ждут коммерческое предложение.</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Клиент</th><th>Контакт</th><th>Статус</th><th>Интерес</th><th></th></tr></thead>
+            <tbody>
+              ${waitingOffers.leads.map(l => `
+                <tr>
+                  <td style="font-weight:700;color:#ddd;">${l.company_name || l.contact_name || ('Лид #' + l.id)}</td>
+                  <td>${l.phone || l.email || '—'}</td>
+                  <td><span class="badge badge-${l.status || 'interested'}">${statusLabel(l.status || 'interested')}</span></td>
+                  <td style="font-size:12px;color:#bbb;">${l.interest_products || 'Материалы'}</td>
+                  <td style="text-align:right;">
+                    <button class="btn btn-secondary btn-sm" onclick="openLeadDetail(${l.id})">Открыть</button>
+                    ${currentRole === 'admin' ? `<button class="btn btn-primary btn-sm" onclick="openOfferModal(${l.id})">Создать КП</button>` : ''}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    ` : ''}
+
     <div class="grid-2 fade-in">
       <div class="card">
         <div class="card-title">🎯 Какво да правим днес</div>
@@ -262,6 +306,30 @@ async function renderDashboard(el) {
         `).join('')}
       </div>
     </div>
+
+    ${weeklyAdmin ? `
+      <div class="card fade-in">
+        <div class="card-title">🗓️ Админ-отчёт за неделю</div>
+        <div class="stats-grid" style="margin-top:0;">
+          <div class="stat-card"><div class="stat-label">Новые лиды</div><div class="stat-value brand">${weeklyAdmin.summary?.new_leads || 0}</div></div>
+          <div class="stat-card"><div class="stat-label">В работе</div><div class="stat-value blue">${weeklyAdmin.summary?.touched_leads || 0}</div></div>
+          <div class="stat-card"><div class="stat-label">Premium</div><div class="stat-value yellow">${weeklyAdmin.summary?.premium_leads || 0}</div></div>
+          <div class="stat-card"><div class="stat-label">Ждут КП</div><div class="stat-value pink">${weeklyAdmin.summary?.waiting_offer || 0}</div></div>
+          <div class="stat-card"><div class="stat-label">КП за неделю</div><div class="stat-value purple">${weeklyAdmin.summary?.offers_sent || 0}</div></div>
+          <div class="stat-card"><div class="stat-label">Сделано Ростиславом</div><div class="stat-value green">${weeklyAdmin.summary?.manager_done || 0}</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.2fr .8fr;gap:12px;margin-top:14px;">
+          <div style="padding:12px;border:1px solid rgba(255,255,255,0.06);border-radius:10px;">
+            <div style="font-size:12px;font-weight:800;color:#ddd;margin-bottom:8px;">Что требует внимания</div>
+            ${(weeklyAdmin.actions || []).map(item => `<div style="font-size:12px;color:#b9bcc7;line-height:1.5;padding:4px 0;">• ${item}</div>`).join('')}
+          </div>
+          <div style="padding:12px;border:1px solid rgba(255,255,255,0.06);border-radius:10px;">
+            <div style="font-size:12px;font-weight:800;color:#ddd;margin-bottom:8px;">Топ-лиды недели</div>
+            ${(weeklyAdmin.top_leads || []).map(l => `<div style="font-size:12px;color:#b9bcc7;line-height:1.45;padding:4px 0;"><strong style="color:#eee;">${l.company_name || l.contact_name || ('Лид #' + l.id)}</strong> · ${statusLabel(l.status)} · ${l.priority || 'medium'}</div>`).join('') || '<div style="font-size:12px;color:#777;">Нет данных</div>'}
+          </div>
+        </div>
+      </div>
+    ` : ''}
 
     <div class="grid-2 fade-in">
       <div class="card">
@@ -2581,12 +2649,37 @@ async function openLeadDetail(id) {
     const data = await api(`/api/leads/${id}`);
     const offerData = await api(`/api/offers/lead/${id}`).catch(() => ({ offers: [] }));
     const l = data.lead;
+    const snapshot = data.snapshot || {};
     const offers = offerData.offers || [];
     const formResponses = data.form_responses || [];
     const leadNotes = formatLeadNotesForEditor(l.notes);
     currentLeadFormResponses = formResponses;
+    currentLeadDetail = l;
 
     openModal(`${l.company_name || 'Лид #' + l.id}`, `
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px;">
+        <div style="padding:12px;border:1px solid rgba(255,255,255,0.06);border-radius:10px;background:rgba(255,255,255,0.03);">
+          <div style="font-size:11px;color:#8a8f9f;">Lead score</div>
+          <div style="font-size:24px;font-weight:800;color:${snapshot.score?.value >= 75 ? '#f6d365' : snapshot.score?.value >= 45 ? '#8dd3ff' : '#ddd'};">${snapshot.score?.value || 0}</div>
+          <div style="font-size:11px;color:#b9bcc7;">${(snapshot.score?.reasons || []).slice(0, 2).join(' · ') || 'Без сигналов'}</div>
+        </div>
+        <div style="padding:12px;border:1px solid rgba(255,255,255,0.06);border-radius:10px;background:rgba(255,255,255,0.03);">
+          <div style="font-size:11px;color:#8a8f9f;">Статус клиента</div>
+          <div style="font-size:18px;font-weight:800;color:#ddd;">${statusLabel(snapshot.stage || l.status)}</div>
+          <div style="font-size:11px;color:#b9bcc7;">${snapshot.next_action || 'Уточнить следующий шаг'}</div>
+        </div>
+        <div style="padding:12px;border:1px solid rgba(255,255,255,0.06);border-radius:10px;background:rgba(255,255,255,0.03);">
+          <div style="font-size:11px;color:#8a8f9f;">Карточка клиента</div>
+          <div style="font-size:18px;font-weight:800;color:#ddd;">${snapshot.forms_count || 0} форм · ${snapshot.offers_count || 0} КП</div>
+          <div style="font-size:11px;color:#b9bcc7;">${snapshot.latest_comment || 'Комментариев пока нет'}</div>
+        </div>
+        <div style="padding:12px;border:1px solid rgba(255,255,255,0.06);border-radius:10px;background:rgba(255,255,255,0.03);">
+          <div style="font-size:11px;color:#8a8f9f;">Сигналы</div>
+          <div style="font-size:18px;font-weight:800;color:#ddd;">${snapshot.is_premium ? 'Premium' : snapshot.is_specific_object ? 'Объект' : 'Обычный'}</div>
+          <div style="font-size:11px;color:#b9bcc7;">${snapshot.waiting_for_offer ? 'Ждёт КП' : 'КП пока не требуется'}</div>
+        </div>
+      </div>
+
       ${currentRole === 'admin' ? `
         <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;padding:14px 16px;margin-bottom:16px;border:1px solid rgba(99,102,241,0.35);border-radius:10px;background:rgba(99,102,241,0.08);">
           <div>
@@ -2768,9 +2861,9 @@ function humanizeLeadAnswer(value = '', key = '') {
 function renderLeadContactActions(lead = {}) {
   const email = String(lead.email || '').trim();
   const phone = String(lead.phone || '').trim();
-  const whatsapp = whatsappUrl(phone);
-  const viber = viberUrl(phone);
-  const gmail = gmailComposeUrl(lead);
+  const whatsapp = whatsappUrl(phone, buildLeadTemplateMessage(lead, 'intro'));
+  const viber = viberUrl(phone, buildLeadTemplateMessage(lead, 'intro'));
+  const gmail = gmailComposeUrl(lead, 'intro');
 
   return `
     <div style="margin-top:16px;padding:12px 14px;border:1px solid rgba(99,102,241,0.28);border-radius:10px;background:rgba(99,102,241,0.07);">
@@ -2784,6 +2877,11 @@ function renderLeadContactActions(lead = {}) {
           <a class="btn btn-secondary btn-sm ${whatsapp ? '' : 'disabled'}" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬 WhatsApp</a>
           <a class="btn btn-secondary btn-sm ${viber ? '' : 'disabled'}" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲 Viber</a>
         </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+        <button class="btn btn-secondary btn-sm" onclick="openLeadTemplate('intro')">Первичный контакт</button>
+        <button class="btn btn-secondary btn-sm" onclick="openLeadTemplate('catalog')">Каталог / презентация</button>
+        <button class="btn btn-secondary btn-sm" onclick="openLeadTemplate('offer_followup')">Follow-up по КП</button>
       </div>
     </div>
   `;
@@ -2820,11 +2918,48 @@ function defaultLeadMessage(lead = {}) {
   ].filter(line => line !== '').join('\n');
 }
 
-function gmailComposeUrl(lead = {}) {
+function buildLeadTemplateMessage(lead = {}, type = 'intro') {
+  const name = lead.contact_name || lead.company_name || '';
+  const interest = lead.interest_products || lead.area_label || '';
+  const company = lead.company_name || 'BODEX Bulgaria';
+  const templates = {
+    intro: [
+      name ? `Здравейте, ${name},` : 'Здравейте,',
+      '',
+      'Пиша Ви от BODEX Bulgaria относно Вашето запитване за строителни материали.',
+      interest ? `Виждам, че интересът е: ${interest}.` : '',
+      'Можем бързо да уточним нужния материал, обем и срок, за да подготвим следващата стъпка.',
+      '',
+      'Поздрави,',
+      'BODEX Bulgaria',
+    ],
+    catalog: [
+      name ? `Здравейте, ${name},` : 'Здравейте,',
+      '',
+      `Изпращам Ви каталог / презентация от ${company}.`,
+      'След като го прегледате, можем да уточним кои материали са най-подходящи за обекта и какъв е нужният обем.',
+      '',
+      'Поздрави,',
+      'BODEX Bulgaria',
+    ],
+    offer_followup: [
+      name ? `Здравейте, ${name},` : 'Здравейте,',
+      '',
+      'Искам да проследя изпратеното търговско предложение.',
+      'Имате ли обратна връзка по цената, обема или срока за доставка, за да подготвим следващата стъпка?',
+      '',
+      'Поздрави,',
+      'BODEX Bulgaria',
+    ],
+  };
+  return (templates[type] || templates.intro).filter(Boolean).join('\n');
+}
+
+function gmailComposeUrl(lead = {}, type = 'intro') {
   const email = String(lead.email || '').trim();
   if (!email) return '';
   const subject = `BODEX Bulgaria - ${lead.company_name || lead.contact_name || 'материали'}`;
-  const body = defaultLeadMessage(lead);
+  const body = buildLeadTemplateMessage(lead, type);
   const params = new URLSearchParams({
     view: 'cm',
     fs: '1',
@@ -2839,16 +2974,31 @@ function phoneDigits(value = '') {
   return String(value || '').replace(/\D/g, '');
 }
 
-function whatsappUrl(phone) {
+function whatsappUrl(phone, message = '') {
   const digits = phoneDigits(phone);
   if (digits.length < 6) return '';
-  return `https://wa.me/${digits}`;
+  return `https://wa.me/${digits}${message ? `?text=${encodeURIComponent(message)}` : ''}`;
 }
 
-function viberUrl(phone) {
+function viberUrl(phone, message = '') {
   const digits = phoneDigits(phone);
   if (digits.length < 6) return '';
-  return `viber://chat?number=%2B${digits}`;
+  return `viber://chat?number=%2B${digits}${message ? `&text=${encodeURIComponent(message)}` : ''}`;
+}
+
+function openLeadTemplate(type = 'intro') {
+  const lead = currentLeadDetail;
+  if (!lead) return;
+  openModal('Шаблон сообщения', `
+    <div style="font-size:12px;color:#9ca3af;margin-bottom:10px;">Шаблон можно сразу открыть в Gmail, WhatsApp или Viber.</div>
+    <textarea rows="10" style="width:100%;">${escapeHtml(buildLeadTemplateMessage(lead, type))}</textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+      <a class="btn btn-secondary ${lead.email ? '' : 'disabled'}" ${lead.email ? `href="${escapeAttr(gmailComposeUrl(lead, type))}" target="_blank" rel="noopener"` : ''}>✉️ Gmail</a>
+      <a class="btn btn-secondary ${lead.phone ? '' : 'disabled'}" ${lead.phone ? `href="${escapeAttr(whatsappUrl(lead.phone, buildLeadTemplateMessage(lead, type)))}" target="_blank" rel="noopener"` : ''}>💬 WhatsApp</a>
+      <a class="btn btn-secondary ${lead.phone ? '' : 'disabled'}" ${lead.phone ? `href="${escapeAttr(viberUrl(lead.phone, buildLeadTemplateMessage(lead, type)))}"` : ''}>📲 Viber</a>
+      <button class="btn btn-primary" onclick="closeModal(); setTimeout(() => openLeadDetail(${lead.id}), 50)">Назад к лиду</button>
+    </div>
+  `);
 }
 
 function openLeadFormResponsesModal() {

@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const googleSheets = require('../services/googleSheets');
+const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent', 'negotiation', 'contract', 'purchase', 'won', 'lost'];
+const LEGACY_STATUS_MAP = {
+  contacted: 'interested',
+  qualified: 'interested',
+};
 
 async function ensureLeadSheetColumns() {
   const result = await db.query(`
@@ -77,6 +82,13 @@ function dealStageFromLeadStatus(status) {
   return map[status] || null;
 }
 
+function normalizeCrmStatus(status) {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (!normalized) return 'new';
+  const mapped = LEGACY_STATUS_MAP[normalized] || normalized;
+  return CRM_STAGES.includes(mapped) ? mapped : 'new';
+}
+
 function normalizePhone(value) {
   return String(value || '').replace(/\D/g, '');
 }
@@ -134,6 +146,14 @@ function humanizeAreaValue(value = '') {
     .trim();
 }
 
+function isSpecificObjectByArea(areaLabel = '') {
+  return /конкретен\s+обект/i.test(String(areaLabel || ''));
+}
+
+function hasRegularMonthlyDelivery(notes = '') {
+  return /(регулярн\w*\s+месечн\w*\s+доставк\w*|ежемес\w*\s+доставк\w*|regular\s+monthly\s+deliver\w*|monthly\s+supply|регулярни\s+месечни)/i.test(String(notes || ''));
+}
+
 function isGoldLeadByArea(areaLabel = '', notes = '') {
   const areaValue = String(areaLabel || '').toLowerCase();
   const notesValue = String(notes || '').toLowerCase();
@@ -148,19 +168,130 @@ function isGoldLeadByArea(areaLabel = '', notes = '') {
     return true;
   }
 
-  if (/(регулярн\w*\s+месечн\w*\s+доставк\w*|ежемес\w*\s+доставк\w*|regular\s+monthly\s+deliver\w*|monthly\s+supply|регулярни\s+месечни)/i.test(notesValue)) {
+  if (hasRegularMonthlyDelivery(notesValue)) {
     return true;
   }
 
   return false;
 }
 
+function buildLeadScore(lead = {}, extra = {}) {
+  const reasons = [];
+  let score = 0;
+  const areaLabel = extra.area_label || extractLeadAreaLabel(lead) || null;
+  const status = normalizeCrmStatus(lead.status);
+  const phone = String(lead.phone || '').trim();
+  const email = String(lead.email || '').trim();
+  const priority = String(lead.priority || '').toLowerCase();
+  const commentsCount = Number(extra.comments_count || 0);
+  const offerCount = Number(extra.offer_count || 0);
+
+  if (isGoldLeadByArea(areaLabel, lead.notes)) {
+    score += 35;
+    reasons.push('premium объём / регулярные поставки');
+  }
+  if (isSpecificObjectByArea(areaLabel)) {
+    score += 20;
+    reasons.push('конкретный объект');
+  }
+  if (phone && email) {
+    score += 15;
+    reasons.push('есть телефон и email');
+  } else if (phone || email) {
+    score += 8;
+    reasons.push('есть контакт');
+  }
+  if (priority === 'hot') {
+    score += 18;
+    reasons.push('hot priority');
+  } else if (priority === 'high') {
+    score += 12;
+    reasons.push('high priority');
+  }
+  if (['interested', 'catalog_sent', 'thinking', 'negotiation'].includes(status)) {
+    score += 10;
+    reasons.push('лид уже в работе');
+  }
+  if (status === 'offer_sent') {
+    score += 14;
+    reasons.push('ждёт ответ по КП');
+  }
+  if (commentsCount > 0) {
+    score += 6;
+    reasons.push('есть история общения');
+  }
+  if (lead.next_followup_at) {
+    score += 6;
+    reasons.push('назначен следующий контакт');
+  }
+  if (offerCount > 0) {
+    score += 8;
+    reasons.push('КП уже создано');
+  }
+
+  score = Math.min(100, score);
+  return {
+    value: score,
+    label: score >= 75 ? 'hot' : score >= 45 ? 'warm' : 'new',
+    reasons,
+  };
+}
+
+function buildLeadSnapshot(lead = {}, extra = {}) {
+  const areaLabel = extra.area_label || extractLeadAreaLabel(lead) || null;
+  const status = normalizeCrmStatus(lead.status);
+  const score = buildLeadScore(lead, { ...extra, area_label: areaLabel });
+  const latestComment = extra.latest_comment || '';
+  const nextAction = status === 'offer_sent'
+    ? 'Получить обратную связь по КП'
+    : status === 'catalog_sent'
+      ? 'Проверить, посмотрел ли каталог'
+      : status === 'thinking'
+        ? 'Сделать follow-up по сроку ответа'
+        : status === 'interested'
+          ? 'Уточнить объект, объём и срок'
+          : status === 'new'
+            ? 'Первичный контакт'
+            : status === 'negotiation'
+              ? 'Дожать цену / сроки / решение'
+              : status === 'contract'
+                ? 'Подготовить договор и оплату'
+                : status === 'purchase'
+                  ? 'Довести до поставки'
+                  : 'Обновить следующий шаг';
+
+  return {
+    stage: status,
+    score,
+    area_label: areaLabel,
+    is_specific_object: isSpecificObjectByArea(areaLabel),
+    is_premium: isGoldLeadByArea(areaLabel, lead.notes),
+    has_regular_delivery: hasRegularMonthlyDelivery(lead.notes),
+    latest_comment: latestComment || null,
+    next_action: nextAction,
+    forms_count: Number(extra.forms_count || 0),
+    offers_count: Number(extra.offer_count || 0),
+    contact_channels: {
+      phone: !!String(lead.phone || '').trim(),
+      email: !!String(lead.email || '').trim(),
+    },
+    waiting_for_offer: Number(extra.offer_count || 0) === 0 && ['interested', 'catalog_sent', 'thinking', 'negotiation'].includes(status),
+  };
+}
+
 function enrichLeadRow(lead = {}) {
   const areaLabel = extractLeadAreaLabel(lead);
+  const score = buildLeadScore(lead, {
+    area_label: areaLabel,
+    comments_count: lead.latest_comment ? 1 : 0,
+  });
   return {
     ...lead,
+    status: normalizeCrmStatus(lead.status),
     area_label: areaLabel,
     is_gold_lead: isGoldLeadByArea(areaLabel, lead.notes),
+    lead_score: score.value,
+    lead_score_label: score.label,
   };
 }
 
@@ -622,10 +753,28 @@ router.get('/:id', async (req, res) => {
       ORDER BY created_at DESC
     `, [req.params.id]);
 
+    const { rows: offerRows } = await db.query(`
+      SELECT COUNT(*)::int as count
+      FROM offers
+      WHERE lead_id = ?
+    `, [req.params.id]);
+
+    const formResponses = await googleSheets.getLeadFormResponses(req.params.id);
+    const latestComment = activities.find(a => a.action === 'comment')?.description || '';
+    const lead = enrichLeadRow(leads[0]);
+    const snapshot = buildLeadSnapshot(lead, {
+      area_label: lead.area_label,
+      latest_comment: latestComment,
+      comments_count: activities.filter(a => a.action === 'comment').length,
+      forms_count: formResponses.length,
+      offer_count: offerRows[0]?.count || 0,
+    });
+
     res.json({
-      lead: enrichLeadRow(leads[0]),
+      lead,
+      snapshot,
       activities,
-      form_responses: await googleSheets.getLeadFormResponses(req.params.id),
+      form_responses: formResponses,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -696,6 +845,7 @@ router.delete('/:id/comments/:commentId', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const b = normalizeLeadPayload(req.body);
+    const status = normalizeCrmStatus(b.status || 'new');
 
     const { rows } = await db.query(`
       INSERT INTO leads (
@@ -724,7 +874,7 @@ router.post('/', async (req, res) => {
       b.city,
       b.lead_type || 'inquiry',
       b.source || 'website',
-      b.status || 'new',
+      status,
       b.priority || 'medium',
       b.company_type,
       b.interest_products,
@@ -742,7 +892,7 @@ router.post('/', async (req, res) => {
       lead.id,
       'created',
       `Нов лид от ${b.source || 'website'}`,
-      lead.status,
+      status,
       'system',
     ]);
 
@@ -767,6 +917,9 @@ router.put('/:id', async (req, res) => {
     }
 
     const b = normalizeLeadPayload(req.body);
+    if (Object.prototype.hasOwnProperty.call(b, 'status')) {
+      b.status = normalizeCrmStatus(b.status);
+    }
     const fields = [];
     const params = [];
 

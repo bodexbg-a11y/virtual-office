@@ -800,6 +800,55 @@ router.get('/stats', async (req, res) => {
         )
     `);
 
+    const waitingOffers = await db.query(`
+      SELECT
+        l.id,
+        l.company_name,
+        l.contact_name,
+        l.phone,
+        l.email,
+        l.city,
+        l.status,
+        l.priority,
+        l.interest_products,
+        l.next_followup_at,
+        l.created_at
+      FROM leads l
+      LEFT JOIN offers o ON o.lead_id = l.id
+      WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation')
+        AND l.status NOT IN ('won', 'lost')
+        AND ${DASHBOARD_MATERIAL_LEAD_SQL}
+      GROUP BY l.id
+      HAVING COUNT(o.id) = 0
+      ORDER BY
+        CASE l.priority WHEN 'hot' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+        l.updated_at DESC NULLS LAST,
+        l.created_at DESC
+      LIMIT 8
+    `);
+
+    const waitingOffersCount = await db.query(`
+      SELECT COUNT(*)::int as count
+      FROM (
+        SELECT l.id
+        FROM leads l
+        LEFT JOIN offers o ON o.lead_id = l.id
+        WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation')
+          AND l.status NOT IN ('won', 'lost')
+          AND ${DASHBOARD_MATERIAL_LEAD_SQL}
+        GROUP BY l.id
+        HAVING COUNT(o.id) = 0
+      ) q
+    `).catch(() => ({ rows: [] }));
+
+    const alerts = [];
+    const overdue = Number(followupStats.rows[0]?.overdue || 0);
+    const dueToday = Number(followupStats.rows[0]?.today || 0);
+    const waitingCount = waitingOffers.rows.length;
+    if (overdue > 0) alerts.push({ type: 'overdue', title: `Просроченные контакты: ${overdue}`, note: 'Нужно закрыть просроченные перезвоны в первую очередь.' });
+    if (dueToday > 0) alerts.push({ type: 'today', title: `Контакты на сегодня: ${dueToday}`, note: 'Поставлены follow-up задачи на текущий день.' });
+    if (waitingCount > 0) alerts.push({ type: 'offer', title: `Ждут КП: ${waitingCount}`, note: 'Есть лиды по материалам, которым нужно готовить коммерческое предложение.' });
+
     await ensureWorkers();
     const agents = await db.query('SELECT * FROM agents ORDER BY id');
 
@@ -813,6 +862,11 @@ router.get('/stats', async (req, res) => {
         stats: followupStats.rows[0] || {},
         leads: followups.rows,
       },
+      waiting_offers: {
+        total: waitingOffersCount.rows?.[0]?.count || waitingOffers.rows.length,
+        leads: waitingOffers.rows,
+      },
+      alerts,
       worker_summary: await getWorkerSummary(),
     });
   } catch (err) {
