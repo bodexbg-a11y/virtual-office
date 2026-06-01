@@ -257,6 +257,23 @@ class FacebookAdsService {
             const existing = existingRes.rows[0];
 
             if (existing) {
+              await db.query(`
+                UPDATE leads
+                SET
+                  fb_campaign_id = COALESCE(fb_campaign_id, ?),
+                  fb_campaign_name = COALESCE(fb_campaign_name, ?),
+                  fb_ad_id = COALESCE(fb_ad_id, ?),
+                  fb_ad_name = COALESCE(fb_ad_name, ?),
+                  fb_form_id = COALESCE(fb_form_id, ?)
+                WHERE id = ?
+              `, [
+                mapped.fb_campaign_id,
+                mapped.fb_campaign_name,
+                mapped.fb_ad_id,
+                mapped.fb_ad_name,
+                mapped.fb_form_id,
+                existing.id,
+              ]);
               skippedExisting += 1;
               continue;
             }
