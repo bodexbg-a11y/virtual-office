@@ -135,22 +135,24 @@ function humanizeAreaValue(value = '') {
 }
 
 function isGoldLeadByArea(areaLabel = '', notes = '') {
-  const value = `${String(areaLabel || '')} ${String(notes || '')}`.toLowerCase();
-  if (!value) return false;
-  if (/(400\s*\+|400\s*м²|400\s*m²|400\s*или\s*повече|400\s*or\s*more|над\s*400)/i.test(value)) {
+  const areaValue = String(areaLabel || '').toLowerCase();
+  const notesValue = String(notes || '').toLowerCase();
+
+  if (!areaValue && !notesValue) return false;
+
+  if (/(400\s*\+|400\s*м²|400\s*m²|400\s*или\s*повече|400\s*or\s*more|над\s*400|от\s*400)/i.test(areaValue)) {
     return true;
   }
 
-  if (/(1000\s*\+|1000\s*м²|1000\s*m²|над\s*1000|от\s*1000|1000\s*или\s*повече|1000\s*or\s*more)/i.test(value)) {
+  if (/(1000\s*\+|1000\s*м²|1000\s*m²|над\s*1000|от\s*1000|1000\s*или\s*повече|1000\s*or\s*more)/i.test(areaValue)) {
     return true;
   }
 
-  if (/(регулярн\w*\s+месечн\w*\s+доставк\w*|регулярн\w*\s+доставк\w*|ежемес\w*\s+доставк\w*|monthly\s+deliver\w*|regular\s+monthly\s+deliver\w*|monthly\s+supply|регулярни\s+месечни)/i.test(value)) {
+  if (/(регулярн\w*\s+месечн\w*\s+доставк\w*|ежемес\w*\s+доставк\w*|regular\s+monthly\s+deliver\w*|monthly\s+supply|регулярни\s+месечни)/i.test(notesValue)) {
     return true;
   }
 
-  const nums = [...value.matchAll(/\d+/g)].map(match => Number(match[0]));
-  return nums.some(num => num >= 400);
+  return false;
 }
 
 function enrichLeadRow(lead = {}) {
