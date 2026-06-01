@@ -105,6 +105,55 @@ function normalizeLeadPayload(payload = {}) {
   return normalized;
 }
 
+function extractLeadAreaLabel(lead = {}) {
+  const text = String(lead.notes || '').replace(/\r/g, '');
+  if (!text) return null;
+
+  const patterns = [
+    /Обем\s*\/\s*тип\s*запитване\s*:\s*([^\n|]+)/i,
+    /какъв[\s_]*тип[\s_]*запитване[^\n:]*:\s*([^\n|]+)/i,
+    /обем[^\n:]*:\s*([^\n|]+)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match?.[1]) continue;
+    return humanizeAreaValue(match[1]);
+  }
+
+  return null;
+}
+
+function humanizeAreaValue(value = '') {
+  return String(value || '')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/м2/gi, 'м²')
+    .replace(/m2/gi, 'm²')
+    .replace(/\s*\+\s*/g, '+')
+    .trim();
+}
+
+function isGoldLeadByArea(areaLabel = '') {
+  const value = String(areaLabel || '').toLowerCase();
+  if (!value) return false;
+  if (/(400\s*\+|400\s*м²|400\s*m²|400\s*или\s*повече|400\s*or\s*more|над\s*400|повече)/i.test(value)) {
+    return true;
+  }
+
+  const nums = [...value.matchAll(/\d+/g)].map(match => Number(match[0]));
+  return nums.some(num => num >= 400);
+}
+
+function enrichLeadRow(lead = {}) {
+  const areaLabel = extractLeadAreaLabel(lead);
+  return {
+    ...lead,
+    area_label: areaLabel,
+    is_gold_lead: isGoldLeadByArea(areaLabel),
+  };
+}
+
 const LEAD_TEXT_SQL = "lower(concat_ws(' ', coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))";
 const MATERIAL_LEAD_SQL = `(
   google_sheet_name = 'МАТЕРИАЛЫ'
@@ -437,7 +486,7 @@ router.get('/', async (req, res) => {
     `, params);
 
     res.json({
-      leads: rows,
+      leads: rows.map(enrichLeadRow),
       total: countRes.rows[0]?.count || 0,
     });
   } catch (err) {
@@ -564,7 +613,7 @@ router.get('/:id', async (req, res) => {
     `, [req.params.id]);
 
     res.json({
-      lead: leads[0],
+      lead: enrichLeadRow(leads[0]),
       activities,
       form_responses: await googleSheets.getLeadFormResponses(req.params.id),
     });
