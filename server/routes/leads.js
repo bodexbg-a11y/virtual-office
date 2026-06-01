@@ -85,6 +85,26 @@ function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function normalizeLeadPayload(payload = {}) {
+  const normalized = {};
+
+  for (const [key, value] of Object.entries(payload)) {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      normalized[key] = trimmed === '' ? null : trimmed;
+    } else {
+      normalized[key] = value;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(normalized, 'estimated_value')) {
+    const parsed = Number(normalized.estimated_value);
+    normalized.estimated_value = Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return normalized;
+}
+
 const LEAD_TEXT_SQL = "lower(concat_ws(' ', coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))";
 const MATERIAL_LEAD_SQL = `(
   google_sheet_name = 'МАТЕРИАЛЫ'
@@ -605,7 +625,7 @@ router.delete('/:id/comments/:commentId', async (req, res) => {
 // POST create lead
 router.post('/', async (req, res) => {
   try {
-    const b = req.body;
+    const b = normalizeLeadPayload(req.body);
 
     const { rows } = await db.query(`
       INSERT INTO leads (
@@ -676,7 +696,7 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Not found' });
     }
 
-    const b = req.body;
+    const b = normalizeLeadPayload(req.body);
     const fields = [];
     const params = [];
 

@@ -2509,7 +2509,13 @@ async function createLead(e) {
   e.preventDefault();
   const form = e.target;
   const data = Object.fromEntries(new FormData(form));
-  if (data.estimated_value) data.estimated_value = parseFloat(data.estimated_value);
+  Object.keys(data).forEach((key) => {
+    if (typeof data[key] === 'string') {
+      data[key] = data[key].trim();
+      if (data[key] === '') data[key] = null;
+    }
+  });
+  data.estimated_value = data.estimated_value ? parseFloat(data.estimated_value) : null;
   try {
     await api('/api/leads', { method: 'POST', body: data });
     closeModal();
