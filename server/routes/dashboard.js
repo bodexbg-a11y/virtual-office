@@ -735,7 +735,28 @@ router.get('/stats', async (req, res) => {
           WHEN status = 'new' THEN 'Новый лид'
           WHEN priority IN ('hot', 'high') THEN 'Высокий приоритет'
           ELSE 'Связаться'
-        END as today_reason
+        END as today_reason,
+        CASE
+          WHEN next_followup_at IS NOT NULL AND (next_followup_at < NOW() OR next_followup_at::date = CURRENT_DATE)
+            THEN CASE
+              WHEN COALESCE(NULLIF(trim(phone), ''), '') <> '' THEN 'Позвонить + написать в Viber'
+              WHEN COALESCE(NULLIF(trim(email), ''), '') <> '' THEN 'Написать Email'
+              ELSE 'Пропинговать вручную'
+            END
+          WHEN status = 'new'
+            THEN CASE
+              WHEN COALESCE(NULLIF(trim(phone), ''), '') <> '' THEN 'Первичный звонок'
+              WHEN COALESCE(NULLIF(trim(email), ''), '') <> '' THEN 'Первичный Email'
+              ELSE 'Проверить контакт и связаться'
+            END
+          WHEN priority IN ('hot', 'high')
+            THEN CASE
+              WHEN COALESCE(NULLIF(trim(phone), ''), '') <> '' THEN 'Пропинговать: звонок + Viber'
+              WHEN COALESCE(NULLIF(trim(email), ''), '') <> '' THEN 'Пропинговать: Email'
+              ELSE 'Связаться вручную'
+            END
+          ELSE 'Связаться'
+        END as manager_action
       FROM leads
       WHERE status NOT IN ('won', 'lost')
         AND ${DASHBOARD_MATERIAL_LEAD_SQL}

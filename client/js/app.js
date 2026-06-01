@@ -211,13 +211,13 @@ async function renderDashboard(el) {
 
     ${(followups.stats?.due_total || 0) ? `
       <div class="card fade-in" style="border-color:rgba(245,158,11,0.35);background:rgba(245,158,11,0.06);">
-        <div class="card-title">☎️ Позвонить сегодня</div>
+        <div class="card-title">☎️ Задачи менеджера на сегодня</div>
         <div style="font-size:12px;color:#aaa;margin-bottom:12px;">
           ${followups.stats.today || 0} перезвонов на сегодня · ${followups.stats.overdue || 0} просрочено · ${followups.stats.new_leads || 0} новых · ${followups.stats.high_priority || 0} high priority
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Когда</th><th>Клиент</th><th>Контакт</th><th>Почему сегодня</th><th>Статус</th><th></th></tr></thead>
+            <thead><tr><th>Когда</th><th>Клиент</th><th>Контакт</th><th>Почему сегодня</th><th>Что сделать</th><th>Статус</th><th></th></tr></thead>
             <tbody>
               ${followups.leads.map(l => `
                 <tr>
@@ -225,6 +225,7 @@ async function renderDashboard(el) {
                   <td style="font-weight:700;color:#ddd;">${l.company_name || l.contact_name || ('Лид #' + l.id)}<div style="font-size:10px;color:#777;">${l.city || ''}</div></td>
                   <td>${l.phone || l.email || '—'}</td>
                   <td style="font-size:12px;color:#ddd;">${l.today_reason || 'Связаться'}</td>
+                  <td style="font-size:12px;color:#ddd;font-weight:600;">${l.manager_action || 'Связаться'}</td>
                   <td><span class="badge badge-${l.status || 'new'}">${statusLabel(l.status)}</span></td>
                   <td><button class="btn btn-secondary btn-sm" onclick="openLeadDetail(${l.id})">Открыть</button></td>
                 </tr>
