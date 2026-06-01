@@ -475,7 +475,35 @@ router.get('/', async (req, res) => {
           WHERE lead_id = leads.id AND action = 'comment'
           ORDER BY created_at DESC
           LIMIT 1
-        ) as latest_comment_at
+        ) as latest_comment_at,
+        CASE
+          WHEN next_followup_at IS NOT NULL AND next_followup_at < NOW() THEN 'Просроченный звонок'
+          WHEN next_followup_at IS NOT NULL AND next_followup_at::date = CURRENT_DATE THEN 'Перезвонить сегодня'
+          WHEN status = 'new' THEN 'Новый лид'
+          WHEN priority IN ('hot', 'high') THEN 'Высокий приоритет'
+          ELSE 'Связаться'
+        END as today_reason,
+        CASE
+          WHEN next_followup_at IS NOT NULL AND (next_followup_at < NOW() OR next_followup_at::date = CURRENT_DATE)
+            THEN CASE
+              WHEN COALESCE(NULLIF(trim(phone), ''), '') <> '' THEN 'Позвонить + написать в Viber'
+              WHEN COALESCE(NULLIF(trim(email), ''), '') <> '' THEN 'Написать Email'
+              ELSE 'Пропинговать вручную'
+            END
+          WHEN status = 'new'
+            THEN CASE
+              WHEN COALESCE(NULLIF(trim(phone), ''), '') <> '' THEN 'Первичный звонок'
+              WHEN COALESCE(NULLIF(trim(email), ''), '') <> '' THEN 'Первичный Email'
+              ELSE 'Проверить контакт и связаться'
+            END
+          WHEN priority IN ('hot', 'high')
+            THEN CASE
+              WHEN COALESCE(NULLIF(trim(phone), ''), '') <> '' THEN 'Пропинговать: звонок + Viber'
+              WHEN COALESCE(NULLIF(trim(email), ''), '') <> '' THEN 'Пропинговать: Email'
+              ELSE 'Связаться вручную'
+            END
+          ELSE 'Связаться'
+        END as manager_action
       FROM leads ${whereClause}
       ORDER BY ${orderBy}
       LIMIT ? OFFSET ?

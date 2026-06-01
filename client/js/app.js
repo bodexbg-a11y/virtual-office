@@ -1599,6 +1599,7 @@ async function renderLeads(el, filters = {}) {
     api('/api/leads/summary').catch(() => ({ total: 0, statuses: [], sources: [] })),
   ]);
   const rows = data.leads || [];
+  const isDailyCallsView = filters.followup === 'due';
   const statusCounts = Object.fromEntries((summary.statuses || []).map(row => [row.status, row.count]));
 
   el.innerHTML = `
@@ -1671,7 +1672,7 @@ async function renderLeads(el, filters = {}) {
               <th>Статус</th>
               <th>Приоритет</th>
               <th>Контакт</th>
-              <th>Тип / интерес</th>
+              ${isDailyCallsView ? '<th>Почему сегодня</th><th>Что сделать</th>' : '<th>Тип / интерес</th>'}
               <th>Комментарий</th>
               <th>След. звонок</th>
               <th>Дата</th>
@@ -1691,7 +1692,10 @@ async function renderLeads(el, filters = {}) {
                 </td>
                 <td><span class="badge badge-${l.priority}">${l.priority}</span></td>
                 <td onclick="event.stopPropagation();" style="min-width:116px;">${renderLeadTableContactActions(l)}</td>
-                <td style="max-width:240px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};">${l.area_label || '—'}</td>
+                ${isDailyCallsView
+                  ? `<td style="max-width:180px;font-size:11px;color:#ddd;">${l.today_reason || 'Связаться'}</td>
+                     <td style="max-width:220px;font-size:11px;color:#f3f4f6;font-weight:700;">${l.manager_action || 'Связаться'}</td>`
+                  : `<td style="max-width:240px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};">${l.area_label || '—'}</td>`}
                 <td style="width:120px;max-width:120px;" onclick="event.stopPropagation();">
                   <button class="btn btn-sm btn-secondary" title="${escapeAttr(l.latest_comment || 'Добавить комментарий')}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="max-width:112px;display:inline-flex;gap:5px;align-items:center;">
                     💬 <span style="display:inline-block;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : 'Добавить'}</span>
@@ -1708,7 +1712,7 @@ async function renderLeads(el, filters = {}) {
                   <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadComment(${l.id})">💬</button>
                 </td>
               </tr>
-            `).join('') : '<tr><td colspan="11" style="text-align:center;color:#666;padding:30px;">Нет лидов по этому фильтру.</td></tr>'}
+            `).join('') : `<tr><td colspan="${isDailyCallsView ? 13 : 12}" style="text-align:center;color:#666;padding:30px;">Нет лидов по этому фильтру.</td></tr>`}
           </tbody>
         </table>
       </div>
