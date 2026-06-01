@@ -13,6 +13,14 @@ async function ensureIgnoredFacebookLeads() {
   `);
 }
 
+async function ensureFacebookLeadColumns() {
+  await db.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS fb_campaign_id TEXT`);
+  await db.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS fb_campaign_name TEXT`);
+  await db.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS fb_ad_id TEXT`);
+  await db.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS fb_ad_name TEXT`);
+  await db.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS fb_form_id TEXT`);
+}
+
 class FacebookAdsService {
   constructor() {
     this.accessToken = process.env.FB_ACCESS_TOKEN;
@@ -38,6 +46,7 @@ class FacebookAdsService {
     try {
       await db.query(`ALTER TABLE fb_campaigns ADD COLUMN IF NOT EXISTS reach INTEGER DEFAULT 0`);
       await db.query(`ALTER TABLE fb_campaigns ADD COLUMN IF NOT EXISTS insight_window TEXT`);
+      await ensureFacebookLeadColumns();
 
       const res = await axios.get(`${this.baseUrl}/${this.adAccountId}/campaigns`, {
         params: {
@@ -115,10 +124,13 @@ class FacebookAdsService {
         ]);
       }
 
+      const leadFallback = await this.syncCampaignLeadCountsFromLeads();
+
       return {
         success: true,
         campaigns: res.data.data?.length || 0,
         campaigns_with_insights: withInsights,
+        campaigns_with_lead_fallback: leadFallback.updated_campaigns,
       };
     } catch (err) {
       throw new Error(facebookErrorMessage(err));
@@ -153,16 +165,28 @@ class FacebookAdsService {
 
     const leads = actionValue(row.actions, [
       'lead',
+      'offsite_conversion.lead',
+      'onsite_conversion.lead',
       'onsite_conversion.lead_grouped',
       'offsite_conversion.fb_pixel_lead',
+      'onsite_conversion.fb_pixel_lead',
+      'leadgen',
       'leadgen_grouped',
-    ]);
+      'onsite_conversion.leadgen',
+      'onsite_conversion.leadgen_grouped',
+    ], { max: true });
 
     const cpl = actionValue(row.cost_per_action_type, [
       'lead',
+      'offsite_conversion.lead',
+      'onsite_conversion.lead',
       'onsite_conversion.lead_grouped',
       'offsite_conversion.fb_pixel_lead',
+      'onsite_conversion.fb_pixel_lead',
+      'leadgen',
       'leadgen_grouped',
+      'onsite_conversion.leadgen',
+      'onsite_conversion.leadgen_grouped',
     ]);
 
     return {
@@ -191,6 +215,7 @@ class FacebookAdsService {
         WHERE fb_lead_id IS NOT NULL
       `);
 
+      await ensureFacebookLeadColumns();
       await ensureIgnoredFacebookLeads();
 
       const pages = await this.getPages();
@@ -270,11 +295,16 @@ class FacebookAdsService {
                 notes,
                 assigned_to,
                 fb_lead_id,
+                fb_campaign_id,
+                fb_campaign_name,
+                fb_ad_id,
+                fb_ad_name,
+                fb_form_id,
                 google_sheet_name,
                 google_sheet_row,
                 created_at
               )
-              VALUES (?, ?, ?, ?, ?, 'fb_lead', 'facebook', ?, ?, ?, ?, ?, 'rostislav', ?, ?, ?, COALESCE(?::timestamp, NOW()))
+              VALUES (?, ?, ?, ?, ?, 'fb_lead', 'facebook', ?, ?, ?, ?, ?, 'rostislav', ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?::timestamp, NOW()))
               RETURNING id
             `, [
               mapped.company_name,
@@ -288,6 +318,11 @@ class FacebookAdsService {
               mapped.interest_products,
               mapped.notes,
               mapped.fb_lead_id,
+              mapped.fb_campaign_id,
+              mapped.fb_campaign_name,
+              mapped.fb_ad_id,
+              mapped.fb_ad_name,
+              mapped.fb_form_id,
               mapped.google_sheet_name || null,
               mapped.google_sheet_row || null,
               mapped.created_at,
@@ -346,6 +381,57 @@ class FacebookAdsService {
     } catch (err) {
       throw new Error(facebookErrorMessage(err));
     }
+  }
+
+  async syncCampaignLeadCountsFromLeads() {
+    await ensureFacebookLeadColumns();
+
+    const { rows: campaigns } = await db.query(`
+      SELECT fb_campaign_id, spend, leads_count, insight_window
+      FROM fb_campaigns
+      WHERE fb_campaign_id IS NOT NULL
+        AND fb_campaign_id NOT LIKE 'camp_%'
+    `);
+
+    let updatedCampaigns = 0;
+
+    for (const campaign of campaigns) {
+      const window = campaign.insight_window || 'last_30d';
+      const dateClause = campaignLeadDateClause(window);
+      const { rows } = await db.query(`
+        SELECT COUNT(*)::int as leads
+        FROM leads
+        WHERE source = 'facebook'
+          AND fb_campaign_id = ?
+          ${dateClause}
+      `, [campaign.fb_campaign_id]);
+
+      const fallbackLeads = Number(rows[0]?.leads || 0);
+      const currentLeads = Number(campaign.leads_count || 0);
+
+      if (fallbackLeads <= currentLeads) continue;
+
+      await db.query(`
+        UPDATE fb_campaigns
+        SET
+          leads_count = ?,
+          cost_per_lead = CASE
+            WHEN ? > 0 THEN ROUND((COALESCE(spend, 0) / ?)::numeric, 2)
+            ELSE cost_per_lead
+          END,
+          updated_at = NOW()
+        WHERE fb_campaign_id = ?
+      `, [
+        fallbackLeads,
+        fallbackLeads,
+        fallbackLeads,
+        campaign.fb_campaign_id,
+      ]);
+
+      updatedCampaigns += 1;
+    }
+
+    return { updated_campaigns: updatedCampaigns };
   }
 
   async getPages() {
@@ -461,9 +547,25 @@ function round(value) {
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
 }
 
-function actionValue(actions, names) {
-  const found = (actions || []).find(item => names.includes(item.action_type));
+function actionValue(actions, names, options = {}) {
+  const normalizedNames = names.map(name => String(name).toLowerCase());
+  const matches = (actions || []).filter(item => {
+    const type = String(item.action_type || '').toLowerCase();
+    return normalizedNames.includes(type) || type.includes('lead') || type.includes('leadgen');
+  });
+
+  if (options.max) {
+    return round(Math.max(0, ...matches.map(item => Number(item.value || 0))));
+  }
+
+  const found = matches.find(item => Number(item.value || 0) > 0) || matches[0];
   return found ? round(found.value) : 0;
+}
+
+function campaignLeadDateClause(window) {
+  if (window === 'today') return 'AND created_at::date = CURRENT_DATE';
+  if (window === 'last_7d') return "AND created_at >= NOW() - INTERVAL '7 days'";
+  return "AND created_at >= NOW() - INTERVAL '30 days'";
 }
 
 function mapFacebookLead(lead, page, form) {
@@ -494,6 +596,11 @@ function mapFacebookLead(lead, page, form) {
 
   return {
     fb_lead_id: lead.id,
+    fb_campaign_id: lead.campaign_id || null,
+    fb_campaign_name: lead.campaign_name || null,
+    fb_ad_id: lead.ad_id || null,
+    fb_ad_name: lead.ad_name || null,
+    fb_form_id: lead.form_id || form.id || null,
     created_at: lead.created_time ? lead.created_time.replace('T', ' ').replace(/\+\d{4}$/, '') : null,
     status: 'new',
     company_name: company || fullName || `Facebook Lead ${lead.id}`,

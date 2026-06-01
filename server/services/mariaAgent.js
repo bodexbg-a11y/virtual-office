@@ -60,6 +60,8 @@ async function executeRun(options = {}) {
 
   try {
     await facebookAds.syncCampaigns();
+    await facebookAds.syncLeadForms();
+    await facebookAds.syncCampaignLeadCountsFromLeads();
     const campaigns = await facebookAds.getCampaigns();
     const sourceCampaigns = activeOnly ? campaigns.filter(c => c.status === 'ACTIVE') : campaigns;
     const rows = sourceCampaigns.map(analyzeCampaign);
