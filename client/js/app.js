@@ -1598,12 +1598,12 @@ async function renderLeads(el, filters = {}) {
     api(`/api/leads?${params}`),
     api('/api/leads/summary').catch(() => ({ total: 0, statuses: [], sources: [] })),
   ]);
-  const rows = data.leads || [];
+  const rows = applyLeadQuickFilters(data.leads || [], filters);
   const statusCounts = Object.fromEntries((summary.statuses || []).map(row => [row.status, row.count]));
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>📋 Лидове <span style="color:#666;font-size:14px;">(${data.total})</span></h2>
+      <h2>📋 Лидове <span style="color:#666;font-size:14px;">(${rows.length})</span></h2>
       <div class="page-header-actions">
         <button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 Синхронизирай FB лиды</button>
         <button class="btn btn-secondary" onclick="syncLeadsWithSheets()">📑 Синх с таблицами</button>
@@ -1638,24 +1638,28 @@ async function renderLeads(el, filters = {}) {
         <option value="">Всички статуси</option>
         ${CRM_STAGES.map(status => `<option value="${status}" ${filters.status===status?'selected':''}>${statusLabel(status)}</option>`).join('')}
       </select>
-      <select id="lead-filter-source" onchange="searchLeads()">
-        <option value="">Всички източници</option>
-        <option value="website" ${filters.source==='website'?'selected':''}>Сайт</option>
-        <option value="facebook" ${filters.source==='facebook'?'selected':''}>Facebook</option>
-        <option value="chatbot" ${filters.source==='chatbot'?'selected':''}>Чатбот</option>
-        <option value="phone" ${filters.source==='phone'?'selected':''}>Телефон</option>
-        <option value="email" ${filters.source==='email'?'selected':''}>Email</option>
-      </select>
-      <select id="lead-date-range" onchange="searchLeads()">
-        <option value="" ${!filters.date_range?'selected':''}>Все даты</option>
-        <option value="today" ${filters.date_range==='today'?'selected':''}>Сегодня</option>
-        <option value="week" ${filters.date_range==='week'?'selected':''}>7 дней</option>
-      </select>
-      <select id="lead-sort" onchange="searchLeads()">
-        <option value="date_desc" ${filters.sort!=='date_asc' && filters.sort!=='status'?'selected':''}>Новые сверху</option>
-        <option value="date_asc" ${filters.sort==='date_asc'?'selected':''}>Старые сверху</option>
-        <option value="status" ${filters.sort==='status'?'selected':''}>По статусу</option>
-      </select>
+      <button
+        class="btn ${filters.volume_sort === 'desc' ? 'btn-primary' : 'btn-secondary'}"
+        onclick="toggleLeadQuickFilter('volume_sort', 'desc')"
+        title="Сначала самые большие объёмы"
+      >
+        📐 По объёму
+      </button>
+      <button
+        class="btn ${filters.premium === '1' ? 'btn-primary' : 'btn-secondary'}"
+        onclick="toggleLeadQuickFilter('premium', '1')"
+        title="Только premium-лиды"
+        style="${filters.premium === '1' ? 'background:#b68a28;border-color:#f6d365;color:#fff7d6;' : 'color:#f6d365;border-color:rgba(246,211,101,.35);'}"
+      >
+        ✨ Premium
+      </button>
+      <button
+        class="btn ${filters.distributors === '1' ? 'btn-primary' : 'btn-secondary'}"
+        onclick="toggleLeadQuickFilter('distributors', '1')"
+        title="Показать только дистрибьюторов"
+      >
+        🏷️ Дистрибьюторы
+      </button>
       <button class="btn btn-secondary" onclick="searchLeads()">🔍</button>
     </div>
 
@@ -1728,10 +1732,51 @@ function leadTab(label, filters, count, active) {
 function searchLeads() {
   const search = document.getElementById('lead-search').value;
   const status = document.getElementById('lead-filter-status').value;
-  const source = document.getElementById('lead-filter-source').value;
-  const date_range = document.getElementById('lead-date-range').value;
-  const sort = document.getElementById('lead-sort').value;
-  renderLeads(document.getElementById('main'), { ...currentLeadFilters, search, status, source, date_range, sort });
+  renderLeads(document.getElementById('main'), { ...currentLeadFilters, search, status });
+}
+
+function toggleLeadQuickFilter(key, value) {
+  const nextFilters = { ...currentLeadFilters };
+  if (nextFilters[key] === value) {
+    delete nextFilters[key];
+  } else {
+    nextFilters[key] = value;
+  }
+  renderLeads(document.getElementById('main'), nextFilters);
+}
+
+function applyLeadQuickFilters(rows, filters = {}) {
+  let result = [...rows];
+
+  if (filters.premium === '1') {
+    result = result.filter(row => !!row.is_gold_lead);
+  }
+
+  if (filters.distributors === '1') {
+    result = result.filter(isDistributorLead);
+  }
+
+  if (filters.volume_sort === 'desc') {
+    result.sort((a, b) => {
+      const volumeDiff = extractLeadAreaNumber(b.area_label) - extractLeadAreaNumber(a.area_label);
+      if (volumeDiff !== 0) return volumeDiff;
+      if (Number(b.is_gold_lead) !== Number(a.is_gold_lead)) return Number(b.is_gold_lead) - Number(a.is_gold_lead);
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+  }
+
+  return result;
+}
+
+function extractLeadAreaNumber(areaLabel = '') {
+  const matches = String(areaLabel || '').match(/\d+/g);
+  if (!matches || !matches.length) return 0;
+  return Math.max(...matches.map(Number));
+}
+
+function isDistributorLead(lead = {}) {
+  const text = `${lead.company_type || ''} ${lead.notes || ''} ${lead.form_summary || ''}`.toLowerCase();
+  return /дистриб|distributor|dealer|дилър|reseller|търговец/.test(text);
 }
 
 async function syncFacebookLeadsFromLeadsPage() {
