@@ -134,10 +134,18 @@ function humanizeAreaValue(value = '') {
     .trim();
 }
 
-function isGoldLeadByArea(areaLabel = '') {
-  const value = String(areaLabel || '').toLowerCase();
+function isGoldLeadByArea(areaLabel = '', notes = '') {
+  const value = `${String(areaLabel || '')} ${String(notes || '')}`.toLowerCase();
   if (!value) return false;
-  if (/(400\s*\+|400\s*м²|400\s*m²|400\s*или\s*повече|400\s*or\s*more|над\s*400|повече)/i.test(value)) {
+  if (/(400\s*\+|400\s*м²|400\s*m²|400\s*или\s*повече|400\s*or\s*more|над\s*400)/i.test(value)) {
+    return true;
+  }
+
+  if (/(1000\s*\+|1000\s*м²|1000\s*m²|над\s*1000|от\s*1000|1000\s*или\s*повече|1000\s*or\s*more)/i.test(value)) {
+    return true;
+  }
+
+  if (/(регулярн\w*\s+месечн\w*\s+доставк\w*|регулярн\w*\s+доставк\w*|ежемес\w*\s+доставк\w*|monthly\s+deliver\w*|regular\s+monthly\s+deliver\w*|monthly\s+supply|регулярни\s+месечни)/i.test(value)) {
     return true;
   }
 
@@ -150,7 +158,7 @@ function enrichLeadRow(lead = {}) {
   return {
     ...lead,
     area_label: areaLabel,
-    is_gold_lead: isGoldLeadByArea(areaLabel),
+    is_gold_lead: isGoldLeadByArea(areaLabel, lead.notes),
   };
 }
 
@@ -475,35 +483,7 @@ router.get('/', async (req, res) => {
           WHERE lead_id = leads.id AND action = 'comment'
           ORDER BY created_at DESC
           LIMIT 1
-        ) as latest_comment_at,
-        CASE
-          WHEN next_followup_at IS NOT NULL AND next_followup_at < NOW() THEN 'Просроченный звонок'
-          WHEN next_followup_at IS NOT NULL AND next_followup_at::date = CURRENT_DATE THEN 'Перезвонить сегодня'
-          WHEN status = 'new' THEN 'Новый лид'
-          WHEN priority IN ('hot', 'high') THEN 'Высокий приоритет'
-          ELSE 'Связаться'
-        END as today_reason,
-        CASE
-          WHEN next_followup_at IS NOT NULL AND (next_followup_at < NOW() OR next_followup_at::date = CURRENT_DATE)
-            THEN CASE
-              WHEN COALESCE(NULLIF(trim(phone), ''), '') <> '' THEN 'Позвонить + написать в Viber'
-              WHEN COALESCE(NULLIF(trim(email), ''), '') <> '' THEN 'Написать Email'
-              ELSE 'Пропинговать вручную'
-            END
-          WHEN status = 'new'
-            THEN CASE
-              WHEN COALESCE(NULLIF(trim(phone), ''), '') <> '' THEN 'Первичный звонок'
-              WHEN COALESCE(NULLIF(trim(email), ''), '') <> '' THEN 'Первичный Email'
-              ELSE 'Проверить контакт и связаться'
-            END
-          WHEN priority IN ('hot', 'high')
-            THEN CASE
-              WHEN COALESCE(NULLIF(trim(phone), ''), '') <> '' THEN 'Пропинговать: звонок + Viber'
-              WHEN COALESCE(NULLIF(trim(email), ''), '') <> '' THEN 'Пропинговать: Email'
-              ELSE 'Связаться вручную'
-            END
-          ELSE 'Связаться'
-        END as manager_action
+        ) as latest_comment_at
       FROM leads ${whereClause}
       ORDER BY ${orderBy}
       LIMIT ? OFFSET ?
