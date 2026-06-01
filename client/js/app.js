@@ -1660,6 +1660,13 @@ async function renderLeads(el, filters = {}) {
       >
         🏷️ Дистрибьюторы
       </button>
+      <button
+        class="btn ${filters.specific_object === '1' ? 'btn-primary' : 'btn-secondary'}"
+        onclick="toggleLeadQuickFilter('specific_object', '1')"
+        title="Материалы под конкретный объект"
+      >
+        🏗️ Конкретный объект
+      </button>
       <button class="btn btn-secondary" onclick="searchLeads()">🔍</button>
     </div>
 
@@ -1756,6 +1763,10 @@ function applyLeadQuickFilters(rows, filters = {}) {
     result = result.filter(isDistributorLead);
   }
 
+  if (filters.specific_object === '1') {
+    result = result.filter(isSpecificObjectLead);
+  }
+
   if (filters.volume_sort === 'desc') {
     result.sort((a, b) => {
       const volumeDiff = extractLeadAreaNumber(b.area_label) - extractLeadAreaNumber(a.area_label);
@@ -1777,6 +1788,11 @@ function extractLeadAreaNumber(areaLabel = '') {
 function isDistributorLead(lead = {}) {
   const text = `${lead.company_type || ''} ${lead.notes || ''} ${lead.form_summary || ''}`.toLowerCase();
   return /дистриб|distributor|dealer|дилър|reseller|търговец/.test(text);
+}
+
+function isSpecificObjectLead(lead = {}) {
+  const text = `${lead.notes || ''} ${lead.form_summary || ''} ${lead.interest_products || ''}`.toLowerCase();
+  return /конкретн\w*\s+об[еь]кт|за\s+конкретн\w*\s+об[еь]кт|specific\s+object|type\s+object|тип\s+об[еь]кта|об[еь]кт\s+за\s+материал/.test(text);
 }
 
 async function syncFacebookLeadsFromLeadsPage() {
