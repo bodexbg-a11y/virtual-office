@@ -1633,11 +1633,6 @@ async function renderLeads(el, filters = {}) {
     </div>
 
     <div class="search-bar fade-in">
-      <input type="text" placeholder="Търси по фирма, контакт, email, град..." id="lead-search" value="${filters.search || ''}" onkeyup="if(event.key==='Enter')searchLeads()">
-      <select id="lead-filter-status" onchange="searchLeads()">
-        <option value="">Всички статуси</option>
-        ${CRM_STAGES.map(status => `<option value="${status}" ${filters.status===status?'selected':''}>${statusLabel(status)}</option>`).join('')}
-      </select>
       <button
         class="btn ${filters.volume_sort === 'desc' ? 'btn-primary' : 'btn-secondary'}"
         onclick="toggleLeadQuickFilter('volume_sort', 'desc')"
@@ -1667,7 +1662,6 @@ async function renderLeads(el, filters = {}) {
       >
         🏗️ Конкретный объект
       </button>
-      <button class="btn btn-secondary" onclick="searchLeads()">🔍</button>
     </div>
 
     <div class="card fade-in">
@@ -1734,12 +1728,6 @@ function leadTab(label, filters, count, active) {
       <span>${label}</span><strong>${count}</strong>
     </button>
   `;
-}
-
-function searchLeads() {
-  const search = document.getElementById('lead-search').value;
-  const status = document.getElementById('lead-filter-status').value;
-  renderLeads(document.getElementById('main'), { ...currentLeadFilters, search, status });
 }
 
 function toggleLeadQuickFilter(key, value) {
