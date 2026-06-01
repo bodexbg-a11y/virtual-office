@@ -122,6 +122,7 @@ const SERVICE_LEAD_SQL = `(
   )
 )`;
 const DAILY_CALLS_WHERE_SQL = `status NOT IN ('won', 'lost')
+  AND ${MATERIAL_LEAD_SQL}
   AND (
     (next_followup_at IS NOT NULL AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day'))
     OR status = 'new'

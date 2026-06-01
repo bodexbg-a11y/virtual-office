@@ -21,6 +21,14 @@ const DEAL_SECTIONS = [
   { id: 'materials', label: 'Материалы', description: 'МАТЕРИАЛЫ', sheets: ['МАТЕРИАЛЫ'] },
   { id: 'services', label: 'Услуги', description: 'УСЛУГИ и ПРОЕКТЫ', sheets: ['УСЛУГИ', 'ПРОЕКТЫ'] },
 ];
+const DASHBOARD_LEAD_TEXT_SQL = "lower(concat_ws(' ', coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))";
+const DASHBOARD_MATERIAL_LEAD_SQL = `(
+  google_sheet_name = 'МАТЕРИАЛЫ'
+  OR (
+    google_sheet_name IS NULL
+    AND ${DASHBOARD_LEAD_TEXT_SQL} ~ '(материал|material|materials|смол|smola|polymer|полимер|epoxy|епокс|pu|полиуретан|инжекц|packer|пакер|arcan)'
+  )
+)`;
 
 const WORKERS = [
   {
@@ -730,6 +738,7 @@ router.get('/stats', async (req, res) => {
         END as today_reason
       FROM leads
       WHERE status NOT IN ('won', 'lost')
+        AND ${DASHBOARD_MATERIAL_LEAD_SQL}
         AND (
           (next_followup_at IS NOT NULL AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day'))
           OR status = 'new'
@@ -762,6 +771,7 @@ router.get('/stats', async (req, res) => {
         COALESCE(SUM(CASE WHEN priority IN ('hot', 'high') THEN 1 ELSE 0 END), 0)::int as high_priority
       FROM leads
       WHERE status NOT IN ('won', 'lost')
+        AND ${DASHBOARD_MATERIAL_LEAD_SQL}
         AND (
           (next_followup_at IS NOT NULL AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day'))
           OR status = 'new'
