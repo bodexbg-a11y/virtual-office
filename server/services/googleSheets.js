@@ -1155,9 +1155,22 @@ function mapCrmLeadToClient(lead) {
 }
 
 function crmLeadSheetName(lead) {
-  const text = `${lead.lead_type || ''} ${lead.interest_products || ''} ${lead.notes || ''}`.toLowerCase();
-  if (/услуг|service|ремонт|обект|объект|теч|хидроизолац/.test(text)) return 'УСЛУГИ';
+  const text = crmLeadClassificationText(lead);
+  if (isMaterialsText(text)) return 'МАТЕРИАЛЫ';
+  if (isServicesText(text)) return 'УСЛУГИ';
   return 'МАТЕРИАЛЫ';
+}
+
+function crmLeadClassificationText(lead) {
+  return `${lead.google_sheet_name || ''} ${lead.lead_type || ''} ${lead.interest_products || ''} ${lead.notes || ''}`.toLowerCase();
+}
+
+function isMaterialsText(text) {
+  return /(материал|material|materials|смол|smola|polymer|полимер|epoxy|епокс|pu|полиуретан|инжекц|packer|пакер|arcan)/.test(text || '');
+}
+
+function isServicesText(text) {
+  return /(услуг|service|ремонт|обект|объект|теч|хидроизолац|укреп|фундамент)/.test(text || '');
 }
 
 function crmStatusLabel(status) {

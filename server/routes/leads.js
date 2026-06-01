@@ -85,6 +85,23 @@ function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+const LEAD_TEXT_SQL = "lower(concat_ws(' ', coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))";
+const MATERIAL_LEAD_SQL = `(
+  google_sheet_name = 'МАТЕРИАЛЫ'
+  OR (
+    google_sheet_name IS NULL
+    AND ${LEAD_TEXT_SQL} ~ '(материал|material|materials|смол|smola|polymer|полимер|epoxy|епокс|pu|полиуретан|инжекц|packer|пакер|arcan)'
+  )
+)`;
+const SERVICE_LEAD_SQL = `(
+  google_sheet_name = 'УСЛУГИ'
+  OR (
+    google_sheet_name IS NULL
+    AND NOT ${MATERIAL_LEAD_SQL}
+    AND ${LEAD_TEXT_SQL} ~ '(услуг|service|ремонт|обект|объект|теч|хидроизолац|укреп|фундамент)'
+  )
+)`;
+
 async function findSheetMatchForLead(lead) {
   const phone = normalizePhone(lead.phone);
   const email = normalizeEmail(lead.email);
@@ -285,11 +302,11 @@ router.get('/', async (req, res) => {
     }
 
     if (view === 'materials') {
-      where.push("google_sheet_name = 'МАТЕРИАЛЫ'");
+      where.push(MATERIAL_LEAD_SQL);
     }
 
     if (view === 'services') {
-      where.push("google_sheet_name = 'УСЛУГИ'");
+      where.push(SERVICE_LEAD_SQL);
     }
 
     if (search) {
@@ -416,12 +433,12 @@ router.get('/summary', async (req, res) => {
 
     const materialsRes = await db.query(`
       SELECT COUNT(*)::int as count FROM leads
-      WHERE google_sheet_name = 'МАТЕРИАЛЫ'
+      WHERE ${MATERIAL_LEAD_SQL}
     `);
 
     const servicesRes = await db.query(`
       SELECT COUNT(*)::int as count FROM leads
-      WHERE google_sheet_name = 'УСЛУГИ'
+      WHERE ${SERVICE_LEAD_SQL}
     `);
 
     const bySource = bySourceRes.rows;
