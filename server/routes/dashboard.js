@@ -29,6 +29,13 @@ const DASHBOARD_MATERIAL_LEAD_SQL = `(
     AND ${DASHBOARD_LEAD_TEXT_SQL} ~ '(материал|material|materials|смол|smola|polymer|полимер|epoxy|епокс|pu|полиуретан|инжекц|packer|пакер|arcan)'
   )
 )`;
+const DASHBOARD_MATERIAL_LEAD_SQL_L = `(
+  l.google_sheet_name = 'МАТЕРИАЛЫ'
+  OR (
+    l.google_sheet_name IS NULL
+    AND lower(concat_ws(' ', coalesce(l.lead_type, ''), coalesce(l.interest_products, ''), coalesce(l.notes, ''))) ~ '(материал|material|materials|смол|smola|polymer|полимер|epoxy|епокс|pu|полиуретан|инжекц|packer|пакер|arcan)'
+  )
+)`;
 
 const WORKERS = [
   {
@@ -817,7 +824,7 @@ router.get('/stats', async (req, res) => {
       LEFT JOIN offers o ON o.lead_id = l.id
       WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation')
         AND l.status NOT IN ('won', 'lost')
-        AND ${DASHBOARD_MATERIAL_LEAD_SQL}
+        AND ${DASHBOARD_MATERIAL_LEAD_SQL_L}
       GROUP BY l.id
       HAVING COUNT(o.id) = 0
       ORDER BY
@@ -835,7 +842,7 @@ router.get('/stats', async (req, res) => {
         LEFT JOIN offers o ON o.lead_id = l.id
         WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation')
           AND l.status NOT IN ('won', 'lost')
-          AND ${DASHBOARD_MATERIAL_LEAD_SQL}
+          AND ${DASHBOARD_MATERIAL_LEAD_SQL_L}
         GROUP BY l.id
         HAVING COUNT(o.id) = 0
       ) q
