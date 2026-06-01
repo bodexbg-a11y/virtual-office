@@ -711,26 +711,62 @@ router.get('/stats', async (req, res) => {
     `);
 
     const followups = await db.query(`
-      SELECT id, company_name, contact_name, phone, email, city, status, priority, next_followup_at
+      SELECT
+        id,
+        company_name,
+        contact_name,
+        phone,
+        email,
+        city,
+        status,
+        priority,
+        next_followup_at,
+        CASE
+          WHEN next_followup_at IS NOT NULL AND next_followup_at < NOW() THEN 'Просроченный звонок'
+          WHEN next_followup_at IS NOT NULL AND next_followup_at::date = CURRENT_DATE THEN 'Перезвонить сегодня'
+          WHEN status = 'new' THEN 'Новый лид'
+          WHEN priority IN ('hot', 'high') THEN 'Высокий приоритет'
+          ELSE 'Связаться'
+        END as today_reason
       FROM leads
-      WHERE next_followup_at IS NOT NULL
-        AND status NOT IN ('won', 'lost')
-        AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day')
+      WHERE status NOT IN ('won', 'lost')
+        AND (
+          (next_followup_at IS NOT NULL AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day'))
+          OR status = 'new'
+          OR priority IN ('hot', 'high')
+        )
       ORDER BY
-        CASE WHEN next_followup_at < NOW() THEN 0 ELSE 1 END,
-        next_followup_at ASC
+        CASE
+          WHEN next_followup_at IS NOT NULL AND next_followup_at < NOW() THEN 0
+          WHEN next_followup_at IS NOT NULL AND next_followup_at::date = CURRENT_DATE THEN 1
+          WHEN status = 'new' THEN 2
+          WHEN priority = 'hot' THEN 3
+          WHEN priority = 'high' THEN 4
+          ELSE 5
+        END,
+        CASE
+          WHEN next_followup_at IS NULL THEN 1
+          ELSE 0
+        END,
+        next_followup_at ASC NULLS LAST,
+        created_at DESC
       LIMIT 12
     `);
 
     const followupStats = await db.query(`
       SELECT
         COUNT(*)::int as due_total,
-        COALESCE(SUM(CASE WHEN next_followup_at::date = CURRENT_DATE THEN 1 ELSE 0 END), 0)::int as today,
-        COALESCE(SUM(CASE WHEN next_followup_at < NOW() THEN 1 ELSE 0 END), 0)::int as overdue
+        COALESCE(SUM(CASE WHEN next_followup_at IS NOT NULL AND next_followup_at::date = CURRENT_DATE THEN 1 ELSE 0 END), 0)::int as today,
+        COALESCE(SUM(CASE WHEN next_followup_at IS NOT NULL AND next_followup_at < NOW() THEN 1 ELSE 0 END), 0)::int as overdue,
+        COALESCE(SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END), 0)::int as new_leads,
+        COALESCE(SUM(CASE WHEN priority IN ('hot', 'high') THEN 1 ELSE 0 END), 0)::int as high_priority
       FROM leads
-      WHERE next_followup_at IS NOT NULL
-        AND status NOT IN ('won', 'lost')
-        AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day')
+      WHERE status NOT IN ('won', 'lost')
+        AND (
+          (next_followup_at IS NOT NULL AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day'))
+          OR status = 'new'
+          OR priority IN ('hot', 'high')
+        )
     `);
 
     await ensureWorkers();
