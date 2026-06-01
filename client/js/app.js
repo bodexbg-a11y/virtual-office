@@ -1780,7 +1780,7 @@ function isDistributorLead(lead = {}) {
 
 function isSpecificObjectLead(lead = {}) {
   const text = `${lead.notes || ''} ${lead.form_summary || ''} ${lead.interest_products || ''}`.toLowerCase();
-  return /конкретн\w*\s+об[еь]кт|за\s+конкретн\w*\s+об[еь]кт|specific\s+object|type\s+object|тип\s+об[еь]кта|об[еь]кт\s+за\s+материал/.test(text);
+  return /т[ыъ]рся\s+материали\s+за\s+конкретен\s+обект|търся\s+материали\s+за\s+конкретен\s+обект/.test(text);
 }
 
 async function syncFacebookLeadsFromLeadsPage() {
