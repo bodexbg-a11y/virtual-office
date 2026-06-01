@@ -121,6 +121,12 @@ const SERVICE_LEAD_SQL = `(
     AND ${LEAD_TEXT_SQL} ~ '(услуг|service|ремонт|обект|объект|теч|хидроизолац|укреп|фундамент)'
   )
 )`;
+const DAILY_CALLS_WHERE_SQL = `status NOT IN ('won', 'lost')
+  AND (
+    (next_followup_at IS NOT NULL AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day'))
+    OR status = 'new'
+    OR priority IN ('hot', 'high')
+  )`;
 
 async function findSheetMatchForLead(lead) {
   const phone = normalizePhone(lead.phone);
@@ -353,8 +359,7 @@ router.get('/', async (req, res) => {
     }
 
     if (followup === 'due') {
-      where.push("next_followup_at IS NOT NULL AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day')");
-      where.push("status NOT IN ('won', 'lost')");
+      where.push(DAILY_CALLS_WHERE_SQL);
     }
 
     if (followup === 'today') {
@@ -365,13 +370,20 @@ router.get('/', async (req, res) => {
     const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
     const orderBy = followup
-      ? `next_followup_at ASC,
-          CASE priority
-            WHEN 'hot' THEN 0
-            WHEN 'high' THEN 1
-            WHEN 'medium' THEN 2
-            ELSE 3
-          END`
+      ? `CASE
+            WHEN next_followup_at IS NOT NULL AND next_followup_at < NOW() THEN 0
+            WHEN next_followup_at IS NOT NULL AND next_followup_at::date = CURRENT_DATE THEN 1
+            WHEN status = 'new' THEN 2
+            WHEN priority = 'hot' THEN 3
+            WHEN priority = 'high' THEN 4
+            ELSE 5
+          END,
+          CASE
+            WHEN next_followup_at IS NULL THEN 1
+            ELSE 0
+          END,
+          next_followup_at ASC NULLS LAST,
+          created_at DESC`
       : sort === 'date_asc'
       ? 'created_at ASC'
       : sort === 'status'
@@ -474,9 +486,7 @@ router.get('/summary', async (req, res) => {
       followups_due: (await db.query(`
         SELECT COUNT(*)::int as count
         FROM leads
-        WHERE next_followup_at IS NOT NULL
-          AND status NOT IN ('won', 'lost')
-          AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day')
+        WHERE ${DAILY_CALLS_WHERE_SQL}
       `)).rows[0]?.count || 0,
       statuses: byStatus,
       sources: bySource,
