@@ -138,7 +138,7 @@ class FacebookAdsService {
   }
 
   async getCampaignInsights(campaignId) {
-    const presets = ['today', 'last_7d', 'last_30d'];
+    const presets = ['last_7d', 'last_30d', 'today'];
     let fallback = null;
 
     for (const preset of presets) {
