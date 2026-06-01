@@ -5,6 +5,53 @@ const db = require('../db');
 
 router.use(auth.requireAdmin);
 
+async function ensureOpsTables() {
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS logistics_records (
+      id SERIAL PRIMARY KEY,
+      lead_id INTEGER REFERENCES leads(id) ON DELETE SET NULL,
+      client_name TEXT NOT NULL,
+      delivery_city TEXT,
+      transport_company TEXT,
+      vehicle_number TEXT,
+      driver_name TEXT,
+      transport_note_number TEXT,
+      tracking_number TEXT,
+      planned_date DATE,
+      delivered_date DATE,
+      status TEXT DEFAULT 'planned',
+      notes TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_logistics_lead_id ON logistics_records(lead_id);
+    CREATE INDEX IF NOT EXISTS idx_logistics_status ON logistics_records(status);
+    CREATE INDEX IF NOT EXISTS idx_logistics_planned_date ON logistics_records(planned_date);
+
+    CREATE TABLE IF NOT EXISTS payment_records (
+      id SERIAL PRIMARY KEY,
+      lead_id INTEGER REFERENCES leads(id) ON DELETE SET NULL,
+      offer_id INTEGER REFERENCES offers(id) ON DELETE SET NULL,
+      client_name TEXT NOT NULL,
+      invoice_number TEXT,
+      amount NUMERIC(12,2) DEFAULT 0,
+      currency TEXT DEFAULT 'EUR',
+      issue_date DATE,
+      due_date DATE,
+      paid_date DATE,
+      status TEXT DEFAULT 'draft',
+      payment_method TEXT,
+      notes TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_payments_lead_id ON payment_records(lead_id);
+    CREATE INDEX IF NOT EXISTS idx_payments_offer_id ON payment_records(offer_id);
+    CREATE INDEX IF NOT EXISTS idx_payments_status ON payment_records(status);
+    CREATE INDEX IF NOT EXISTS idx_payments_due_date ON payment_records(due_date);
+  `);
+}
+
 router.get('/goals', async (req, res) => {
   try {
     const clientStats = await db.get(`
@@ -197,6 +244,234 @@ router.get('/weekly-report', async (req, res) => {
         `Сфокусироваться на premium-лидах: ${Number(premium?.premium_leads || 0)} активных.`,
       ],
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/logistics', async (req, res) => {
+  try {
+    await ensureOpsTables();
+    const rows = await db.all(`
+      SELECT
+        lr.*,
+        l.company_name as lead_company_name,
+        l.contact_name as lead_contact_name,
+        l.phone as lead_phone,
+        l.email as lead_email
+      FROM logistics_records lr
+      LEFT JOIN leads l ON l.id = lr.lead_id
+      ORDER BY
+        CASE lr.status
+          WHEN 'in_transit' THEN 0
+          WHEN 'planned' THEN 1
+          WHEN 'delivered' THEN 2
+          ELSE 3
+        END,
+        lr.planned_date ASC NULLS LAST,
+        lr.created_at DESC
+    `);
+
+    const summary = await db.get(`
+      SELECT
+        COUNT(*)::int as total,
+        COUNT(*) FILTER (WHERE status = 'planned')::int as planned,
+        COUNT(*) FILTER (WHERE status = 'in_transit')::int as in_transit,
+        COUNT(*) FILTER (WHERE status = 'delivered')::int as delivered
+      FROM logistics_records
+    `);
+
+    res.json({ summary: summary || {}, rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/logistics', async (req, res) => {
+  try {
+    await ensureOpsTables();
+    const b = req.body || {};
+    const row = await db.get(`
+      INSERT INTO logistics_records (
+        lead_id, client_name, delivery_city, transport_company, vehicle_number,
+        driver_name, transport_note_number, tracking_number, planned_date,
+        delivered_date, status, notes, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+      RETURNING *
+    `, [
+      b.lead_id || null,
+      String(b.client_name || '').trim(),
+      b.delivery_city || null,
+      b.transport_company || null,
+      b.vehicle_number || null,
+      b.driver_name || null,
+      b.transport_note_number || null,
+      b.tracking_number || null,
+      b.planned_date || null,
+      b.delivered_date || null,
+      b.status || 'planned',
+      b.notes || null,
+    ]);
+    res.status(201).json(row);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/logistics/:id', async (req, res) => {
+  try {
+    await ensureOpsTables();
+    const b = req.body || {};
+    const row = await db.get(`
+      UPDATE logistics_records
+      SET
+        lead_id = ?,
+        client_name = ?,
+        delivery_city = ?,
+        transport_company = ?,
+        vehicle_number = ?,
+        driver_name = ?,
+        transport_note_number = ?,
+        tracking_number = ?,
+        planned_date = ?,
+        delivered_date = ?,
+        status = ?,
+        notes = ?,
+        updated_at = NOW()
+      WHERE id = ?
+      RETURNING *
+    `, [
+      b.lead_id || null,
+      String(b.client_name || '').trim(),
+      b.delivery_city || null,
+      b.transport_company || null,
+      b.vehicle_number || null,
+      b.driver_name || null,
+      b.transport_note_number || null,
+      b.tracking_number || null,
+      b.planned_date || null,
+      b.delivered_date || null,
+      b.status || 'planned',
+      b.notes || null,
+      req.params.id,
+    ]);
+    if (!row) return res.status(404).json({ error: 'Logistics record not found' });
+    res.json(row);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/payments', async (req, res) => {
+  try {
+    await ensureOpsTables();
+    const rows = await db.all(`
+      SELECT
+        pr.*,
+        l.company_name as lead_company_name,
+        o.offer_number
+      FROM payment_records pr
+      LEFT JOIN leads l ON l.id = pr.lead_id
+      LEFT JOIN offers o ON o.id = pr.offer_id
+      ORDER BY
+        CASE pr.status
+          WHEN 'overdue' THEN 0
+          WHEN 'sent' THEN 1
+          WHEN 'paid' THEN 2
+          ELSE 3
+        END,
+        pr.due_date ASC NULLS LAST,
+        pr.created_at DESC
+    `);
+
+    const summary = await db.get(`
+      SELECT
+        COUNT(*)::int as total,
+        COUNT(*) FILTER (WHERE status = 'draft')::int as draft,
+        COUNT(*) FILTER (WHERE status = 'sent')::int as sent,
+        COUNT(*) FILTER (WHERE status = 'paid')::int as paid,
+        COUNT(*) FILTER (WHERE status = 'overdue')::int as overdue,
+        COALESCE(SUM(amount) FILTER (WHERE status = 'paid'), 0) as paid_amount
+      FROM payment_records
+    `);
+
+    res.json({ summary: summary || {}, rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/payments', async (req, res) => {
+  try {
+    await ensureOpsTables();
+    const b = req.body || {};
+    const row = await db.get(`
+      INSERT INTO payment_records (
+        lead_id, offer_id, client_name, invoice_number, amount, currency,
+        issue_date, due_date, paid_date, status, payment_method, notes, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+      RETURNING *
+    `, [
+      b.lead_id || null,
+      b.offer_id || null,
+      String(b.client_name || '').trim(),
+      b.invoice_number || null,
+      Number(b.amount || 0) || 0,
+      b.currency || 'EUR',
+      b.issue_date || null,
+      b.due_date || null,
+      b.paid_date || null,
+      b.status || 'draft',
+      b.payment_method || null,
+      b.notes || null,
+    ]);
+    res.status(201).json(row);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/payments/:id', async (req, res) => {
+  try {
+    await ensureOpsTables();
+    const b = req.body || {};
+    const row = await db.get(`
+      UPDATE payment_records
+      SET
+        lead_id = ?,
+        offer_id = ?,
+        client_name = ?,
+        invoice_number = ?,
+        amount = ?,
+        currency = ?,
+        issue_date = ?,
+        due_date = ?,
+        paid_date = ?,
+        status = ?,
+        payment_method = ?,
+        notes = ?,
+        updated_at = NOW()
+      WHERE id = ?
+      RETURNING *
+    `, [
+      b.lead_id || null,
+      b.offer_id || null,
+      String(b.client_name || '').trim(),
+      b.invoice_number || null,
+      Number(b.amount || 0) || 0,
+      b.currency || 'EUR',
+      b.issue_date || null,
+      b.due_date || null,
+      b.paid_date || null,
+      b.status || 'draft',
+      b.payment_method || null,
+      b.notes || null,
+      req.params.id,
+    ]);
+    if (!row) return res.status(404).json({ error: 'Payment record not found' });
+    res.json(row);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

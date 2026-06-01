@@ -1,7 +1,7 @@
 // ===== BODEX Virtual Office — Frontend App =====
 
 const API = 'https://virtual-office-f48m.onrender.com';
-const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers']);
+const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers', 'logistics', 'payments']);
 let currentPage = 'leads';
 let currentRole = 'worker';
 let adminToken = localStorage.getItem('bodex_admin_token') || '';
@@ -52,6 +52,8 @@ async function renderPage(page) {
       case 'sheets': await renderSheets(main); break;
       case 'products': await renderProducts(main); break;
       case 'offers': await renderOffers(main); break;
+      case 'logistics': await renderLogistics(main); break;
+      case 'payments': await renderPayments(main); break;
       case 'settings': await renderSettings(main); break;
       default: main.innerHTML = '<h2>404</h2>';
     }
@@ -3381,6 +3383,225 @@ async function renderOffers(el) {
   `;
 }
 
+async function renderLogistics(el) {
+  const [data, leadData] = await Promise.all([
+    api('/api/admin/logistics'),
+    api('/api/leads?limit=200').catch(() => ({ leads: [] })),
+  ]);
+  const rows = data.rows || [];
+  const summary = data.summary || {};
+  const leads = leadData.leads || [];
+
+  el.innerHTML = `
+    <div class="page-header fade-in">
+      <h2>🚚 Логистика</h2>
+      <div class="page-header-actions">
+        <button class="btn btn-primary" onclick='openLogisticsModal(${JSON.stringify(leads).replace(/'/g, "&apos;")})'>+ Новая доставка</button>
+      </div>
+    </div>
+
+    <div class="stats-grid fade-in">
+      <div class="stat-card"><div class="stat-label">Всего</div><div class="stat-value">${summary.total || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">Запланировано</div><div class="stat-value blue">${summary.planned || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">В пути</div><div class="stat-value yellow">${summary.in_transit || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">Доставлено</div><div class="stat-value green">${summary.delivered || 0}</div></div>
+    </div>
+
+    <div class="card fade-in" style="margin-top:18px;">
+      <div class="card-title">Доставки и транспортные накладные</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Клиент</th><th>Город</th><th>Транспорт</th><th>ТН / tracking</th><th>Дата</th><th>Статус</th><th></th></tr></thead>
+          <tbody>
+            ${rows.length ? rows.map(r => `
+              <tr>
+                <td style="font-weight:700;color:#ddd;">${r.client_name || r.lead_company_name || '—'}</td>
+                <td>${r.delivery_city || '—'}</td>
+                <td>
+                  <div>${r.transport_company || '—'}</div>
+                  <div style="font-size:11px;color:#777;">${r.vehicle_number || r.driver_name || ''}</div>
+                </td>
+                <td>
+                  <div>${r.transport_note_number || '—'}</div>
+                  <div style="font-size:11px;color:#777;">${r.tracking_number || ''}</div>
+                </td>
+                <td>${r.delivered_date || r.planned_date || '—'}</td>
+                <td><span class="badge badge-${r.status === 'delivered' ? 'won' : r.status === 'in_transit' ? 'thinking' : 'catalog_sent'}">${logisticsStatusLabel(r.status)}</span></td>
+                <td><button class="btn btn-secondary btn-sm" onclick='openLogisticsModal(${JSON.stringify(leads).replace(/'/g, "&apos;")}, ${JSON.stringify(r).replace(/'/g, "&apos;")})'>Редактировать</button></td>
+              </tr>
+            `).join('') : '<tr><td colspan="7" style="text-align:center;color:#777;padding:24px;">Пока нет логистических записей.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function openLogisticsModal(leads = [], record = null) {
+  const r = record || {};
+  openModal(record ? 'Редактировать доставку' : 'Новая доставка', `
+    <div class="form-grid">
+      <div class="form-group"><label>Клиент</label><input id="lg-client-name" value="${escapeHtml(r.client_name || '')}"></div>
+      <div class="form-group"><label>Связанный лид</label>
+        <select id="lg-lead-id">
+          <option value="">Без привязки</option>
+          ${leads.map(l => `<option value="${l.id}" ${Number(r.lead_id) === Number(l.id) ? 'selected' : ''}>${escapeHtml(l.company_name || l.contact_name || ('Лид #' + l.id))}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Город доставки</label><input id="lg-delivery-city" value="${escapeHtml(r.delivery_city || '')}"></div>
+      <div class="form-group"><label>Транспортная компания</label><input id="lg-transport-company" value="${escapeHtml(r.transport_company || '')}"></div>
+      <div class="form-group"><label>Машина</label><input id="lg-vehicle-number" value="${escapeHtml(r.vehicle_number || '')}"></div>
+      <div class="form-group"><label>Водитель</label><input id="lg-driver-name" value="${escapeHtml(r.driver_name || '')}"></div>
+      <div class="form-group"><label>Транспортная накладная</label><input id="lg-tn-number" value="${escapeHtml(r.transport_note_number || '')}"></div>
+      <div class="form-group"><label>Tracking</label><input id="lg-tracking-number" value="${escapeHtml(r.tracking_number || '')}"></div>
+      <div class="form-group"><label>Плановая дата</label><input id="lg-planned-date" type="date" value="${toDateInput(r.planned_date)}"></div>
+      <div class="form-group"><label>Дата доставки</label><input id="lg-delivered-date" type="date" value="${toDateInput(r.delivered_date)}"></div>
+      <div class="form-group"><label>Статус</label>
+        <select id="lg-status">
+          ${['planned','in_transit','delivered'].map(s => `<option value="${s}" ${String(r.status || 'planned') === s ? 'selected' : ''}>${logisticsStatusLabel(s)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group full"><label>Заметки</label><textarea id="lg-notes" rows="3">${escapeHtml(r.notes || '')}</textarea></div>
+    </div>
+    <div id="lg-result" class="sync-result"></div>
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="saveLogisticsRecord(${r.id || 'null'})">Сохранить</button>
+    </div>
+  `);
+}
+
+async function saveLogisticsRecord(id = null) {
+  const payload = {
+    lead_id: document.getElementById('lg-lead-id')?.value || null,
+    client_name: document.getElementById('lg-client-name')?.value || '',
+    delivery_city: document.getElementById('lg-delivery-city')?.value || '',
+    transport_company: document.getElementById('lg-transport-company')?.value || '',
+    vehicle_number: document.getElementById('lg-vehicle-number')?.value || '',
+    driver_name: document.getElementById('lg-driver-name')?.value || '',
+    transport_note_number: document.getElementById('lg-tn-number')?.value || '',
+    tracking_number: document.getElementById('lg-tracking-number')?.value || '',
+    planned_date: document.getElementById('lg-planned-date')?.value || '',
+    delivered_date: document.getElementById('lg-delivered-date')?.value || '',
+    status: document.getElementById('lg-status')?.value || 'planned',
+    notes: document.getElementById('lg-notes')?.value || '',
+  };
+  const path = id ? `/api/admin/logistics/${id}` : '/api/admin/logistics';
+  const method = id ? 'PUT' : 'POST';
+  await api(path, { method, body: payload });
+  closeModal();
+  navigate('logistics');
+}
+
+async function renderPayments(el) {
+  const [data, leadData, offerData] = await Promise.all([
+    api('/api/admin/payments'),
+    api('/api/leads?limit=200').catch(() => ({ leads: [] })),
+    api('/api/offers?limit=200').catch(() => ({ offers: [] })),
+  ]);
+  const rows = data.rows || [];
+  const summary = data.summary || {};
+  const leads = leadData.leads || [];
+  const offers = offerData.offers || [];
+
+  el.innerHTML = `
+    <div class="page-header fade-in">
+      <h2>💳 Оплаты</h2>
+      <div class="page-header-actions">
+        <button class="btn btn-primary" onclick='openPaymentModal(${JSON.stringify(leads).replace(/'/g, "&apos;")}, ${JSON.stringify(offers).replace(/'/g, "&apos;")})'>+ Новый инвойс / оплата</button>
+      </div>
+    </div>
+
+    <div class="stats-grid fade-in">
+      <div class="stat-card"><div class="stat-label">Всего</div><div class="stat-value">${summary.total || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">Отправлено</div><div class="stat-value blue">${summary.sent || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">Просрочено</div><div class="stat-value pink">${summary.overdue || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">Оплачено</div><div class="stat-value green">${Number(summary.paid_amount || 0).toLocaleString()} </div></div>
+    </div>
+
+    <div class="card fade-in" style="margin-top:18px;">
+      <div class="card-title">Инвойсы и оплаты клиентов</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Клиент</th><th>Инвойс</th><th>Сумма</th><th>Срок / оплата</th><th>Статус</th><th></th></tr></thead>
+          <tbody>
+            ${rows.length ? rows.map(r => `
+              <tr>
+                <td style="font-weight:700;color:#ddd;">${r.client_name || r.lead_company_name || '—'}<div style="font-size:11px;color:#777;">${r.offer_number || ''}</div></td>
+                <td>${r.invoice_number || '—'}</td>
+                <td>${Number(r.amount || 0).toLocaleString()} ${r.currency || 'EUR'}</td>
+                <td><div>${r.due_date || '—'}</div><div style="font-size:11px;color:#777;">${r.paid_date ? `Оплачено: ${r.paid_date}` : ''}</div></td>
+                <td><span class="badge badge-${r.status === 'paid' ? 'won' : r.status === 'overdue' ? 'lost' : r.status === 'sent' ? 'catalog_sent' : 'thinking'}">${paymentStatusLabel(r.status)}</span></td>
+                <td><button class="btn btn-secondary btn-sm" onclick='openPaymentModal(${JSON.stringify(leads).replace(/'/g, "&apos;")}, ${JSON.stringify(offers).replace(/'/g, "&apos;")}, ${JSON.stringify(r).replace(/'/g, "&apos;")})'>Редактировать</button></td>
+              </tr>
+            `).join('') : '<tr><td colspan="6" style="text-align:center;color:#777;padding:24px;">Пока нет оплат и инвойсов.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function openPaymentModal(leads = [], offers = [], record = null) {
+  const r = record || {};
+  openModal(record ? 'Редактировать оплату' : 'Новый инвойс / оплата', `
+    <div class="form-grid">
+      <div class="form-group"><label>Клиент</label><input id="pm-client-name" value="${escapeHtml(r.client_name || '')}"></div>
+      <div class="form-group"><label>Связанный лид</label>
+        <select id="pm-lead-id">
+          <option value="">Без привязки</option>
+          ${leads.map(l => `<option value="${l.id}" ${Number(r.lead_id) === Number(l.id) ? 'selected' : ''}>${escapeHtml(l.company_name || l.contact_name || ('Лид #' + l.id))}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Связанное КП</label>
+        <select id="pm-offer-id">
+          <option value="">Без КП</option>
+          ${offers.map(o => `<option value="${o.id}" ${Number(r.offer_id) === Number(o.id) ? 'selected' : ''}>${escapeHtml(o.offer_number || ('КП #' + o.id))}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Инвойс</label><input id="pm-invoice-number" value="${escapeHtml(r.invoice_number || '')}"></div>
+      <div class="form-group"><label>Сумма</label><input id="pm-amount" type="number" step="0.01" value="${escapeHtml(String(r.amount || ''))}"></div>
+      <div class="form-group"><label>Валюта</label>
+        <select id="pm-currency">${['EUR','USD','BGN'].map(c => `<option value="${c}" ${String(r.currency || 'EUR') === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Дата инвойса</label><input id="pm-issue-date" type="date" value="${toDateInput(r.issue_date)}"></div>
+      <div class="form-group"><label>Срок оплаты</label><input id="pm-due-date" type="date" value="${toDateInput(r.due_date)}"></div>
+      <div class="form-group"><label>Дата оплаты</label><input id="pm-paid-date" type="date" value="${toDateInput(r.paid_date)}"></div>
+      <div class="form-group"><label>Статус</label>
+        <select id="pm-status">${['draft','sent','paid','overdue'].map(s => `<option value="${s}" ${String(r.status || 'draft') === s ? 'selected' : ''}>${paymentStatusLabel(s)}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Метод оплаты</label><input id="pm-method" value="${escapeHtml(r.payment_method || '')}"></div>
+      <div class="form-group full"><label>Заметки</label><textarea id="pm-notes" rows="3">${escapeHtml(r.notes || '')}</textarea></div>
+    </div>
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="savePaymentRecord(${r.id || 'null'})">Сохранить</button>
+    </div>
+  `);
+}
+
+async function savePaymentRecord(id = null) {
+  const payload = {
+    lead_id: document.getElementById('pm-lead-id')?.value || null,
+    offer_id: document.getElementById('pm-offer-id')?.value || null,
+    client_name: document.getElementById('pm-client-name')?.value || '',
+    invoice_number: document.getElementById('pm-invoice-number')?.value || '',
+    amount: document.getElementById('pm-amount')?.value || 0,
+    currency: document.getElementById('pm-currency')?.value || 'EUR',
+    issue_date: document.getElementById('pm-issue-date')?.value || '',
+    due_date: document.getElementById('pm-due-date')?.value || '',
+    paid_date: document.getElementById('pm-paid-date')?.value || '',
+    status: document.getElementById('pm-status')?.value || 'draft',
+    payment_method: document.getElementById('pm-method')?.value || '',
+    notes: document.getElementById('pm-notes')?.value || '',
+  };
+  const path = id ? `/api/admin/payments/${id}` : '/api/admin/payments';
+  const method = id ? 'PUT' : 'POST';
+  await api(path, { method, body: payload });
+  closeModal();
+  navigate('payments');
+}
+
 function openPdfFromBase64(base64, filename) {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -3830,6 +4051,25 @@ function sourceLabel(s) {
     phone: '📞 Телефон', email: '📧 Email'
   };
   return map[s] || s;
+}
+
+function logisticsStatusLabel(status) {
+  const map = {
+    planned: 'Запланировано',
+    in_transit: 'В пути',
+    delivered: 'Доставлено',
+  };
+  return map[status] || status || '—';
+}
+
+function paymentStatusLabel(status) {
+  const map = {
+    draft: 'Черновик',
+    sent: 'Отправлено',
+    paid: 'Оплачено',
+    overdue: 'Просрочено',
+  };
+  return map[status] || status || '—';
 }
 
 // Clock
