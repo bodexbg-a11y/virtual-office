@@ -778,11 +778,11 @@ function renderMariaExecutiveReport(overview = {}) {
     <div class="maria-highlight-grid">
       <div>
         <div class="monthly-goal-label">Лучший выхлоп</div>
-        <div class="maria-highlight">${best ? `${best.name}: ${best.leads} лидов при CPL $${best.cpl}` : '—'}</div>
+        <div class="maria-highlight">${best ? (best.leads > 0 ? `${best.name}: ${best.leads} лидов при CPL $${best.cpl}` : `${best.name}: пока без лидов, ${best.clicks} кликов`) : '—'}</div>
       </div>
       <div>
         <div class="monthly-goal-label">Самая дорогая кампания</div>
-        <div class="maria-highlight">${weakest ? `${weakest.name}: CPL $${weakest.cpl}` : '—'}</div>
+        <div class="maria-highlight">${weakest ? (weakest.leads > 0 ? `${weakest.name}: CPL $${weakest.cpl}` : `${weakest.name}: spend $${weakest.spend || 0}`) : '—'}</div>
       </div>
     </div>
 

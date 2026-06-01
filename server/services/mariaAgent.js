@@ -268,8 +268,11 @@ function buildOverview(rows, options = {}) {
   const bad = rows.filter(r => ['Плохо', 'Дорого', 'Слабый CTR'].includes(r.verdict)).length;
   const sortedByLeads = [...rows].sort((a, b) => b.leads - a.leads);
   const sortedByCpl = [...rows].filter(r => r.leads > 0).sort((a, b) => a.cpl - b.cpl);
+  const sortedBySpend = [...rows].filter(r => r.spend > 0).sort((a, b) => b.spend - a.spend);
   const best = sortedByCpl[0] || sortedByLeads[0] || null;
-  const weakest = sortedByCpl.length ? sortedByCpl[sortedByCpl.length - 1] : null;
+  const weakest = sortedByCpl.length
+    ? sortedByCpl[sortedByCpl.length - 1]
+    : (sortedBySpend[0] || null);
   const launch = rows.filter(r => ['Запустить снова', 'Тестово запустить', 'Эффективно', 'Работает'].includes(r.verdict));
   const optimize = rows.filter(r => ['Дорого', 'Слабый CTR', 'Наблюдать'].includes(r.verdict));
   const stop = rows.filter(r => ['Плохо', 'Не запускать'].includes(r.verdict));
