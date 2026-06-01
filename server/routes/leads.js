@@ -296,6 +296,10 @@ function enrichLeadRow(lead = {}) {
 }
 
 const LEAD_TEXT_SQL = "lower(concat_ws(' ', coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))";
+const NORMALIZED_STATUS_SQL = `CASE
+  WHEN status IN ('contacted', 'qualified') THEN 'interested'
+  ELSE status
+END`;
 const MATERIAL_LEAD_SQL = `(
   google_sheet_name = 'МАТЕРИАЛЫ'
   OR (
@@ -499,8 +503,8 @@ router.get('/', async (req, res) => {
     const params = [];
 
     if (status) {
-      where.push('status = ?');
-      params.push(status);
+      where.push(`${NORMALIZED_STATUS_SQL} = ?`);
+      params.push(normalizeCrmStatus(status));
     }
 
     if (source) {
@@ -555,7 +559,7 @@ router.get('/', async (req, res) => {
 
     if (followup === 'today') {
       where.push('next_followup_at::date = CURRENT_DATE');
-      where.push("status NOT IN ('won', 'lost')");
+      where.push(`${NORMALIZED_STATUS_SQL} NOT IN ('won', 'lost')`);
     }
 
     const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
@@ -639,7 +643,11 @@ router.get('/', async (req, res) => {
 router.get('/summary', async (req, res) => {
   try {
     const totalRes = await db.query(`SELECT COUNT(*)::int as count FROM leads`);
-    const byStatusRes = await db.query(`SELECT status, COUNT(*)::int as count FROM leads GROUP BY status`);
+    const byStatusRes = await db.query(`
+      SELECT ${NORMALIZED_STATUS_SQL} as status, COUNT(*)::int as count
+      FROM leads
+      GROUP BY ${NORMALIZED_STATUS_SQL}
+    `);
     const bySourceRes = await db.query(`SELECT source, COUNT(*)::int as count FROM leads GROUP BY source`);
 
     const todayRes = await db.query(`

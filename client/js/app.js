@@ -1694,7 +1694,7 @@ async function renderLeads(el, filters = {}) {
 
     <div class="lead-status-tabs fade-in">
       ${CRM_STAGES.map(status =>
-        `<button class="lead-status-tab ${filters.status === status ? 'active' : ''}" onclick="renderLeads(document.getElementById('main'), {...currentLeadFilters, status: '${status}'})">
+        `<button class="lead-status-tab ${filters.status === status ? 'active' : ''}" style="${leadStatusTabStyle(status, filters.status === status)}" onclick="renderLeads(document.getElementById('main'), {...currentLeadFilters, status: '${status}'})">
           ${statusLabel(status)} <span>${statusCounts[status] || 0}</span>
         </button>`
       ).join('')}
@@ -1806,6 +1806,24 @@ function toggleLeadQuickFilter(key, value) {
     nextFilters[key] = value;
   }
   renderLeads(document.getElementById('main'), nextFilters);
+}
+
+function leadStatusTabStyle(status, active) {
+  const map = {
+    new: ['rgba(96,165,250,0.12)', '#7fb3ff', 'rgba(96,165,250,0.3)'],
+    interested: ['rgba(251,191,36,0.12)', '#f6d365', 'rgba(251,191,36,0.32)'],
+    catalog_sent: ['rgba(59,130,246,0.12)', '#7dc4ff', 'rgba(59,130,246,0.32)'],
+    thinking: ['rgba(250,204,21,0.12)', '#f7d774', 'rgba(250,204,21,0.3)'],
+    offer_sent: ['rgba(167,139,250,0.12)', '#c4b5fd', 'rgba(167,139,250,0.32)'],
+    negotiation: ['rgba(244,114,182,0.12)', '#f9a8d4', 'rgba(244,114,182,0.32)'],
+    contract: ['rgba(34,197,94,0.1)', '#86efac', 'rgba(34,197,94,0.26)'],
+    purchase: ['rgba(16,185,129,0.1)', '#6ee7b7', 'rgba(16,185,129,0.26)'],
+    won: ['rgba(74,222,128,0.14)', '#4ade80', 'rgba(74,222,128,0.35)'],
+    lost: ['rgba(248,113,113,0.12)', '#fca5a5', 'rgba(248,113,113,0.28)'],
+  };
+  const [bg, color, border] = map[status] || ['rgba(255,255,255,0.04)', '#ddd', 'rgba(255,255,255,0.08)'];
+  if (!active) return `background:${bg};color:${color};border-color:${border};`;
+  return `background:${color};color:#111827;border-color:${color};box-shadow:0 0 0 1px ${border} inset;`;
 }
 
 function applyLeadQuickFilters(rows, filters = {}) {
