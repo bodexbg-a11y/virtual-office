@@ -1832,8 +1832,15 @@ async function renderLeads(el, filters = {}) {
                 <td>${l.contact_name || '—'}</td>
                 <td style="font-size:11px;">${l.phone || l.email || '—'}</td>
                 <td>${l.city || '—'}</td>
-                <td>
-                  <span class="badge badge-${l.status}">${statusLabel(l.status)}</span>
+                <td onclick="event.stopPropagation();">
+                  <select
+                    class="lead-inline-status-select lead-inline-status-${l.status}"
+                    data-previous-value="${l.status}"
+                    onclick="event.stopPropagation();"
+                    onchange="inlineUpdateLeadStatus(${l.id}, this.value, event)"
+                  >
+                    ${CRM_STAGES.map(status => `<option value="${status}" ${l.status === status ? 'selected' : ''}>${statusLabel(status)}</option>`).join('')}
+                  </select>
                   ${l.google_sheet_status || l.google_sheet_action ? `<div style="font-size:10px;color:#888;margin-top:4px;">${[l.google_sheet_status, l.google_sheet_action].filter(Boolean).join(' · ')}</div>` : ''}
                 </td>
                 <td><span class="badge badge-${l.priority}">${l.priority}</span></td>
@@ -3230,6 +3237,37 @@ async function updateLead(id) {
     navigate(currentPage);
   } catch (err) {
     alert('Грешка: ' + err.message);
+  }
+}
+
+async function inlineUpdateLeadStatus(id, status, event) {
+  event?.stopPropagation?.();
+  const select = event?.target;
+  const previous = select?.dataset?.previousValue || '';
+
+  if (select) {
+    select.disabled = true;
+  }
+
+  try {
+    await api(`/api/leads/${id}`, {
+      method: 'PUT',
+      body: {
+        status,
+        performed_by: currentRole === 'admin' ? 'admin' : 'manager',
+      },
+    });
+    await renderLeads(document.getElementById('main'), currentLeadFilters);
+  } catch (err) {
+    if (select && previous) {
+      select.value = previous;
+    }
+    alert('Грешка: ' + err.message);
+  } finally {
+    if (select) {
+      select.disabled = false;
+      select.dataset.previousValue = status;
+    }
   }
 }
 
