@@ -1710,19 +1710,6 @@ tr.lead-row-new:hover {
   box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.95);
 }
 
-.fresh-comment-mini {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 5px;
-  border-radius: 999px;
-  background: rgba(56, 189, 248, 0.2);
-  color: #bfefff;
-  font-size: 9px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-
 .quick-comment-history {
   max-height: 260px;
   overflow: auto;
