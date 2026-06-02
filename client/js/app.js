@@ -2925,8 +2925,7 @@ async function openLeadDetail(id) {
 }
 
 function openLeadComment(id) {
-  openLeadDetail(id);
-  setTimeout(() => document.getElementById('ld-comment')?.focus(), 250);
+  openQuickCommentModal(id, '');
 }
 
 function leadActivityLabel(action) {
