@@ -1439,6 +1439,8 @@ tr:hover td { background: rgba(99,102,241,0.04); }
 .page-header-actions {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 /* ===== SEARCH ===== */
@@ -1446,6 +1448,7 @@ tr:hover td { background: rgba(99,102,241,0.04); }
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 .search-bar input {

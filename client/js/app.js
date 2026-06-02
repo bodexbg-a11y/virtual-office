@@ -1749,7 +1749,6 @@ async function renderLeads(el, filters = {}) {
       <h2>📋 Лидове <span style="color:#666;font-size:14px;">(${rows.length})</span></h2>
       <div class="page-header-actions">
         <button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 Синхронизирай FB лиды</button>
-        <button class="btn btn-secondary" onclick="syncLeadsWithSheets()">📑 Синх с таблицами</button>
         <button class="btn btn-primary" onclick="openNewLeadModal()">+ Нов лид</button>
       </div>
     </div>
@@ -1841,7 +1840,6 @@ async function renderLeads(el, filters = {}) {
                   >
                     ${CRM_STAGES.map(status => `<option value="${status}" ${l.status === status ? 'selected' : ''}>${statusLabel(status)}</option>`).join('')}
                   </select>
-                  ${l.google_sheet_status || l.google_sheet_action ? `<div style="font-size:10px;color:#888;margin-top:4px;">${[l.google_sheet_status, l.google_sheet_action].filter(Boolean).join(' · ')}</div>` : ''}
                 </td>
                 <td><span class="badge badge-${l.priority}">${l.priority}</span></td>
                 <td onclick="event.stopPropagation();" style="min-width:116px;">${renderLeadTableContactActions(l)}</td>
@@ -2835,7 +2833,6 @@ async function openLeadDetail(id) {
               `<option value="${s}" ${l.status===s?'selected':''}>${statusLabel(s)}</option>`
             ).join('')}
           </select>
-          ${l.google_sheet_status ? `<div style="font-size:11px;color:#8dd3ff;margin-top:6px;">Google Sheets: ${l.google_sheet_status}${l.google_sheet_action ? ' · ' + l.google_sheet_action : ''}</div>` : ''}
         </div>
         <div class="form-group">
           <label>Приоритет</label>
