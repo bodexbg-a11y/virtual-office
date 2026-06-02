@@ -655,7 +655,14 @@ router.get('/', async (req, res) => {
           WHERE lead_id = leads.id AND action = 'comment'
           ORDER BY created_at DESC
           LIMIT 1
-        ) as latest_comment_at
+        ) as latest_comment_at,
+        (
+          SELECT created_at
+          FROM lead_activities
+          WHERE lead_id = leads.id AND action = 'status_change'
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) as latest_status_change_at
       FROM leads ${whereClause}
       ORDER BY ${orderBy}
       LIMIT ? OFFSET ?

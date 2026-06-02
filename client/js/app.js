@@ -3028,12 +3028,14 @@ function renderLeadTableContactActions(lead = {}) {
   const whatsapp = whatsappUrl(phone);
   const viber = viberUrl(phone);
   const gmail = gmailComposeUrl(lead);
+  const pingDue = needsCatalogPing(lead);
 
   return `
     <div class="lead-contact-actions">
       <a class="lead-contact-btn ${gmail ? '' : 'disabled'}" title="Gmail" ${gmail ? `href="${escapeAttr(gmail)}" target="_blank" rel="noopener"` : ''}>✉️</a>
       <a class="lead-contact-btn ${whatsapp ? '' : 'disabled'}" title="WhatsApp" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬</a>
       <a class="lead-contact-btn ${viber ? '' : 'disabled'}" title="Viber" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲</a>
+      ${pingDue ? `<button class="lead-contact-btn lead-contact-ping-btn" title="Пропинговать после каталога" onclick="event.stopPropagation();openCatalogPingModal(${lead.id})">↻</button>` : ''}
     </div>
   `;
 }
@@ -3077,6 +3079,15 @@ function buildLeadTemplateMessage(lead = {}, type = 'intro') {
       'Поздрави,',
       'BODEX Bulgaria',
     ],
+    catalog_ping: [
+      name ? `Здравейте, ${name},` : 'Здравейте,',
+      '',
+      'Пиша с кратък follow-up по изпратения каталог / презентация.',
+      'Успяхте ли да ги прегледате? Ако е удобно, можем бързо да уточним кои материали Ви интересуват, какъв е обемът и да подготвим следващата стъпка.',
+      '',
+      'Поздрави,',
+      'BODEX Bulgaria',
+    ],
     offer_followup: [
       name ? `Здравейте, ${name},` : 'Здравейте,',
       '',
@@ -3088,6 +3099,16 @@ function buildLeadTemplateMessage(lead = {}, type = 'intro') {
     ],
   };
   return (templates[type] || templates.intro).filter(Boolean).join('\n');
+}
+
+function needsCatalogPing(lead = {}) {
+  if ((lead.status || '') !== 'catalog_sent') return false;
+  if (!String(lead.email || '').trim() && !phoneDigits(lead.phone || '')) return false;
+  const sourceDate = lead.latest_status_change_at || lead.updated_at || lead.created_at;
+  if (!sourceDate) return false;
+  const timestamp = new Date(sourceDate).getTime();
+  if (!Number.isFinite(timestamp)) return false;
+  return (Date.now() - timestamp) >= (3 * 24 * 60 * 60 * 1000);
 }
 
 function gmailComposeUrl(lead = {}, type = 'intro') {
@@ -3134,6 +3155,30 @@ function openLeadTemplate(type = 'intro') {
       <button class="btn btn-primary" onclick="closeModal(); setTimeout(() => openLeadDetail(${lead.id}), 50)">Назад к лиду</button>
     </div>
   `);
+}
+
+async function openCatalogPingModal(id) {
+  try {
+    const data = await api(`/api/leads/${id}`);
+    const lead = data?.lead;
+    if (!lead) return;
+    const message = buildLeadTemplateMessage(lead, 'catalog_ping');
+    const gmail = gmailComposeUrl(lead, 'catalog_ping');
+    const whatsapp = whatsappUrl(lead.phone, message);
+    const viber = viberUrl(lead.phone, message);
+
+    openModal('Пропинговать после каталога', `
+      <div style="font-size:12px;color:#9ca3af;margin-bottom:10px;">Лид молчит после каталога 3+ дня. Можно быстро напомнить о себе.</div>
+      <textarea rows="8" style="width:100%;">${escapeHtml(message)}</textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+        <a class="btn btn-secondary ${gmail ? '' : 'disabled'}" ${gmail ? `href="${escapeAttr(gmail)}" target="_blank" rel="noopener"` : ''}>✉️ Gmail</a>
+        <a class="btn btn-secondary ${whatsapp ? '' : 'disabled'}" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬 WhatsApp</a>
+        <a class="btn btn-secondary ${viber ? '' : 'disabled'}" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲 Viber</a>
+      </div>
+    `);
+  } catch (err) {
+    alert('Грешка: ' + err.message);
+  }
 }
 
 function openLeadFormResponsesModal() {
