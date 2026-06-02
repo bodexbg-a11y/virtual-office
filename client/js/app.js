@@ -2735,6 +2735,15 @@ async function openLeadDetail(id) {
             ).join('')}
           </select>
         </div>
+        ${currentRole === 'admin' ? `
+          <div class="form-group">
+            <label>Premium лид</label>
+            <label style="display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--border);border-radius:10px;background:rgba(246,211,101,0.06);cursor:pointer;">
+              <input id="ld-premium-manual" type="checkbox" ${l.premium_manual || l.is_gold_lead ? 'checked' : ''} style="width:16px;height:16px;">
+              <span style="font-size:12px;color:#f6d365;font-weight:700;">Пометить этот лид как premium вручную</span>
+            </label>
+          </div>
+        ` : ''}
         <div class="form-group"><label>Стойност (лв)</label><input id="ld-value" type="number" value="${l.estimated_value || ''}"></div>
         <div class="form-group">
           <label>Следующий звонок</label>
@@ -3107,6 +3116,7 @@ async function updateLead(id) {
     city: document.getElementById('ld-city').value,
     status: document.getElementById('ld-status').value,
     priority: document.getElementById('ld-priority').value,
+    premium_manual: document.getElementById('ld-premium-manual')?.checked || false,
     estimated_value: parseFloat(document.getElementById('ld-value').value) || null,
     next_followup_at: combineDateAndTime('ld-followup-date', 'ld-followup-time'),
     notes: document.getElementById('ld-notes').value,

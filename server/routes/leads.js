@@ -40,6 +40,10 @@ async function ensureLeadSheetColumns() {
   if (!cols.includes('last_contact_at')) {
     await db.query(`ALTER TABLE leads ADD COLUMN last_contact_at TIMESTAMP`);
   }
+
+  if (!cols.includes('premium_manual')) {
+    await db.query(`ALTER TABLE leads ADD COLUMN premium_manual BOOLEAN DEFAULT FALSE`);
+  }
 }
 
 async function ensureDealOverrides() {
@@ -112,6 +116,13 @@ function normalizeLeadPayload(payload = {}) {
   if (Object.prototype.hasOwnProperty.call(normalized, 'estimated_value')) {
     const parsed = Number(normalized.estimated_value);
     normalized.estimated_value = Number.isFinite(parsed) ? parsed : null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(normalized, 'premium_manual')) {
+    normalized.premium_manual = normalized.premium_manual === true
+      || normalized.premium_manual === 'true'
+      || normalized.premium_manual === '1'
+      || normalized.premium_manual === 1;
   }
 
   return normalized;
@@ -281,6 +292,7 @@ function buildLeadSnapshot(lead = {}, extra = {}) {
 
 function enrichLeadRow(lead = {}) {
   const areaLabel = extractLeadAreaLabel(lead);
+  const isPremium = Boolean(lead.premium_manual) || isGoldLeadByArea(areaLabel, lead.notes);
   const score = buildLeadScore(lead, {
     area_label: areaLabel,
     comments_count: lead.latest_comment ? 1 : 0,
@@ -289,7 +301,7 @@ function enrichLeadRow(lead = {}) {
     ...lead,
     status: normalizeCrmStatus(lead.status),
     area_label: areaLabel,
-    is_gold_lead: isGoldLeadByArea(areaLabel, lead.notes),
+    is_gold_lead: isPremium,
     lead_score: score.value,
     lead_score_label: score.label,
   };
