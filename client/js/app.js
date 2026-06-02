@@ -1841,7 +1841,7 @@ async function renderLeads(el, filters = {}) {
                 <td style="max-width:240px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};">${l.area_label || '—'}</td>
                 <td style="width:120px;max-width:120px;" onclick="event.stopPropagation();">
                   <button class="btn btn-sm btn-secondary ${l.has_fresh_comment ? 'fresh-comment-btn' : ''}" title="${escapeAttr(l.latest_comment || 'Добавить комментарий')}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="max-width:112px;display:inline-flex;gap:5px;align-items:center;">
-                    💬 <span style="display:inline-block;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : 'Добавить'}</span>
+                    <span class="fresh-comment-icon-wrap">💬${l.has_fresh_comment ? '<span class="fresh-comment-dot"></span>' : ''}</span><span style="display:inline-block;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : 'Добавить'}</span>
                   </button>
                 </td>
                 <td style="width:130px;max-width:130px;" onclick="event.stopPropagation();">
@@ -1991,7 +1991,7 @@ async function loadQuickCommentHistory(id) {
         <div class="quick-comment-item">
           <div class="quick-comment-item-head">
             <span class="fresh-comment-pill">${item.performed_by || 'manager'}</span>
-            <span>${formatDateTime(item.created_at)}</span>
+            <span>${new Date(item.created_at).toLocaleString('bg-BG')}</span>
           </div>
           <div class="quick-comment-item-body">${escapeHtml(item.description || '')}</div>
         </div>
@@ -2776,6 +2776,7 @@ async function openLeadDetail(id) {
     const snapshot = data.snapshot || {};
     const offers = offerData.offers || [];
     const formResponses = data.form_responses || [];
+    const historyActivities = (data.activities || []).filter(a => a.action !== 'comment');
     const leadNotes = formatLeadNotesForEditor(l.notes);
     currentLeadFormResponses = formResponses;
     currentLeadDetail = l;
@@ -2886,7 +2887,7 @@ async function openLeadDetail(id) {
 
       <div style="margin-top:16px;">
         <div class="card-title" style="font-size:12px;">📜 История</div>
-        ${(data.activities || []).map(a => `
+        ${historyActivities.map(a => `
           <div style="display:flex;gap:8px;align-items:flex-start;font-size:11px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03);color:#888;">
             <div style="flex:1;">
               <span style="color:#555;">${new Date(a.created_at).toLocaleString('bg-BG')}</span> —

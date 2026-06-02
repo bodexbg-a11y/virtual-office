@@ -1671,10 +1671,10 @@ tr.lead-row-new:hover {
 }
 
 .fresh-comment-btn {
-  background: rgba(56, 189, 248, 0.14);
-  border-color: rgba(125, 211, 252, 0.38);
-  color: #dff6ff;
-  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.12) inset;
+  background: rgba(56, 189, 248, 0.22);
+  border-color: rgba(125, 211, 252, 0.55);
+  color: #f4fbff;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.18) inset, 0 0 18px rgba(56, 189, 248, 0.12);
 }
 
 .fresh-comment-pill {
@@ -1689,6 +1689,25 @@ tr.lead-row-new:hover {
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.fresh-comment-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+}
+
+.fresh-comment-dot {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.95);
 }
 
 .quick-comment-history {
