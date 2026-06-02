@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const googleSheets = require('../services/googleSheets');
-const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent', 'negotiation', 'contract', 'purchase', 'won', 'lost'];
+const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
 const LEGACY_STATUS_MAP = {
   contacted: 'interested',
   qualified: 'interested',
@@ -78,6 +78,7 @@ function dealStageFromLeadStatus(status) {
     thinking: 'thinking',
     offer_sent: 'offer_sent',
     negotiation: 'negotiation',
+    office_meeting: 'office_meeting',
     contract: 'contract',
     purchase: 'purchase',
     won: 'won',
@@ -226,7 +227,7 @@ function buildLeadScore(lead = {}, extra = {}) {
     score += 12;
     reasons.push('high priority');
   }
-  if (['interested', 'catalog_sent', 'thinking', 'negotiation'].includes(status)) {
+  if (['interested', 'catalog_sent', 'thinking', 'negotiation', 'office_meeting'].includes(status)) {
     score += 10;
     reasons.push('лид уже в работе');
   }
@@ -272,7 +273,9 @@ function buildLeadSnapshot(lead = {}, extra = {}) {
             ? 'Первичный контакт'
             : status === 'negotiation'
               ? 'Дожать цену / сроки / решение'
-              : status === 'contract'
+              : status === 'office_meeting'
+                ? 'Подготовить и провести встречу в офисе'
+                : status === 'contract'
                 ? 'Подготовить договор и оплату'
                 : status === 'purchase'
                   ? 'Довести до поставки'
@@ -295,7 +298,7 @@ function buildLeadSnapshot(lead = {}, extra = {}) {
       phone: !!String(lead.phone || '').trim(),
       email: !!String(lead.email || '').trim(),
     },
-    waiting_for_offer: Number(extra.offer_count || 0) === 0 && ['interested', 'catalog_sent', 'thinking', 'negotiation'].includes(status),
+    waiting_for_offer: Number(extra.offer_count || 0) === 0 && ['interested', 'catalog_sent', 'thinking', 'negotiation', 'office_meeting'].includes(status),
   };
 }
 
@@ -413,6 +416,7 @@ function inferStatusFromSheet(row) {
   if (/закрыт|заключен|спечел|оплат|купил/.test(text)) return 'won';
   if (/закуп|готов/.test(text)) return 'purchase';
   if (/договор|contract/.test(text)) return 'contract';
+  if (/встреч.*офис|офис.*встреч|срещ.*офис|офис.*срещ/.test(text)) return 'office_meeting';
   if (/коммерческ|оферт|предложен|\bкп\b/.test(text)) return 'offer_sent';
   if (/каталог|презентац|presentation|catalog/.test(text)) return 'catalog_sent';
   if (/дума/.test(text)) return 'thinking';
@@ -621,11 +625,12 @@ router.get('/', async (req, res) => {
             WHEN 'thinking' THEN 4
             WHEN 'offer_sent' THEN 5
             WHEN 'negotiation' THEN 6
-            WHEN 'contract' THEN 7
-            WHEN 'purchase' THEN 8
-            WHEN 'won' THEN 9
-            WHEN 'lost' THEN 10
-            ELSE 11
+            WHEN 'office_meeting' THEN 7
+            WHEN 'contract' THEN 8
+            WHEN 'purchase' THEN 9
+            WHEN 'won' THEN 10
+            WHEN 'lost' THEN 11
+            ELSE 12
           END, created_at DESC`
         : `created_at DESC,
           CASE priority
@@ -759,11 +764,12 @@ router.get('/stats/pipeline', async (req, res) => {
         WHEN 'thinking' THEN 4
         WHEN 'offer_sent' THEN 5
         WHEN 'negotiation' THEN 6
-        WHEN 'contract' THEN 7
-        WHEN 'purchase' THEN 8
-        WHEN 'won' THEN 9
-        WHEN 'lost' THEN 10
-        ELSE 11
+        WHEN 'office_meeting' THEN 7
+        WHEN 'contract' THEN 8
+        WHEN 'purchase' THEN 9
+        WHEN 'won' THEN 10
+        WHEN 'lost' THEN 11
+        ELSE 12
       END
     `);
 

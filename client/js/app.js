@@ -12,7 +12,7 @@ let agentReportsCache = [];
 let currentOfferDraft = null;
 let currentLeadFormResponses = [];
 let currentLeadDetail = null;
-const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent', 'negotiation', 'contract', 'purchase', 'won', 'lost'];
+const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
 
 // ===== NAVIGATION =====
 function navigate(page) {
@@ -1664,6 +1664,7 @@ function dealBadgeClass(stageId) {
     thinking: 'high',
     offer_sent: 'offer_sent',
     negotiation: 'negotiation',
+    office_meeting: 'qualified',
     contract: 'won',
     purchase: 'won',
     won: 'won',
@@ -1883,6 +1884,7 @@ function leadStatusTabStyle(status, active) {
     thinking: ['rgba(250,204,21,0.12)', '#f7d774', 'rgba(250,204,21,0.3)'],
     offer_sent: ['rgba(167,139,250,0.12)', '#c4b5fd', 'rgba(167,139,250,0.32)'],
     negotiation: ['rgba(244,114,182,0.12)', '#f9a8d4', 'rgba(244,114,182,0.32)'],
+    office_meeting: ['rgba(45,212,191,0.12)', '#99f6e4', 'rgba(45,212,191,0.32)'],
     contract: ['rgba(34,197,94,0.1)', '#86efac', 'rgba(34,197,94,0.26)'],
     purchase: ['rgba(16,185,129,0.1)', '#6ee7b7', 'rgba(16,185,129,0.26)'],
     won: ['rgba(74,222,128,0.14)', '#4ade80', 'rgba(74,222,128,0.35)'],
@@ -4148,6 +4150,7 @@ function statusLabel(s) {
     thinking: 'Думают',
     offer_sent: 'Коммерческое',
     negotiation: 'Переговоры',
+    office_meeting: 'Встреча в офисе',
     contract: 'Договор',
     purchase: 'Закупка',
     won: 'Закрыто успешно',

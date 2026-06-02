@@ -188,7 +188,7 @@ router.get('/weekly-report', async (req, res) => {
         SELECT l.id
         FROM leads l
         LEFT JOIN offers o ON o.lead_id = l.id
-        WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation')
+        WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation', 'office_meeting')
           AND l.status NOT IN ('won', 'lost')
         GROUP BY l.id
         HAVING COUNT(o.id) = 0

@@ -11,6 +11,7 @@ const DEAL_STAGES = [
   { id: 'thinking', label: 'Думают', short: 'Думают' },
   { id: 'offer_sent', label: 'Коммерческое предложение', short: 'КП' },
   { id: 'negotiation', label: 'Переговоры', short: 'Переговоры' },
+  { id: 'office_meeting', label: 'Встреча в офисе', short: 'Встреча' },
   { id: 'contract', label: 'Договор', short: 'Договор' },
   { id: 'purchase', label: 'Закупка', short: 'Закупка' },
   { id: 'won', label: 'Закрыто успешно', short: 'Закрыто' },
@@ -217,7 +218,7 @@ async function workerData() {
     SELECT
       COUNT(*) as total,
       SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_leads,
-      SUM(CASE WHEN status IN ('interested','catalog_sent','thinking','offer_sent','negotiation','contract','purchase') THEN 1 ELSE 0 END) as active,
+      SUM(CASE WHEN status IN ('interested','catalog_sent','thinking','offer_sent','negotiation','office_meeting','contract','purchase') THEN 1 ELSE 0 END) as active,
       COALESCE(SUM(CASE WHEN status != 'lost' THEN estimated_value ELSE 0 END), 0) as pipeline
     FROM leads
   `);
@@ -581,6 +582,7 @@ function classifyDeal(row) {
   if (matchAny(text, [/закрыт/, /заключен/, /подписан/, /оплат/, /купил/, /купув/, /спечел/, /won/, /договор\s+подпис/])) return 'won';
   if (matchAny(text, [/закуп/, /готовы\s+закуп/, /готови\s+да\s+куп/])) return 'purchase';
   if (matchAny(text, [/договор/, /contract/, /фактур/, /invoice/])) return 'contract';
+  if (matchAny(text, [/встреч.*офис/, /офис.*встреч/, /срещ.*офис/, /офис.*срещ/, /meeting.*office/, /office.*meeting/])) return 'office_meeting';
   if (matchAny(text, [/переговор/, /жд[уе]т\s+цен/, /ожида.*цен/, /встреч/, /срещ/, /meeting/, /цена/, /оферт.*обсуж/])) return 'negotiation';
   if (matchAny(text, [/коммерческ/, /предложен/, /\bкп\b/, /оферт/, /proposal/, /quote/])) return 'offer_sent';
   if (matchAny(text, [/дума/, /посмотрит/, /смотрит/, /чакат/, /ожида/, /повторить/, /follow/, /ответит/])) return 'thinking';
@@ -598,6 +600,7 @@ function nextDealAction(stageId, row) {
     thinking: 'Дать короткий follow-up и зафиксировать следующий срок ответа',
     offer_sent: 'Дожать обратную связь по коммерческому предложению',
     negotiation: 'Уточнить цену, срок поставки и следующий шаг',
+    office_meeting: 'Подготовить и провести встречу в офисе',
     contract: 'Подготовить договор, реквизиты и условия оплаты',
     purchase: 'Довести до оплаты, поставки и закрытия заказа',
     won: 'Зафиксировать результат и запросить повторный заказ',
@@ -614,6 +617,7 @@ function leadStatusFromDealStage(stageId) {
     thinking: 'thinking',
     offer_sent: 'offer_sent',
     negotiation: 'negotiation',
+    office_meeting: 'office_meeting',
     contract: 'contract',
     purchase: 'purchase',
     won: 'won',
@@ -768,7 +772,7 @@ router.get('/stats', async (req, res) => {
       SELECT
         COUNT(*) as total_leads,
         SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_leads,
-        SUM(CASE WHEN status IN ('interested','catalog_sent','thinking','offer_sent','negotiation','contract','purchase') THEN 1 ELSE 0 END) as active_leads,
+        SUM(CASE WHEN status IN ('interested','catalog_sent','thinking','offer_sent','negotiation','office_meeting','contract','purchase') THEN 1 ELSE 0 END) as active_leads,
         SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) as won_deals,
         SUM(CASE WHEN date(created_at) = CURRENT_DATE THEN 1 ELSE 0 END) as today_leads,
         COALESCE(SUM(CASE WHEN status != 'lost' THEN estimated_value ELSE 0 END), 0) as pipeline_value,
@@ -899,7 +903,7 @@ router.get('/stats', async (req, res) => {
         l.created_at
       FROM leads l
       LEFT JOIN offers o ON o.lead_id = l.id
-      WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation')
+      WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation', 'office_meeting')
         AND l.status NOT IN ('won', 'lost')
         AND ${DASHBOARD_MATERIAL_LEAD_SQL_L}
       GROUP BY l.id
@@ -917,7 +921,7 @@ router.get('/stats', async (req, res) => {
         SELECT l.id
         FROM leads l
         LEFT JOIN offers o ON o.lead_id = l.id
-        WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation')
+        WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation', 'office_meeting')
           AND l.status NOT IN ('won', 'lost')
           AND ${DASHBOARD_MATERIAL_LEAD_SQL_L}
         GROUP BY l.id
