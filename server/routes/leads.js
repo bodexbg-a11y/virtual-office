@@ -157,6 +157,13 @@ function humanizeAreaValue(value = '') {
     .trim();
 }
 
+function isFreshWithin24Hours(value) {
+  if (!value) return false;
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return false;
+  return (Date.now() - timestamp) <= (24 * 60 * 60 * 1000);
+}
+
 function isSpecificObjectByArea(areaLabel = '') {
   return /конкретен\s+обект/i.test(String(areaLabel || ''));
 }
@@ -279,6 +286,8 @@ function buildLeadSnapshot(lead = {}, extra = {}) {
     is_premium: isGoldLeadByArea(areaLabel, lead.notes),
     has_regular_delivery: hasRegularMonthlyDelivery(lead.notes),
     latest_comment: latestComment || null,
+    latest_comment_at: extra.latest_comment_at || null,
+    has_fresh_comment: isFreshWithin24Hours(extra.latest_comment_at),
     next_action: nextAction,
     forms_count: Number(extra.forms_count || 0),
     offers_count: Number(extra.offer_count || 0),
@@ -302,6 +311,7 @@ function enrichLeadRow(lead = {}) {
     status: normalizeCrmStatus(lead.status),
     area_label: areaLabel,
     is_gold_lead: isPremium,
+    has_fresh_comment: isFreshWithin24Hours(lead.latest_comment_at),
     lead_score: score.value,
     lead_score_label: score.label,
   };
@@ -789,10 +799,12 @@ router.get('/:id', async (req, res) => {
 
     const formResponses = await googleSheets.getLeadFormResponses(req.params.id);
     const latestComment = activities.find(a => a.action === 'comment')?.description || '';
+    const latestCommentAt = activities.find(a => a.action === 'comment')?.created_at || null;
     const lead = enrichLeadRow(leads[0]);
     const snapshot = buildLeadSnapshot(lead, {
       area_label: lead.area_label,
       latest_comment: latestComment,
+      latest_comment_at: latestCommentAt,
       comments_count: activities.filter(a => a.action === 'comment').length,
       forms_count: formResponses.length,
       offer_count: offerRows[0]?.count || 0,

@@ -1670,6 +1670,27 @@ tr.lead-row-new:hover {
   filter: grayscale(1);
 }
 
+.fresh-comment-btn {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(125, 211, 252, 0.38);
+  color: #dff6ff;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.12) inset;
+}
+
+.fresh-comment-pill {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  color: #8dd3ff;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 @media (max-width: 1100px) {
   .worker-activity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .worker-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -1840,7 +1840,7 @@ async function renderLeads(el, filters = {}) {
                 <td onclick="event.stopPropagation();" style="min-width:116px;">${renderLeadTableContactActions(l)}</td>
                 <td style="max-width:240px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};">${l.area_label || '—'}</td>
                 <td style="width:120px;max-width:120px;" onclick="event.stopPropagation();">
-                  <button class="btn btn-sm btn-secondary" title="${escapeAttr(l.latest_comment || 'Добавить комментарий')}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="max-width:112px;display:inline-flex;gap:5px;align-items:center;">
+                  <button class="btn btn-sm btn-secondary ${l.has_fresh_comment ? 'fresh-comment-btn' : ''}" title="${escapeAttr(l.latest_comment || 'Добавить комментарий')}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="max-width:112px;display:inline-flex;gap:5px;align-items:center;">
                     💬 <span style="display:inline-block;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : 'Добавить'}</span>
                   </button>
                 </td>
@@ -2763,7 +2763,10 @@ async function openLeadDetail(id) {
         <div style="padding:12px;border:1px solid rgba(255,255,255,0.06);border-radius:10px;background:rgba(255,255,255,0.03);">
           <div style="font-size:11px;color:#8a8f9f;">Карточка клиента</div>
           <div style="font-size:18px;font-weight:800;color:#ddd;">${snapshot.forms_count || 0} форм · ${snapshot.offers_count || 0} КП</div>
-          <div style="font-size:11px;color:#b9bcc7;">${snapshot.latest_comment || 'Комментариев пока нет'}</div>
+          <div style="font-size:11px;color:#b9bcc7;">
+            ${snapshot.latest_comment || 'Комментариев пока нет'}
+            ${snapshot.has_fresh_comment ? '<span class="fresh-comment-pill">свежий</span>' : ''}
+          </div>
         </div>
         <div style="padding:12px;border:1px solid rgba(255,255,255,0.06);border-radius:10px;background:rgba(255,255,255,0.03);">
           <div style="font-size:11px;color:#8a8f9f;">Сигналы</div>
