@@ -1829,7 +1829,12 @@ async function renderLeads(el, filters = {}) {
               <tr class="${l.status === 'new' ? 'lead-row-new' : ''}" onclick="openLeadDetail(${l.id})" style="cursor:pointer;">
                 <td style="font-weight:500;color:${l.is_gold_lead ? '#f6d365' : '#ddd'};max-width:148px;line-height:1.25;word-break:break-word;">${l.company_name || '—'}</td>
                 <td style="max-width:120px;line-height:1.25;word-break:break-word;">${l.contact_name || '—'}</td>
-                <td style="font-size:11px;">${l.phone || l.email || '—'}</td>
+                <td style="font-size:11px;max-width:132px;" onclick="event.stopPropagation();">
+                  <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+                    <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;">${l.phone || l.email || '—'}</span>
+                    ${needsCatalogPing(l) ? `<button class="lead-ping-bell" title="Пропинговать после каталога" onclick="event.stopPropagation();openCatalogPingModal(${l.id})">🔔</button>` : ''}
+                  </div>
+                </td>
                 <td>${l.city || '—'}</td>
                 <td onclick="event.stopPropagation();">
                   <select
@@ -1842,7 +1847,7 @@ async function renderLeads(el, filters = {}) {
                   </select>
                 </td>
                 <td style="width:74px;"><span class="badge badge-${l.priority}">${l.priority}</span></td>
-                <td onclick="event.stopPropagation();" style="min-width:104px;width:104px;">${renderLeadTableContactActions(l)}</td>
+                <td onclick="event.stopPropagation();" style="min-width:96px;width:96px;">${renderLeadTableContactActions(l)}</td>
                 <td style="max-width:150px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};line-height:1.2;word-break:break-word;">${l.area_label || '—'}</td>
                 <td style="width:190px;max-width:190px;" onclick="event.stopPropagation();">
                   <button class="btn btn-sm btn-secondary ${l.has_fresh_comment ? 'fresh-comment-btn' : ''}" title="${escapeAttr(l.latest_comment || 'Добавить комментарий')}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="width:100%;display:inline-flex;gap:6px;align-items:center;justify-content:flex-start;">
@@ -3028,14 +3033,12 @@ function renderLeadTableContactActions(lead = {}) {
   const whatsapp = whatsappUrl(phone);
   const viber = viberUrl(phone);
   const gmail = gmailComposeUrl(lead);
-  const pingDue = needsCatalogPing(lead);
 
   return `
     <div class="lead-contact-actions">
       <a class="lead-contact-btn ${gmail ? '' : 'disabled'}" title="Gmail" ${gmail ? `href="${escapeAttr(gmail)}" target="_blank" rel="noopener"` : ''}>✉️</a>
       <a class="lead-contact-btn ${whatsapp ? '' : 'disabled'}" title="WhatsApp" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬</a>
       <a class="lead-contact-btn ${viber ? '' : 'disabled'}" title="Viber" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲</a>
-      ${pingDue ? `<button class="lead-contact-btn lead-contact-ping-btn" title="Пропинговать после каталога" onclick="event.stopPropagation();openCatalogPingModal(${lead.id})">↻</button>` : ''}
     </div>
   `;
 }
