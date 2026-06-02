@@ -237,12 +237,13 @@ async function workerData() {
   const data = [];
   for (const worker of WORKERS) {
     data.push({
-    ...worker,
-    status: 'online',
-    monthlyGoals: monthlyGoalsFor(worker.id),
-    tasks: await getAssignedTasks(worker.id),
-    recommendations: tasksFor(worker.id, { clients, leads, fb, products }),
-    results: resultsFor(worker.id, { clients, leads, fb, products }),
+      ...worker,
+      status: 'online',
+      monthlyGoals: monthlyGoalsFor(worker.id),
+      tasks: await getAssignedTasks(worker.id),
+      daily_activity: await getWorkerDailyActivity(worker.id),
+      recommendations: tasksFor(worker.id, { clients, leads, fb, products }),
+      results: resultsFor(worker.id, { clients, leads, fb, products }),
     });
   }
   return data;
@@ -325,6 +326,73 @@ async function getAssignedTasks(workerId) {
       CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
       id DESC
   `, [workerId]);
+}
+
+async function getWorkerDailyActivity(workerId) {
+  if (workerId === 'rostislav') {
+    const summary = await safeGet(`
+      SELECT
+        COUNT(*)::int AS actions_total,
+        COUNT(DISTINCT lead_id)::int AS leads_touched,
+        SUM(CASE WHEN action = 'comment' THEN 1 ELSE 0 END)::int AS comments_count,
+        SUM(CASE WHEN action = 'status_change' THEN 1 ELSE 0 END)::int AS statuses_changed,
+        SUM(CASE WHEN action = 'followup_change' THEN 1 ELSE 0 END)::int AS followups_set,
+        SUM(CASE WHEN action = 'comment' AND lower(coalesce(description, '')) ~ '(звон|прозвон|обад|call)' THEN 1 ELSE 0 END)::int AS calls_logged
+      FROM lead_activities
+      WHERE created_at::date = CURRENT_DATE
+        AND performed_by = 'manager'
+        AND action IN ('comment', 'status_change', 'followup_change')
+    `);
+
+    const recent = await db.all(`
+      SELECT
+        la.id,
+        la.action,
+        la.description,
+        la.created_at,
+        l.id AS lead_id,
+        COALESCE(NULLIF(l.company_name, ''), NULLIF(l.contact_name, ''), 'Лид #' || la.lead_id::text) AS lead_label
+      FROM lead_activities la
+      LEFT JOIN leads l ON l.id = la.lead_id
+      WHERE la.created_at::date = CURRENT_DATE
+        AND la.performed_by = 'manager'
+        AND la.action IN ('comment', 'status_change', 'followup_change')
+      ORDER BY la.created_at DESC
+      LIMIT 8
+    `);
+
+    return {
+      mode: 'crm_manager',
+      summary: {
+        actions_total: Number(summary.actions_total || 0),
+        leads_touched: Number(summary.leads_touched || 0),
+        comments_count: Number(summary.comments_count || 0),
+        statuses_changed: Number(summary.statuses_changed || 0),
+        followups_set: Number(summary.followups_set || 0),
+        calls_logged: Number(summary.calls_logged || 0),
+      },
+      recent,
+    };
+  }
+
+  const summary = await safeGet(`
+    SELECT
+      SUM(CASE WHEN created_at::date = CURRENT_DATE THEN 1 ELSE 0 END)::int AS tasks_created_today,
+      SUM(CASE WHEN updated_at::date = CURRENT_DATE AND status = 'done' THEN 1 ELSE 0 END)::int AS tasks_done_today,
+      SUM(CASE WHEN updated_at::date = CURRENT_DATE AND status = 'in_progress' THEN 1 ELSE 0 END)::int AS tasks_in_progress_today
+    FROM worker_tasks
+    WHERE worker_id = ?
+  `, [workerId]);
+
+  return {
+    mode: 'task_worker',
+    summary: {
+      tasks_created_today: Number(summary.tasks_created_today || 0),
+      tasks_done_today: Number(summary.tasks_done_today || 0),
+      tasks_in_progress_today: Number(summary.tasks_in_progress_today || 0),
+    },
+    recent: [],
+  };
 }
 
 async function ensureTaskTableOnly() {

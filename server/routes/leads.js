@@ -976,14 +976,15 @@ router.put('/:id', async (req, res) => {
 
     if (b.status && b.status !== old.status) {
       await db.query(`
-        INSERT INTO lead_activities (lead_id, action, description, old_value, new_value)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO lead_activities (lead_id, action, description, old_value, new_value, performed_by)
+        VALUES (?, ?, ?, ?, ?, ?)
       `, [
         req.params.id,
         'status_change',
         `Статус: ${old.status} → ${b.status}`,
         old.status,
         b.status,
+        b.performed_by || 'manager',
       ]);
 
       const stageId = dealStageFromLeadStatus(b.status);

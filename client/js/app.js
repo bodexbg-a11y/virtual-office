@@ -587,6 +587,7 @@ async function renderWorker(el, workerId) {
       </div>
     </div>
 
+    ${renderWorkerDailyActivity(worker)}
     ${renderMonthlyGoals(worker)}
     ${worker.id === 'mark' ? renderMarkAgentPanel(agentStatus) : ''}
     ${worker.id === 'maria' ? renderMariaAgentPanel(agentStatus, mariaAnalysis) : ''}
@@ -1093,6 +1094,77 @@ function renderMonthlyGoals(worker) {
       </div>
     </div>
   `;
+}
+
+function renderWorkerDailyActivity(worker) {
+  const activity = worker.daily_activity || {};
+  const summary = activity.summary || {};
+
+  if (worker.id === 'rostislav') {
+    const cards = [
+      { label: 'Клиентов тронул сегодня', value: summary.leads_touched || 0 },
+      { label: 'Комментариев оставил', value: summary.comments_count || 0 },
+      { label: 'Статусов поменял', value: summary.statuses_changed || 0 },
+      { label: 'Перезвонов назначил', value: summary.followups_set || 0 },
+    ];
+
+    return `
+      <div class="card fade-in worker-daily-activity">
+        <div class="card-title">📈 Сегодня в CRM</div>
+        <div class="worker-activity-grid">
+          ${cards.map(item => `
+            <div class="worker-activity-card">
+              <strong>${item.value}</strong>
+              <small>${item.label}</small>
+            </div>
+          `).join('')}
+        </div>
+        <div class="worker-activity-total">Всего действий сегодня: <strong>${summary.actions_total || 0}</strong></div>
+        ${activity.recent?.length ? `
+          <div class="worker-activity-feed">
+            ${activity.recent.map(item => `
+              <div class="worker-activity-item">
+                <div>
+                  <span class="worker-activity-badge">${workerActivityLabel(item.action)}</span>
+                  <strong>${escapeHtml(item.lead_label || 'Лид')}</strong>
+                </div>
+                <div class="worker-activity-meta">${formatDateTime(item.created_at)}${item.description ? ` · ${escapeHtml(item.description)}` : ''}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<div class="worker-activity-empty">Сегодня Ростислав ещё не записал действий в CRM.</div>'}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="card fade-in worker-daily-activity">
+      <div class="card-title">📈 Активность за сегодня</div>
+      <div class="worker-activity-grid">
+        <div class="worker-activity-card">
+          <strong>${summary.tasks_created_today || 0}</strong>
+          <small>новых задач</small>
+        </div>
+        <div class="worker-activity-card">
+          <strong>${summary.tasks_in_progress_today || 0}</strong>
+          <small>в работе сегодня</small>
+        </div>
+        <div class="worker-activity-card">
+          <strong>${summary.tasks_done_today || 0}</strong>
+          <small>закрыто сегодня</small>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function workerActivityLabel(action) {
+  const map = {
+    comment: 'Комментарий',
+    status_change: 'Статус',
+    followup_change: 'Перезвон',
+  };
+  return map[action] || action;
 }
 
 function renderManagerGuide() {
@@ -3120,6 +3192,7 @@ async function updateLead(id) {
     estimated_value: parseFloat(document.getElementById('ld-value').value) || null,
     next_followup_at: combineDateAndTime('ld-followup-date', 'ld-followup-time'),
     notes: document.getElementById('ld-notes').value,
+    performed_by: currentRole === 'admin' ? 'admin' : 'manager',
   };
   try {
     await api(`/api/leads/${id}`, { method: 'PUT', body: data });
