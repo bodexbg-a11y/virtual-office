@@ -125,7 +125,7 @@
   </main>
 
   <!-- LEAD MODAL -->
-  <div class="modal-overlay" id="modal-overlay" onclick="closeModal()">
+  <div class="modal-overlay" id="modal-overlay" onclick="if (event.target === event.currentTarget) closeModal()">
     <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-header">
         <h3 id="modal-title">Нов лид</h3>
