@@ -1691,6 +1691,41 @@ tr.lead-row-new:hover {
   text-transform: uppercase;
 }
 
+.quick-comment-history {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(255,255,255,0.02);
+}
+
+.quick-comment-item {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.quick-comment-item:last-child {
+  border-bottom: none;
+}
+
+.quick-comment-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.quick-comment-item-body {
+  margin-top: 7px;
+  color: #e5e7eb;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 1100px) {
   .worker-activity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .worker-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

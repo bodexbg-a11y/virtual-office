@@ -1958,13 +1958,17 @@ async function syncFacebookLeadsFromLeadsPage() {
   }
 }
 
-function openQuickCommentModal(id, encodedLatest = '') {
+async function openQuickCommentModal(id, encodedLatest = '') {
   const latest = decodeURIComponent(encodedLatest || '');
   openModal('Комментарий к лиду', `
     ${latest ? `<div style="font-size:12px;color:#8dd3ff;margin-bottom:10px;">Последний: ${escapeHtml(latest)}</div>` : ''}
     <div class="form-group full">
       <label>Комментарий после звонка</label>
       <textarea id="quick-lead-comment" rows="4" placeholder="Напишите короткий результат звонка..."></textarea>
+    </div>
+    <div class="card-title" style="font-size:12px;margin:12px 0 8px;">🕘 История комментариев</div>
+    <div id="quick-comment-history" class="quick-comment-history">
+      <div class="worker-activity-empty">Загружаю историю комментариев...</div>
     </div>
     <div id="quick-comment-result" class="sync-result"></div>
     <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
@@ -1973,6 +1977,29 @@ function openQuickCommentModal(id, encodedLatest = '') {
     </div>
   `);
   setTimeout(() => document.getElementById('quick-lead-comment')?.focus(), 50);
+  await loadQuickCommentHistory(id);
+}
+
+async function loadQuickCommentHistory(id) {
+  const wrap = document.getElementById('quick-comment-history');
+  if (!wrap) return;
+  try {
+    const data = await api(`/api/leads/${id}`);
+    const comments = (data.activities || []).filter(a => a.action === 'comment');
+    wrap.innerHTML = comments.length
+      ? comments.map(item => `
+        <div class="quick-comment-item">
+          <div class="quick-comment-item-head">
+            <span class="fresh-comment-pill">${item.performed_by || 'manager'}</span>
+            <span>${formatDateTime(item.created_at)}</span>
+          </div>
+          <div class="quick-comment-item-body">${escapeHtml(item.description || '')}</div>
+        </div>
+      `).join('')
+      : '<div class="worker-activity-empty">Комментариев пока нет.</div>';
+  } catch (err) {
+    wrap.innerHTML = `<div class="worker-activity-empty">Не удалось загрузить историю: ${escapeHtml(err.message || 'unknown error')}</div>`;
+  }
 }
 
 async function saveQuickLeadComment(id) {
@@ -2002,8 +2029,13 @@ async function saveQuickLeadComment(id) {
         performed_by: currentRole === 'admin' ? 'admin' : 'manager',
       },
     });
-    closeModal();
+    input.value = '';
+    await loadQuickCommentHistory(id);
     await renderLeads(document.getElementById('main'), currentLeadFilters);
+    if (result) {
+      result.className = 'sync-result show ok';
+      result.textContent = '✅ Комментарий сохранён.';
+    }
   } catch (err) {
     if (result) {
       result.className = 'sync-result show err';
