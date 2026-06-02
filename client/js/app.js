@@ -1827,8 +1827,8 @@ async function renderLeads(el, filters = {}) {
           <tbody>
             ${rows.length ? rows.map(l => `
               <tr class="${l.status === 'new' ? 'lead-row-new' : ''}" onclick="openLeadDetail(${l.id})" style="cursor:pointer;">
-                <td style="font-weight:500;color:${l.is_gold_lead ? '#f6d365' : '#ddd'};">${l.company_name || '—'}</td>
-                <td>${l.contact_name || '—'}</td>
+                <td style="font-weight:500;color:${l.is_gold_lead ? '#f6d365' : '#ddd'};max-width:148px;line-height:1.25;word-break:break-word;">${l.company_name || '—'}</td>
+                <td style="max-width:120px;line-height:1.25;word-break:break-word;">${l.contact_name || '—'}</td>
                 <td style="font-size:11px;">${l.phone || l.email || '—'}</td>
                 <td>${l.city || '—'}</td>
                 <td onclick="event.stopPropagation();">
@@ -1841,15 +1841,15 @@ async function renderLeads(el, filters = {}) {
                     ${CRM_STAGES.map(status => `<option value="${status}" ${l.status === status ? 'selected' : ''}>${statusLabel(status)}</option>`).join('')}
                   </select>
                 </td>
-                <td><span class="badge badge-${l.priority}">${l.priority}</span></td>
-                <td onclick="event.stopPropagation();" style="min-width:116px;">${renderLeadTableContactActions(l)}</td>
-                <td style="max-width:240px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};">${l.area_label || '—'}</td>
-                <td style="width:220px;max-width:220px;" onclick="event.stopPropagation();">
+                <td style="width:74px;"><span class="badge badge-${l.priority}">${l.priority}</span></td>
+                <td onclick="event.stopPropagation();" style="min-width:104px;width:104px;">${renderLeadTableContactActions(l)}</td>
+                <td style="max-width:150px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};line-height:1.2;word-break:break-word;">${l.area_label || '—'}</td>
+                <td style="width:190px;max-width:190px;" onclick="event.stopPropagation();">
                   <button class="btn btn-sm btn-secondary ${l.has_fresh_comment ? 'fresh-comment-btn' : ''}" title="${escapeAttr(l.latest_comment || 'Добавить комментарий')}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="width:100%;display:inline-flex;gap:6px;align-items:center;justify-content:flex-start;">
-                    <span class="fresh-comment-icon-wrap">💬${l.has_fresh_comment ? '<span class="fresh-comment-dot"></span>' : ''}</span><span style="display:inline-block;max-width:165px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : 'Добавить'}</span>
+                    <span class="fresh-comment-icon-wrap">💬${l.has_fresh_comment ? '<span class="fresh-comment-dot"></span>' : ''}</span><span style="display:inline-block;max-width:135px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : 'Добавить'}</span>
                   </button>
                 </td>
-                <td style="color:#666;font-size:11px;">${new Date(l.created_at).toLocaleDateString('bg-BG')}</td>
+                <td style="color:#666;font-size:11px;width:72px;">${new Date(l.created_at).toLocaleDateString('bg-BG')}</td>
                 <td style="display:flex;gap:6px;">
                   <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadDetail(${l.id})">👁</button>
                 </td>

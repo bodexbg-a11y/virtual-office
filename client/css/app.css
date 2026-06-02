@@ -286,8 +286,8 @@ tr:hover td { background: rgba(99,102,241,0.04); }
 
 .lead-inline-status-select {
   width: 100%;
-  min-width: 140px;
-  max-width: 150px;
+  min-width: 124px;
+  max-width: 136px;
   padding: 6px 28px 6px 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
