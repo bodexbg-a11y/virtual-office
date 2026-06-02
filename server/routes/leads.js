@@ -662,7 +662,14 @@ router.get('/', async (req, res) => {
           WHERE lead_id = leads.id AND action = 'status_change'
           ORDER BY created_at DESC
           LIMIT 1
-        ) as latest_status_change_at
+        ) as latest_status_change_at,
+        (
+          SELECT created_at
+          FROM lead_activities
+          WHERE lead_id = leads.id AND action = 'ping_followup'
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) as latest_ping_at
       FROM leads ${whereClause}
       ORDER BY ${orderBy}
       LIMIT ? OFFSET ?
@@ -889,6 +896,42 @@ router.delete('/:id/comments/:commentId', async (req, res) => {
     );
 
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:id/ping', async (req, res) => {
+  try {
+    const performedBy = String(req.body.performed_by || 'manager').trim() || 'manager';
+    const channel = String(req.body.channel || 'followup').trim() || 'followup';
+
+    const { rows: leads } = await db.query(
+      'SELECT id FROM leads WHERE id = ?',
+      [req.params.id]
+    );
+
+    if (!leads.length) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    const { rows } = await db.query(`
+      INSERT INTO lead_activities (lead_id, action, description, new_value, performed_by)
+      VALUES (?, 'ping_followup', ?, ?, ?)
+      RETURNING *
+    `, [
+      req.params.id,
+      `Пинг после каталога через ${channel}`,
+      channel,
+      performedBy,
+    ]);
+
+    await db.query(
+      'UPDATE leads SET updated_at = NOW() WHERE id = ?',
+      [req.params.id]
+    );
+
+    res.status(201).json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

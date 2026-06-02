@@ -3107,6 +3107,10 @@ function buildLeadTemplateMessage(lead = {}, type = 'intro') {
 function needsCatalogPing(lead = {}) {
   if ((lead.status || '') !== 'catalog_sent') return false;
   if (!String(lead.email || '').trim() && !phoneDigits(lead.phone || '')) return false;
+  const lastPingAt = lead.latest_ping_at ? new Date(lead.latest_ping_at).getTime() : 0;
+  if (Number.isFinite(lastPingAt) && lastPingAt > 0 && (Date.now() - lastPingAt) < (3 * 24 * 60 * 60 * 1000)) {
+    return false;
+  }
   const sourceDate = lead.latest_status_change_at || lead.updated_at || lead.created_at;
   if (!sourceDate) return false;
   const timestamp = new Date(sourceDate).getTime();
@@ -3174,14 +3178,39 @@ async function openCatalogPingModal(id) {
       <div style="font-size:12px;color:#9ca3af;margin-bottom:10px;">Лид молчит после каталога 3+ дня. Можно быстро напомнить о себе.</div>
       <textarea rows="8" style="width:100%;">${escapeHtml(message)}</textarea>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
-        <a class="btn btn-secondary ${gmail ? '' : 'disabled'}" ${gmail ? `href="${escapeAttr(gmail)}" target="_blank" rel="noopener"` : ''}>✉️ Gmail</a>
-        <a class="btn btn-secondary ${whatsapp ? '' : 'disabled'}" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬 WhatsApp</a>
-        <a class="btn btn-secondary ${viber ? '' : 'disabled'}" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲 Viber</a>
+        <button class="btn btn-secondary ${gmail ? '' : 'disabled'}" ${gmail ? `onclick="markLeadPingAndOpen(${lead.id}, 'gmail', '${encodeURIComponent(gmail)}')"` : 'disabled'}>✉️ Gmail</button>
+        <button class="btn btn-secondary ${whatsapp ? '' : 'disabled'}" ${whatsapp ? `onclick="markLeadPingAndOpen(${lead.id}, 'whatsapp', '${encodeURIComponent(whatsapp)}')"` : 'disabled'}>💬 WhatsApp</button>
+        <button class="btn btn-secondary ${viber ? '' : 'disabled'}" ${viber ? `onclick="markLeadPingAndOpen(${lead.id}, 'viber', '${encodeURIComponent(viber)}')"` : 'disabled'}>📲 Viber</button>
       </div>
     `);
   } catch (err) {
     alert('Грешка: ' + err.message);
   }
+}
+
+async function markLeadPingAndOpen(leadId, channel, encodedUrl) {
+  try {
+    await api(`/api/leads/${leadId}/ping`, {
+      method: 'POST',
+      body: {
+        channel,
+        performed_by: currentRole === 'admin' ? 'admin' : 'manager',
+      },
+    });
+  } catch (err) {
+    alert('Грешка: ' + err.message);
+    return;
+  }
+
+  const url = decodeURIComponent(encodedUrl || '');
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    window.open(url, '_blank', 'noopener');
+  } else if (url) {
+    window.location.href = url;
+  }
+
+  closeModal();
+  await renderLeads(document.getElementById('main'), currentLeadFilters);
 }
 
 function openLeadFormResponsesModal() {
