@@ -1841,7 +1841,7 @@ async function renderLeads(el, filters = {}) {
                 <td style="max-width:240px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};">${l.area_label || '—'}</td>
                 <td style="width:120px;max-width:120px;" onclick="event.stopPropagation();">
                   <button class="btn btn-sm btn-secondary ${l.has_fresh_comment ? 'fresh-comment-btn' : ''}" title="${escapeAttr(l.latest_comment || 'Добавить комментарий')}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="max-width:112px;display:inline-flex;gap:5px;align-items:center;">
-                    <span class="fresh-comment-icon-wrap">💬${l.has_fresh_comment ? '<span class="fresh-comment-dot"></span>' : ''}</span><span style="display:inline-block;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : 'Добавить'}</span>
+                    <span class="fresh-comment-icon-wrap">💬${l.has_fresh_comment ? '<span class="fresh-comment-dot"></span>' : ''}</span><span style="display:inline-block;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : 'Добавить'}</span>${l.has_fresh_comment ? '<span class="fresh-comment-mini">new</span>' : ''}
                   </button>
                 </td>
                 <td style="width:130px;max-width:130px;" onclick="event.stopPropagation();">
@@ -1852,7 +1852,6 @@ async function renderLeads(el, filters = {}) {
                 <td style="color:#666;font-size:11px;">${new Date(l.created_at).toLocaleDateString('bg-BG')}</td>
                 <td style="display:flex;gap:6px;">
                   <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadDetail(${l.id})">👁</button>
-                  <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadComment(${l.id})">💬</button>
                 </td>
               </tr>
             `).join('') : '<tr><td colspan="11" style="text-align:center;color:#666;padding:30px;">Нет лидов по этому фильтру.</td></tr>'}
