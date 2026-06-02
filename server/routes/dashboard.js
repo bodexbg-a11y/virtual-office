@@ -36,6 +36,13 @@ const DASHBOARD_MATERIAL_LEAD_SQL_L = `(
     AND lower(concat_ws(' ', coalesce(l.lead_type, ''), coalesce(l.interest_products, ''), coalesce(l.notes, ''))) ~ '(материал|material|materials|смол|smola|polymer|полимер|epoxy|епокс|pu|полиуретан|инжекц|packer|пакер|arcan)'
   )
 )`;
+const DASHBOARD_TOUCHED_TODAY_SQL = `EXISTS (
+  SELECT 1
+  FROM lead_activities la
+  WHERE la.lead_id = leads.id
+    AND la.action IN ('comment', 'status_change', 'followup_change')
+    AND la.created_at::date = CURRENT_DATE
+)`;
 
 const WORKERS = [
   {
@@ -772,6 +779,7 @@ router.get('/stats', async (req, res) => {
           OR status = 'new'
           OR priority IN ('hot', 'high')
         )
+        AND NOT ${DASHBOARD_TOUCHED_TODAY_SQL}
       ORDER BY
         CASE
           WHEN next_followup_at IS NOT NULL AND next_followup_at < NOW() THEN 0
@@ -805,6 +813,7 @@ router.get('/stats', async (req, res) => {
           OR status = 'new'
           OR priority IN ('hot', 'high')
         )
+        AND NOT ${DASHBOARD_TOUCHED_TODAY_SQL}
     `);
 
     const waitingOffers = await db.query(`

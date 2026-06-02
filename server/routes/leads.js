@@ -327,13 +327,21 @@ const SERVICE_LEAD_SQL = `(
     AND ${LEAD_TEXT_SQL} ~ '(услуг|service|ремонт|обект|объект|теч|хидроизолац|укреп|фундамент)'
   )
 )`;
+const TOUCHED_TODAY_SQL = `EXISTS (
+  SELECT 1
+  FROM lead_activities la
+  WHERE la.lead_id = leads.id
+    AND la.action IN ('comment', 'status_change', 'followup_change')
+    AND la.created_at::date = CURRENT_DATE
+)`;
 const DAILY_CALLS_WHERE_SQL = `status NOT IN ('won', 'lost')
   AND ${MATERIAL_LEAD_SQL}
   AND (
     (next_followup_at IS NOT NULL AND next_followup_at < (CURRENT_DATE + INTERVAL '1 day'))
     OR status = 'new'
     OR priority IN ('hot', 'high')
-  )`;
+  )
+  AND NOT ${TOUCHED_TODAY_SQL}`;
 
 async function findSheetMatchForLead(lead) {
   const phone = normalizePhone(lead.phone);
