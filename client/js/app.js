@@ -1820,7 +1820,6 @@ async function renderLeads(el, filters = {}) {
               <th>Контакт</th>
               <th>Тип / интерес</th>
               <th>Комментарий</th>
-              <th>След. звонок</th>
               <th>Дата</th>
               <th></th>
             </tr>
@@ -1839,14 +1838,9 @@ async function renderLeads(el, filters = {}) {
                 <td><span class="badge badge-${l.priority}">${l.priority}</span></td>
                 <td onclick="event.stopPropagation();" style="min-width:116px;">${renderLeadTableContactActions(l)}</td>
                 <td style="max-width:240px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};">${l.area_label || '—'}</td>
-                <td style="width:120px;max-width:120px;" onclick="event.stopPropagation();">
-                  <button class="btn btn-sm btn-secondary ${l.has_fresh_comment ? 'fresh-comment-btn' : ''}" title="${escapeAttr(l.latest_comment || 'Добавить комментарий')}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="max-width:112px;display:inline-flex;gap:5px;align-items:center;">
-                    <span class="fresh-comment-icon-wrap">💬${l.has_fresh_comment ? '<span class="fresh-comment-dot"></span>' : ''}</span><span style="display:inline-block;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : 'Добавить'}</span>
-                  </button>
-                </td>
-                <td style="width:130px;max-width:130px;" onclick="event.stopPropagation();">
-                  <button class="btn btn-sm btn-secondary" title="Назначить следующий звонок" onclick="openFollowupModal(${l.id}, '${encodeURIComponent(l.next_followup_at || '')}')" style="max-width:122px;display:inline-flex;gap:5px;align-items:center;">
-                    📅 <span style="display:inline-block;max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${formatFollowupShort(l.next_followup_at) || 'Назначить'}</span>
+                <td style="width:220px;max-width:220px;" onclick="event.stopPropagation();">
+                  <button class="btn btn-sm btn-secondary ${l.has_fresh_comment ? 'fresh-comment-btn' : ''}" title="${escapeAttr(l.latest_comment || 'Добавить комментарий')}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="width:100%;display:inline-flex;gap:6px;align-items:center;justify-content:flex-start;">
+                    <span class="fresh-comment-icon-wrap">💬${l.has_fresh_comment ? '<span class="fresh-comment-dot"></span>' : ''}</span><span style="display:inline-block;max-width:165px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : 'Добавить'}</span>
                   </button>
                 </td>
                 <td style="color:#666;font-size:11px;">${new Date(l.created_at).toLocaleDateString('bg-BG')}</td>
