@@ -1743,6 +1743,7 @@ async function renderLeads(el, filters = {}) {
   ]);
   const rows = applyLeadQuickFilters(data.leads || [], filters);
   const statusCounts = Object.fromEntries((summary.statuses || []).map(row => [row.status, row.count]));
+  const cityOptions = summary.cities || [];
 
   el.innerHTML = `
     <div class="page-header fade-in">
@@ -1804,6 +1805,17 @@ async function renderLeads(el, filters = {}) {
       >
         🏗️ Конкретный объект
       </button>
+      <select
+        class="lead-city-filter"
+        onchange="renderLeads(document.getElementById('main'), {...currentLeadFilters, city: this.value || undefined})"
+      >
+        <option value="">Все города</option>
+        ${cityOptions.map(item => `
+          <option value="${escapeAttr(item.city)}" ${filters.city === item.city ? 'selected' : ''}>
+            ${escapeHtml(item.city)}${item.count ? ` (${item.count})` : ''}
+          </option>
+        `).join('')}
+      </select>
     </div>
 
     <div class="card fade-in">

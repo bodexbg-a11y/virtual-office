@@ -525,6 +525,7 @@ router.get('/', async (req, res) => {
       source,
       priority,
       search,
+      city,
       view,
       date_range,
       followup,
@@ -577,6 +578,11 @@ router.get('/', async (req, res) => {
 
       const s = `%${search}%`;
       params.push(s, s, s, s, s, s, s);
+    }
+
+    if (city) {
+      where.push(`LOWER(TRIM(COALESCE(city, ''))) = LOWER(TRIM(?))`);
+      params.push(city);
     }
 
     if (date_range === 'today') {
@@ -698,6 +704,24 @@ router.get('/summary', async (req, res) => {
       GROUP BY ${NORMALIZED_STATUS_SQL}
     `);
     const bySourceRes = await db.query(`SELECT source, COUNT(*)::int as count FROM leads GROUP BY source`);
+    const byCityRes = await db.query(`
+      SELECT TRIM(city) as city, COUNT(*)::int as count
+      FROM leads
+      WHERE TRIM(COALESCE(city, '')) <> ''
+      GROUP BY TRIM(city)
+      ORDER BY
+        CASE LOWER(TRIM(city))
+          WHEN 'софия' THEN 0
+          WHEN 'sofia' THEN 0
+          WHEN 'пловдив' THEN 1
+          WHEN 'plovdiv' THEN 1
+          WHEN 'варна' THEN 2
+          WHEN 'varna' THEN 2
+          ELSE 3
+        END,
+        COUNT(*) DESC,
+        TRIM(city) ASC
+    `);
 
     const todayRes = await db.query(`
       SELECT COUNT(*)::int as count
@@ -723,6 +747,7 @@ router.get('/summary', async (req, res) => {
 
     const bySource = bySourceRes.rows;
     const byStatus = byStatusRes.rows;
+    const byCity = byCityRes.rows;
 
     res.json({
       total: totalRes.rows[0]?.count || 0,
@@ -738,6 +763,7 @@ router.get('/summary', async (req, res) => {
       `)).rows[0]?.count || 0,
       statuses: byStatus,
       sources: bySource,
+      cities: byCity,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1451,6 +1451,23 @@ tr:hover td { background: rgba(99,102,241,0.04); }
   flex-wrap: wrap;
 }
 
+.lead-city-filter {
+  min-width: 190px;
+  max-width: 220px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.lead-city-filter:focus {
+  border-color: var(--brand);
+}
+
 .search-bar input {
   flex: 1;
   padding: 8px 14px;
