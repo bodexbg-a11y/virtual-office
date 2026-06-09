@@ -1969,19 +1969,28 @@ function isSpecificObjectLead(lead = {}) {
 }
 
 function isServicesLead(lead = {}) {
-  const text = `${lead.lead_type || ''} ${lead.source_sheet || ''} ${lead.company_type || ''} ${lead.notes || ''} ${lead.form_summary || ''} ${lead.interest_products || ''}`.toLowerCase();
-  return /услуг|service|ремонт|хидроизолац|теч|укреп|фундамент/.test(text);
+  const sheet = String(lead.google_sheet_name || lead.source_sheet || '').trim().toLowerCase();
+  if (/материал|material/.test(sheet)) return false;
+  if (/услуг|service/.test(sheet)) return true;
+
+  const leadType = String(lead.lead_type || '').toLowerCase();
+  if (/материал|material/.test(leadType)) return false;
+  if (/услуг|service/.test(leadType)) return true;
+
+  const text = `${lead.company_type || ''} ${lead.notes || ''} ${lead.form_summary || ''} ${lead.interest_products || ''}`.toLowerCase();
+  if (/материал|material|смол|polymer|полимер|epoxy|епокс|полиуретан|инжекц|packer|пакер|arcan/.test(text)) {
+    return false;
+  }
+  return /услуг|service|ремонт|теч|укреп|фундамент/.test(text);
 }
 
 function leadApplicationForm(lead = {}, forcedType = '') {
   const type = forcedType || (
     isDistributorLead(lead)
       ? 'distributor'
-      : isSpecificObjectLead(lead)
-        ? 'object'
-        : isServicesLead(lead)
-          ? 'services'
-          : ''
+      : isServicesLead(lead)
+        ? 'services'
+        : 'materials'
   );
   if (type === 'distributor') {
     return {
@@ -1991,12 +2000,12 @@ function leadApplicationForm(lead = {}, forcedType = '') {
       cta: 'За да подготвим условията за дистрибуция / партньорство, моля попълнете кратката форма:',
     };
   }
-  if (type === 'object') {
+  if (type === 'object' || type === 'materials') {
     return {
-      type,
-      label: 'Заявка за доставка на материали за конкретен обект',
+      type: 'materials',
+      label: 'Заявка за доставка на материали',
       url: MATERIALS_OBJECT_FORM_URL,
-      cta: 'За да подготвим точно предложение за Вашия обект, моля попълнете кратката форма:',
+      cta: 'След като разгледате каталога / презентацията, моля попълнете кратката форма. По данните от нея ще подготвим конкретно търговско предложение:',
     };
   }
   if (type === 'services') {
@@ -3167,6 +3176,7 @@ function buildLeadTemplateMessage(lead = {}, type = 'intro') {
       '',
       'Искам да проследя изпратеното търговско предложение.',
       'Имате ли обратна връзка по цената, обема или срока за доставка, за да подготвим следващата стъпка?',
+      ...formLines,
       '',
       'Поздрави,',
       'BODEX Bulgaria',
@@ -3227,9 +3237,7 @@ function bulkPingTemplateForStatus(status = 'catalog_sent') {
 
 function buildBulkPingMessage(lead = {}, status = 'catalog_sent', body = '', forcedFormType = '') {
   const name = lead.contact_name || lead.company_name || '';
-  const formLines = ['new', 'interested', 'catalog_sent', 'thinking'].includes(status)
-    ? leadApplicationFormLines(lead, forcedFormType)
-    : [];
+  const formLines = leadApplicationFormLines(lead, forcedFormType);
   return [
     name ? `Здравейте, ${name},` : 'Здравейте,',
     '',
@@ -3288,9 +3296,8 @@ function renderBulkPingRecipients(status) {
   if (!content) return;
   const emailRecipients = bulkPingRecipients.filter(lead => String(lead.email || '').trim());
   const distributorEmailCount = emailRecipients.filter(isDistributorLead).length;
-  const objectEmailCount = emailRecipients.filter(lead => !isDistributorLead(lead) && isSpecificObjectLead(lead)).length;
-  const servicesEmailCount = emailRecipients.filter(lead => !isDistributorLead(lead) && !isSpecificObjectLead(lead) && isServicesLead(lead)).length;
-  const generalEmailCount = emailRecipients.length - distributorEmailCount - objectEmailCount - servicesEmailCount;
+  const servicesEmailCount = emailRecipients.filter(lead => !isDistributorLead(lead) && isServicesLead(lead)).length;
+  const materialsEmailCount = emailRecipients.length - distributorEmailCount - servicesEmailCount;
   const emailCount = emailRecipients.length;
   const phoneCount = bulkPingRecipients.filter(lead => phoneDigits(lead.phone || '').length >= 6).length;
   const names = bulkPingRecipients.slice(0, 8).map(lead => lead.company_name || lead.contact_name || `Лид #${lead.id}`);
@@ -3308,9 +3315,8 @@ function renderBulkPingRecipients(status) {
     ${names.length ? `<div class="bulk-ping-recipients">${names.map(name => `<span>${escapeHtml(name)}</span>`).join('')}${bulkPingRecipients.length > names.length ? `<span>+${bulkPingRecipients.length - names.length}</span>` : ''}</div>` : ''}
     <div class="bulk-ping-actions">
       <button class="btn btn-secondary" onclick="sendBulkEmailPing('distributor')" ${distributorEmailCount ? '' : 'disabled'}>Email дистрибьюторам (${distributorEmailCount})</button>
-      <button class="btn btn-secondary" onclick="sendBulkEmailPing('object')" ${objectEmailCount ? '' : 'disabled'}>Email по объектам (${objectEmailCount})</button>
       <button class="btn btn-secondary" onclick="sendBulkEmailPing('services')" ${servicesEmailCount ? '' : 'disabled'}>Email по услугам (${servicesEmailCount})</button>
-      <button class="btn btn-secondary" onclick="sendBulkEmailPing('general')" ${generalEmailCount ? '' : 'disabled'}>Email остальным (${generalEmailCount})</button>
+      <button class="btn btn-secondary" onclick="sendBulkEmailPing('materials')" ${materialsEmailCount ? '' : 'disabled'}>Email по материалам (${materialsEmailCount})</button>
       <button class="btn btn-secondary" onclick="startBulkPingQueue('whatsapp')" ${phoneCount ? '' : 'disabled'}>WhatsApp (${phoneCount})</button>
       <button class="btn btn-secondary" onclick="startBulkPingQueue('viber')" ${phoneCount ? '' : 'disabled'}>Viber (${phoneCount})</button>
     </div>
@@ -3352,11 +3358,10 @@ async function sendBulkEmailPing(group = 'general') {
   const recipients = bulkPingRecipients.filter(lead => {
     if (!String(lead.email || '').trim()) return false;
     if (group === 'distributor') return isDistributorLead(lead);
-    if (group === 'object') return !isDistributorLead(lead) && isSpecificObjectLead(lead);
-    if (group === 'services') return !isDistributorLead(lead) && !isSpecificObjectLead(lead) && isServicesLead(lead);
-    return !isDistributorLead(lead) && !isSpecificObjectLead(lead) && !isServicesLead(lead);
+    if (group === 'services') return !isDistributorLead(lead) && isServicesLead(lead);
+    return !isDistributorLead(lead) && !isServicesLead(lead);
   });
-  const formType = ['distributor', 'object', 'services'].includes(group) ? group : '';
+  const formType = ['distributor', 'services', 'materials'].includes(group) ? group : 'materials';
   const url = bulkGmailComposeUrl(recipients, status, bulkPingBody(), formType);
   if (!url) return;
 
