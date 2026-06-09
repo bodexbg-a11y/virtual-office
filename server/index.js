@@ -28,6 +28,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/agents', require('./routes/agents'));
 app.use('/api/offers', require('./routes/offers'));
+app.use('/api/gmail', require('./routes/gmail'));
 
 // Health check
 app.get('/api/health', (req, res) => {

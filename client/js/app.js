@@ -17,13 +17,47 @@ let bulkPingQueue = [];
 let bulkPingQueueIndex = 0;
 let bulkPingQueueChannel = '';
 const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
+const GMAIL_SENDERS = [
+  { key: 'bodex', email: 'bodexbg@gmail.com', label: 'Bodex Bulgaria' },
+  { key: 'vlad', email: 'vlad@bodexbg.com', label: 'Vladyslav Mes' },
+];
+let gmailAccountsCache = [];
+let selectedGmailSenderKey = GMAIL_SENDERS.some(sender => sender.key === localStorage.getItem('bodex_gmail_sender_key'))
+  ? localStorage.getItem('bodex_gmail_sender_key')
+  : 'bodex';
 const SERVICES_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSeOqHotu23EdiGiV81GOIQGrFLAFX9MflOxO1YxtlDeaJRIag/viewform?usp=header';
 const MATERIALS_OBJECT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLScqNRc5f2X_RQ92q4WaWhXjaWoc5FS5CbDF1l3BECXdHwywgA/viewform?usp=header';
 const DISTRIBUTOR_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSePY55DYlgh7BMb94fjB0G-IRIWyqmK9rlIc2d3S4CbjjuVUA/viewform?usp=header';
 const BODEX_WEBSITE_URL = 'https://bodexbg.com/';
 
-function gmailComposeBaseUrl() {
-  return 'https://mail.google.com/mail/u/0/';
+function selectedGmailSender() {
+  return GMAIL_SENDERS.find(sender => sender.key === selectedGmailSenderKey) || GMAIL_SENDERS[0];
+}
+
+function gmailSenderOptions() {
+  return GMAIL_SENDERS.map(sender => `
+    <option value="${sender.key}" ${selectedGmailSenderKey === sender.key ? 'selected' : ''} ${gmailSenderConnected(sender.email) ? '' : 'disabled'}>
+      ${escapeHtml(sender.label)} — ${escapeHtml(sender.email)}${gmailSenderConnected(sender.email) ? '' : ' (не подключен)'}
+    </option>
+  `).join('');
+}
+
+function setGmailSender(key) {
+  if (!GMAIL_SENDERS.some(sender => sender.key === key)) return;
+  selectedGmailSenderKey = key;
+  localStorage.setItem('bodex_gmail_sender_key', key);
+}
+
+function gmailSenderConnected(email) {
+  return gmailAccountsCache.some(account => account.email === email && account.connected);
+}
+
+function ensureConnectedGmailSender() {
+  if (gmailSenderConnected(selectedGmailSender().email)) return true;
+  const connected = GMAIL_SENDERS.find(sender => gmailSenderConnected(sender.email));
+  if (!connected) return false;
+  setGmailSender(connected.key);
+  return true;
 }
 
 // ===== NAVIGATION =====
@@ -1749,10 +1783,13 @@ async function pullDealsSheets() {
 async function renderLeads(el, filters = {}) {
   currentLeadFilters = filters;
   const params = new URLSearchParams(filters);
-  const [data, summary] = await Promise.all([
+  const [data, summary, gmailStatus] = await Promise.all([
     api(`/api/leads?${params}`),
     api('/api/leads/summary').catch(() => ({ total: 0, statuses: [], sources: [] })),
+    currentRole === 'admin' ? api('/api/gmail/status').catch(() => ({ accounts: [] })) : Promise.resolve({ accounts: [] }),
   ]);
+  gmailAccountsCache = gmailStatus.accounts || [];
+  ensureConnectedGmailSender();
   const rows = applyLeadQuickFilters(data.leads || [], filters);
   const statusCounts = Object.fromEntries((summary.statuses || []).map(row => [row.status, row.count]));
   const cityOptions = summary.cities || [];
@@ -1761,7 +1798,16 @@ async function renderLeads(el, filters = {}) {
     <div class="page-header fade-in">
       <h2>📋 Лидове <span style="color:#666;font-size:14px;">(${rows.length})</span></h2>
       <div class="page-header-actions">
-        <span class="btn btn-secondary" style="cursor:default;">✉️ bodexbg@gmail.com</span>
+        <label style="display:flex;align-items:center;gap:7px;font-size:11px;color:#999;">
+          Отправитель
+          <select
+            class="lead-city-filter"
+            style="width:230px;"
+            onchange="setGmailSender(this.value);renderLeads(document.getElementById('main'), currentLeadFilters)"
+          >
+            ${gmailSenderOptions()}
+          </select>
+        </label>
         <button class="btn btn-secondary" onclick="openBulkPingModal()">Пинг всем</button>
         <button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 Синхронизирай FB лиды</button>
         <button class="btn btn-primary" onclick="openNewLeadModal()">+ Нов лид</button>
@@ -2582,11 +2628,88 @@ async function syncProductsFromSite() {
 
 // ===== SETTINGS =====
 async function renderSettings(el) {
-  const s = await api('/api/settings');
+  const [s, gmail] = await Promise.all([
+    api('/api/settings'),
+    api('/api/gmail/status').catch(err => ({
+      configured: false,
+      accounts: [],
+      error: err.message,
+    })),
+  ]);
+  gmailAccountsCache = gmail.accounts || [];
+  ensureConnectedGmailSender();
+  const gmailRedirectUri = gmail.redirect_uri
+    || `${API}/api/gmail/oauth/callback`;
 
   el.innerHTML = `
     <div class="page-header fade-in">
       <h2>⚙️ Интеграции — Настройки</h2>
+    </div>
+
+    <!-- ========= GMAIL API ========= -->
+    <div class="card fade-in">
+      <div class="card-title">
+        ✉️ Gmail API — проверенный отправитель
+        <span class="badge ${gmailAccountsCache.some(account => account.connected) ? 'badge-won' : (gmail.configured ? 'badge-qualified' : 'badge-new')}" style="margin-left:auto;">
+          ${gmailAccountsCache.some(account => account.connected) ? '✅ Свързано' : (gmail.configured ? '⚠️ Свържете акаунт' : '⚫ Не е настроено')}
+        </span>
+      </div>
+
+      <div style="font-size:12px;color:#aaa;line-height:1.7;margin-bottom:16px;">
+        Писмата се изпращат директно през Gmail API. Приложението проверява реалния Google акаунт и няма да позволи писмо от друг адрес.
+      </div>
+
+      <details style="margin-bottom:16px;background:rgba(255,255,255,0.02);padding:12px 14px;border-radius:8px;">
+        <summary style="cursor:pointer;font-size:12px;color:var(--brand-light);font-weight:600;">📖 Настройка в Google Cloud</summary>
+        <div style="font-size:12px;color:#aaa;line-height:1.8;margin-top:10px;">
+          <p><strong>1.</strong> В Google Cloud активирайте <strong>Gmail API</strong>.</p>
+          <p><strong>2.</strong> Настройте OAuth consent screen и добавете двата Gmail акаунта като test users, ако приложението е в режим Testing.</p>
+          <p><strong>3.</strong> Създайте OAuth Client ID от тип <strong>Web application</strong>.</p>
+          <p><strong>4.</strong> В Authorized redirect URIs добавете точно:</p>
+          <p><code style="font-size:10px;word-break:break-all;">${escapeHtml(gmailRedirectUri)}</code></p>
+          <p><strong>5.</strong> Запазете Client ID и Client Secret долу, след което свържете всеки изпращач отделно.</p>
+        </div>
+      </details>
+
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>OAuth Client ID</label>
+          <input id="gmail-client-id" placeholder="xxxxxxxx.apps.googleusercontent.com" value="${escapeAttr(gmail.client_id || '')}">
+        </div>
+        <div class="form-group full">
+          <label>OAuth Client Secret ${gmail.client_secret_set ? '<span style="color:var(--green);">(вече запазен)</span>' : ''}</label>
+          <input id="gmail-client-secret" type="password" placeholder="${gmail.client_secret_set ? 'Оставете празно, за да запазите текущия secret' : 'Google OAuth Client Secret'}">
+        </div>
+        <div class="form-group full">
+          <label>OAuth Redirect URI</label>
+          <input id="gmail-redirect-uri" value="${escapeAttr(gmailRedirectUri)}">
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="saveGmailOAuth()">💾 Запази Gmail OAuth</button>
+      <div id="gmail-result" class="sync-result"></div>
+
+      <div style="display:grid;gap:10px;margin-top:18px;">
+        ${GMAIL_SENDERS.map(sender => {
+          const account = gmailAccountsCache.find(item => item.email === sender.email);
+          const connected = Boolean(account?.connected);
+          return `
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;">
+              <div>
+                <div style="font-weight:700;">${escapeHtml(sender.label)}</div>
+                <div style="font-size:12px;color:#999;">${escapeHtml(sender.email)}</div>
+                <div style="font-size:11px;color:${connected ? 'var(--green)' : '#777'};margin-top:3px;">
+                  ${connected ? '✅ Google потвърди този адрес' : 'Не е свързан'}
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;">
+                ${connected
+                  ? `<button class="btn btn-secondary btn-sm" onclick="disconnectGmailAccount('${escapeAttr(sender.email)}')">Изключи</button>`
+                  : `<button class="btn btn-secondary btn-sm" onclick="connectGmailAccount('${escapeAttr(sender.email)}')" ${gmail.configured ? '' : 'disabled'}>Свържи</button>`}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
     </div>
 
     <!-- ========= GOOGLE SHEETS ========= -->
@@ -2714,6 +2837,50 @@ async function renderSettings(el) {
       </div>
     </div>
   `;
+}
+
+async function saveGmailOAuth() {
+  const result = document.getElementById('gmail-result');
+  result.className = 'sync-result show';
+  result.textContent = 'Запазване...';
+  try {
+    await api('/api/gmail/configure', {
+      method: 'POST',
+      body: {
+        client_id: document.getElementById('gmail-client-id').value.trim(),
+        client_secret: document.getElementById('gmail-client-secret').value,
+        redirect_uri: document.getElementById('gmail-redirect-uri').value.trim(),
+      },
+    });
+    result.className = 'sync-result show ok';
+    result.textContent = '✅ Gmail OAuth е запазен. Сега свържете нужните акаунти.';
+    setTimeout(() => renderSettings(document.getElementById('main')), 900);
+  } catch (err) {
+    result.className = 'sync-result show err';
+    result.textContent = '❌ ' + err.message;
+  }
+}
+
+async function connectGmailAccount(email) {
+  try {
+    const response = await api('/api/gmail/connect', {
+      method: 'POST',
+      body: { email },
+    });
+    window.location.href = response.url;
+  } catch (err) {
+    alert('Не удалось подключить Gmail: ' + err.message);
+  }
+}
+
+async function disconnectGmailAccount(email) {
+  if (!confirm(`Отключить отправку с ${email}?`)) return;
+  try {
+    await api(`/api/gmail/accounts/${encodeURIComponent(email)}`, { method: 'DELETE' });
+    await renderSettings(document.getElementById('main'));
+  } catch (err) {
+    alert('Не удалось отключить Gmail: ' + err.message);
+  }
 }
 
 async function saveGoogle() {
@@ -3091,21 +3258,22 @@ function humanizeLeadAnswer(value = '', key = '') {
 }
 
 function renderLeadContactActions(lead = {}) {
-  const email = String(lead.email || '').trim();
   const phone = String(lead.phone || '').trim();
   const whatsapp = whatsappUrl(phone, buildLeadTemplateMessage(lead, 'intro'));
   const viber = viberUrl(phone, buildLeadTemplateMessage(lead, 'intro'));
-  const gmail = gmailComposeUrl(lead, 'intro');
+  const gmailEnabled = currentRole === 'admin'
+    && gmailSenderConnected(selectedGmailSender().email)
+    && String(lead.email || '').trim();
 
   return `
     <div style="margin-top:16px;padding:12px 14px;border:1px solid rgba(99,102,241,0.28);border-radius:10px;background:rgba(99,102,241,0.07);">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
         <div>
           <div style="font-size:12px;font-weight:800;color:#ddd;">⚡ Быстрый контакт</div>
-          <div style="font-size:11px;color:#9ca3af;margin-top:3px;">Email, WhatsApp и Viber откроются от имени менеджера на этом устройстве.</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:3px;">Email отправляется через подтверждённый Gmail API аккаунт.</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <a class="btn btn-secondary btn-sm ${gmail ? '' : 'disabled'}" ${gmail ? `href="${escapeAttr(gmail)}" target="_blank" rel="noopener"` : ''}>✉️ Написать в Gmail</a>
+          <button class="btn btn-secondary btn-sm" onclick="sendLeadEmail(${lead.id}, 'intro')" ${gmailEnabled ? '' : 'disabled'}>✉️ Отправить email</button>
           <a class="btn btn-secondary btn-sm ${whatsapp ? '' : 'disabled'}" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬 WhatsApp</a>
           <a class="btn btn-secondary btn-sm ${viber ? '' : 'disabled'}" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲 Viber</a>
         </div>
@@ -3120,15 +3288,16 @@ function renderLeadContactActions(lead = {}) {
 }
 
 function renderLeadTableContactActions(lead = {}) {
-  const email = String(lead.email || '').trim();
   const phone = String(lead.phone || '').trim();
   const whatsapp = whatsappUrl(phone);
   const viber = viberUrl(phone);
-  const gmail = gmailComposeUrl(lead);
+  const gmailEnabled = currentRole === 'admin'
+    && gmailSenderConnected(selectedGmailSender().email)
+    && String(lead.email || '').trim();
 
   return `
     <div class="lead-contact-actions">
-      <a class="lead-contact-btn ${gmail ? '' : 'disabled'}" title="Gmail" ${gmail ? `href="${escapeAttr(gmail)}" target="_blank" rel="noopener"` : ''}>✉️</a>
+      <button class="lead-contact-btn ${gmailEnabled ? '' : 'disabled'}" title="Отправить с ${escapeAttr(selectedGmailSender().email)}" onclick="event.stopPropagation();sendLeadEmail(${lead.id}, 'intro')" ${gmailEnabled ? '' : 'disabled'}>✉️</button>
       <a class="lead-contact-btn ${whatsapp ? '' : 'disabled'}" title="WhatsApp" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬</a>
       <a class="lead-contact-btn ${viber ? '' : 'disabled'}" title="Viber" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲</a>
     </div>
@@ -3154,48 +3323,36 @@ function buildLeadTemplateMessage(lead = {}, type = 'intro') {
   const name = lead.contact_name || lead.company_name || '';
   const interest = lead.interest_products || lead.area_label || '';
   const formLines = leadApplicationFormLines(lead);
-  const templates = {
+  const templateBodies = {
     intro: [
-      name ? `Здравейте, ${name},` : 'Здравейте,',
-      '',
-      'Пиша Ви от BODEX Bulgaria относно Вашето запитване за строителни материали.',
       interest ? `Виждам, че интересът е: ${interest}.` : '',
-      'Можем бързо да уточним нужния материал, обем и срок, за да подготвим следващата стъпка.',
-      ...formLines,
-      '',
-      'Поздрави,',
-      'BODEX Bulgaria',
+      'Благодаря Ви за интереса към решенията на BODEX Bulgaria.',
+      'Ако имате въпроси за материалите, приложението или доставката, пишете ми и ще Ви съдействам.',
     ],
     catalog: [
-      name ? `Здравейте, ${name},` : 'Здравейте,',
-      '',
-      'Казвам се Владислав и съм търговски директор на BODEX Bulgaria.',
       'Вие разговаряхте с нашия мениджър относно материалите и изпратения каталог / презентация.',
       'Успяхте ли да го разгледате? Ако решенията са подходящи за Вас, моля попълнете кратката форма, за да подготвим конкретно търговско предложение.',
-      ...formLines,
-      ...vladislavSignatureLines(),
     ],
     catalog_ping: [
-      name ? `Здравейте, ${name},` : 'Здравейте,',
-      '',
-      'Казвам се Владислав и съм търговски директор на BODEX Bulgaria.',
       'Вие разговаряхте с нашия мениджър и получихте нашия каталог / презентация.',
       'Успяхте ли да го разгледате? Ако сте готови да продължим, моля попълнете кратката форма. По данните от нея ще подготвим конкретно търговско предложение.',
-      ...formLines,
-      ...vladislavSignatureLines(),
     ],
     offer_followup: [
-      name ? `Здравейте, ${name},` : 'Здравейте,',
-      '',
       'Искам да проследя изпратеното търговско предложение.',
       'Имате ли обратна връзка по цената, обема или срока за доставка, за да подготвим следващата стъпка?',
-      ...formLines,
-      '',
-      'Поздрави,',
-      'BODEX Bulgaria',
     ],
   };
-  return (templates[type] || templates.intro).filter(Boolean).join('\n');
+  return [
+    name ? `Здравейте, ${name},` : 'Здравейте,',
+    '',
+    'Казвам се Владислав и съм търговски директор на BODEX Bulgaria.',
+    '',
+    ...(templateBodies[type] || templateBodies.intro),
+    ...formLines,
+    '',
+    'Ако имате въпроси, можете да ми отговорите директно на този имейл.',
+    ...vladislavSignatureLines(),
+  ].filter(line => line !== null && line !== undefined).join('\n');
 }
 
 function bulkPingTemplateForStatus(status = 'catalog_sent') {
@@ -3209,7 +3366,6 @@ function bulkPingTemplateForStatus(status = 'catalog_sent') {
       'Кажете ни за какъв обект и обем става въпрос, за да предложим най-подходящото решение.',
     ],
     catalog_sent: [
-      'Казвам се Владислав и съм търговски директор на BODEX Bulgaria.',
       'Вие разговаряхте с нашия мениджър и получихте нашия каталог / презентация.',
       'Успяхте ли да го разгледате? Ако сте готови да продължим, моля попълнете кратката форма. По данните от нея ще подготвим конкретно търговско предложение.',
     ],
@@ -3252,15 +3408,16 @@ function bulkPingTemplateForStatus(status = 'catalog_sent') {
 function buildBulkPingMessage(lead = {}, status = 'catalog_sent', body = '', forcedFormType = '') {
   const name = lead.contact_name || lead.company_name || '';
   const formLines = leadApplicationFormLines(lead, forcedFormType);
-  const signatureLines = status === 'catalog_sent'
-    ? vladislavSignatureLines()
-    : ['', 'Поздрави,', 'BODEX Bulgaria', BODEX_WEBSITE_URL];
   return [
     name ? `Здравейте, ${name},` : 'Здравейте,',
     '',
+    'Казвам се Владислав и съм търговски директор на BODEX Bulgaria.',
+    '',
     body || bulkPingTemplateForStatus(status),
     ...formLines,
-    ...signatureLines,
+    '',
+    'Ако имате въпроси, можете да ми отговорите директно на този имейл.',
+    ...vladislavSignatureLines(),
   ].join('\n');
 }
 
@@ -3281,7 +3438,9 @@ async function openBulkPingModal() {
       </div>
       <div class="form-group" style="margin:0;">
         <label>Отправитель Gmail</label>
-        <div class="btn btn-secondary" style="cursor:default;">bodexbg@gmail.com</div>
+        <select id="bulk-ping-sender" onchange="setGmailSender(this.value)">
+          ${gmailSenderOptions()}
+        </select>
       </div>
     </div>
     <div id="bulk-ping-content" class="bulk-ping-content">
@@ -3347,22 +3506,6 @@ function bulkPingBody() {
   return document.getElementById('bulk-ping-template')?.value.trim() || '';
 }
 
-function bulkGmailComposeUrl(recipients, status, body, formType = '') {
-  const emails = [...new Set(recipients.map(lead => String(lead.email || '').trim()).filter(Boolean))];
-  if (!emails.length) return '';
-  const subject = status === 'catalog_sent'
-    ? 'Каталог BODEX Bulgaria и подготовка на търговско предложение'
-    : `BODEX Bulgaria - ${statusLabel(status)}`;
-  const params = new URLSearchParams({
-    view: 'cm',
-    fs: '1',
-    bcc: emails.join(','),
-    su: subject,
-    body: buildBulkPingMessage({}, status, body, formType),
-  });
-  return `${gmailComposeBaseUrl()}?${params.toString()}`;
-}
-
 async function recordBulkPings(leads, channel) {
   if (!leads.length) return;
   await api('/api/leads/bulk-ping', {
@@ -3376,6 +3519,7 @@ async function recordBulkPings(leads, channel) {
 }
 
 async function sendBulkEmailPing(group = 'general') {
+  setGmailSender(document.getElementById('bulk-ping-sender')?.value || selectedGmailSenderKey);
   const status = document.getElementById('bulk-ping-status')?.value || 'catalog_sent';
   const recipients = bulkPingRecipients.filter(lead => {
     if (!String(lead.email || '').trim()) return false;
@@ -3384,14 +3528,31 @@ async function sendBulkEmailPing(group = 'general') {
     return !isDistributorLead(lead) && !isServicesLead(lead);
   });
   const formType = ['distributor', 'services', 'materials'].includes(group) ? group : 'materials';
-  const url = bulkGmailComposeUrl(recipients, status, bulkPingBody(), formType);
-  if (!url) return;
+  const emails = [...new Set(recipients.map(lead => String(lead.email || '').trim()).filter(Boolean))];
+  if (!emails.length) return;
+  const sender = selectedGmailSender().email;
+  if (!gmailSenderConnected(sender)) {
+    alert(`${sender} не подключён через Gmail OAuth.`);
+    return;
+  }
+  const subject = status === 'catalog_sent'
+    ? 'Каталог BODEX Bulgaria и подготовка на търговско предложение'
+    : `BODEX Bulgaria - ${statusLabel(status)}`;
+  if (!confirm(`Отправить письмо?\n\nОт: ${sender}\nПолучателей: ${emails.length}\nСтатус: ${statusLabel(status)}`)) return;
 
-  window.open(url, '_blank', 'noopener');
   try {
+    await api('/api/gmail/send', {
+      method: 'POST',
+      body: {
+        sender,
+        bcc: emails,
+        subject,
+        body: buildBulkPingMessage({}, status, bulkPingBody(), formType),
+      },
+    });
     await recordBulkPings(recipients, 'gmail');
     const state = document.getElementById('bulk-ping-queue-state');
-    if (state) state.innerHTML = `<div class="bulk-ping-done">Gmail открыт для ${recipients.length} получателей. Адреса добавлены в BCC.</div>`;
+    if (state) state.innerHTML = `<div class="bulk-ping-done">Отправлено с ${escapeHtml(sender)} для ${recipients.length} получателей.</div>`;
   } catch (err) {
     alert('Грешка: ' + err.message);
   }
@@ -3478,18 +3639,40 @@ function gmailComposeSubject(lead = {}, type = 'intro') {
   return `BODEX Bulgaria - ${lead.company_name || lead.contact_name || 'строителни материали'}`;
 }
 
-function gmailComposeUrl(lead = {}, type = 'intro') {
-  const email = String(lead.email || '').trim();
-  if (!email) return '';
-  const body = buildLeadTemplateMessage(lead, type);
-  const params = new URLSearchParams({
-    view: 'cm',
-    fs: '1',
-    to: email,
-    su: gmailComposeSubject(lead, type),
-    body,
-  });
-  return `${gmailComposeBaseUrl()}?${params.toString()}`;
+async function sendLeadEmail(leadId, type = 'intro') {
+  try {
+    const data = await api(`/api/leads/${leadId}`);
+    const lead = data?.lead;
+    if (!lead?.email) throw new Error('У лида нет email');
+    const sender = selectedGmailSender().email;
+    if (!gmailSenderConnected(sender)) throw new Error(`${sender} не подключён через Gmail OAuth`);
+    if (!confirm(`Отправить письмо?\n\nОт: ${sender}\nКому: ${lead.email}\nТема: ${gmailComposeSubject(lead, type)}`)) return;
+    const result = await api('/api/gmail/send', {
+      method: 'POST',
+      body: {
+        sender,
+        to: [lead.email],
+        subject: gmailComposeSubject(lead, type),
+        body: buildLeadTemplateMessage(lead, type),
+      },
+    });
+    if (type === 'catalog_ping') {
+      await api(`/api/leads/${lead.id}/ping`, {
+        method: 'POST',
+        body: {
+          channel: 'gmail',
+          performed_by: currentRole === 'admin' ? 'admin' : 'manager',
+        },
+      });
+    }
+    alert(`Письмо отправлено с ${result.sender}`);
+    if (type === 'catalog_ping') {
+      closeModal();
+      await renderLeads(document.getElementById('main'), currentLeadFilters);
+    }
+  } catch (err) {
+    alert('Ошибка отправки: ' + err.message);
+  }
 }
 
 function phoneDigits(value = '') {
@@ -3512,10 +3695,18 @@ function openLeadTemplate(type = 'intro') {
   const lead = currentLeadDetail;
   if (!lead) return;
   openModal('Шаблон сообщения', `
-    <div style="font-size:12px;color:#9ca3af;margin-bottom:10px;">Шаблон можно сразу открыть в Gmail, WhatsApp или Viber.</div>
+    <div class="form-group" style="margin-bottom:12px;">
+      <label>Отправить из Gmail-аккаунта</label>
+      <select onchange="setGmailSender(this.value);openLeadTemplate('${type}')">
+        ${gmailSenderOptions()}
+      </select>
+    </div>
+    <div style="font-size:12px;color:#9ca3af;margin-bottom:10px;">
+      Письмо будет отправлено сервером с подтверждённого адреса <strong>${escapeHtml(selectedGmailSender().email)}</strong>.
+    </div>
     <textarea rows="10" style="width:100%;">${escapeHtml(buildLeadTemplateMessage(lead, type))}</textarea>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
-      <a class="btn btn-secondary ${lead.email ? '' : 'disabled'}" ${lead.email ? `href="${escapeAttr(gmailComposeUrl(lead, type))}" target="_blank" rel="noopener"` : ''}>✉️ Gmail</a>
+      <button class="btn btn-secondary" onclick="sendLeadEmail(${lead.id}, '${type}')" ${lead.email && gmailSenderConnected(selectedGmailSender().email) ? '' : 'disabled'}>✉️ Отправить email</button>
       <a class="btn btn-secondary ${lead.phone ? '' : 'disabled'}" ${lead.phone ? `href="${escapeAttr(whatsappUrl(lead.phone, buildLeadTemplateMessage(lead, type)))}" target="_blank" rel="noopener"` : ''}>💬 WhatsApp</a>
       <a class="btn btn-secondary ${lead.phone ? '' : 'disabled'}" ${lead.phone ? `href="${escapeAttr(viberUrl(lead.phone, buildLeadTemplateMessage(lead, type)))}"` : ''}>📲 Viber</a>
       <button class="btn btn-primary" onclick="closeModal(); setTimeout(() => openLeadDetail(${lead.id}), 50)">Назад к лиду</button>
@@ -3529,15 +3720,20 @@ async function openCatalogPingModal(id) {
     const lead = data?.lead;
     if (!lead) return;
     const message = buildLeadTemplateMessage(lead, 'catalog_ping');
-    const gmail = gmailComposeUrl(lead, 'catalog_ping');
     const whatsapp = whatsappUrl(lead.phone, message);
     const viber = viberUrl(lead.phone, message);
 
     openModal('Пропинговать после каталога', `
       <div style="font-size:12px;color:#9ca3af;margin-bottom:10px;">Лид молчит после каталога 3+ дня. Можно быстро напомнить о себе.</div>
+      <div class="form-group" style="margin-bottom:12px;">
+        <label>Отправить из Gmail-аккаунта</label>
+        <select onchange="setGmailSender(this.value);openCatalogPingModal(${lead.id})">
+          ${gmailSenderOptions()}
+        </select>
+      </div>
       <textarea rows="8" style="width:100%;">${escapeHtml(message)}</textarea>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
-        <button class="btn btn-secondary ${gmail ? '' : 'disabled'}" ${gmail ? `onclick="markLeadPingAndOpen(${lead.id}, 'gmail', '${encodeURIComponent(gmail)}')"` : 'disabled'}>✉️ Gmail</button>
+        <button class="btn btn-secondary" onclick="sendLeadEmail(${lead.id}, 'catalog_ping')" ${lead.email && gmailSenderConnected(selectedGmailSender().email) ? '' : 'disabled'}>✉️ Отправить email</button>
         <button class="btn btn-secondary ${whatsapp ? '' : 'disabled'}" ${whatsapp ? `onclick="markLeadPingAndOpen(${lead.id}, 'whatsapp', '${encodeURIComponent(whatsapp)}')"` : 'disabled'}>💬 WhatsApp</button>
         <button class="btn btn-secondary ${viber ? '' : 'disabled'}" ${viber ? `onclick="markLeadPingAndOpen(${lead.id}, 'viber', '${encodeURIComponent(viber)}')"` : 'disabled'}>📲 Viber</button>
       </div>
@@ -4670,4 +4866,17 @@ setInterval(() => {
 }, 60000);
 
 // ===== INIT =====
-refreshRole().finally(() => navigate(currentRole === 'admin' ? 'dashboard' : 'leads'));
+const gmailCallbackParams = new URLSearchParams(window.location.search);
+const gmailCallbackState = gmailCallbackParams.get('gmail');
+const gmailCallbackMessage = gmailCallbackParams.get('email') || gmailCallbackParams.get('message') || '';
+if (gmailCallbackState) {
+  window.history.replaceState({}, document.title, window.location.pathname);
+}
+refreshRole().finally(() => {
+  navigate(gmailCallbackState && currentRole === 'admin' ? 'settings' : (currentRole === 'admin' ? 'dashboard' : 'leads'));
+  if (gmailCallbackState === 'connected') {
+    setTimeout(() => alert(`Gmail подключён: ${gmailCallbackMessage}`), 300);
+  } else if (gmailCallbackState === 'error') {
+    setTimeout(() => alert(`Ошибка подключения Gmail: ${gmailCallbackMessage}`), 300);
+  }
+});
