@@ -17,6 +17,9 @@ let bulkPingQueue = [];
 let bulkPingQueueIndex = 0;
 let bulkPingQueueChannel = '';
 const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
+const SERVICES_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSeOqHotu23EdiGiV81GOIQGrFLAFX9MflOxO1YxtlDeaJRIag/viewform?usp=header';
+const MATERIALS_OBJECT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLScqNRc5f2X_RQ92q4WaWhXjaWoc5FS5CbDF1l3BECXdHwywgA/viewform?usp=header';
+const DISTRIBUTOR_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSePY55DYlgh7BMb94fjB0G-IRIWyqmK9rlIc2d3S4CbjjuVUA/viewform?usp=header';
 
 // ===== NAVIGATION =====
 function navigate(page) {
@@ -1965,6 +1968,53 @@ function isSpecificObjectLead(lead = {}) {
   return /конкретен\s+обект/.test(text);
 }
 
+function isServicesLead(lead = {}) {
+  const text = `${lead.lead_type || ''} ${lead.source_sheet || ''} ${lead.company_type || ''} ${lead.notes || ''} ${lead.form_summary || ''} ${lead.interest_products || ''}`.toLowerCase();
+  return /услуг|service|ремонт|хидроизолац|теч|укреп|фундамент/.test(text);
+}
+
+function leadApplicationForm(lead = {}, forcedType = '') {
+  const type = forcedType || (
+    isDistributorLead(lead)
+      ? 'distributor'
+      : isSpecificObjectLead(lead)
+        ? 'object'
+        : isServicesLead(lead)
+          ? 'services'
+          : ''
+  );
+  if (type === 'distributor') {
+    return {
+      type,
+      label: 'Заявка за дистрибуция / партньорство',
+      url: DISTRIBUTOR_FORM_URL,
+      cta: 'За да подготвим условията за дистрибуция / партньорство, моля попълнете кратката форма:',
+    };
+  }
+  if (type === 'object') {
+    return {
+      type,
+      label: 'Заявка за доставка на материали за конкретен обект',
+      url: MATERIALS_OBJECT_FORM_URL,
+      cta: 'За да подготвим точно предложение за Вашия обект, моля попълнете кратката форма:',
+    };
+  }
+  if (type === 'services') {
+    return {
+      type,
+      label: 'Заявка за услуги',
+      url: SERVICES_FORM_URL,
+      cta: 'За да уточним нужната услуга и да подготвим предложение, моля попълнете кратката форма:',
+    };
+  }
+  return null;
+}
+
+function leadApplicationFormLines(lead = {}, forcedType = '') {
+  const form = leadApplicationForm(lead, forcedType);
+  return form ? ['', form.cta, form.url] : [];
+}
+
 async function syncFacebookLeadsFromLeadsPage() {
   const el = document.getElementById('leads-sync-result');
   el.className = 'sync-result show';
@@ -3079,6 +3129,7 @@ function buildLeadTemplateMessage(lead = {}, type = 'intro') {
   const name = lead.contact_name || lead.company_name || '';
   const interest = lead.interest_products || lead.area_label || '';
   const company = lead.company_name || 'BODEX Bulgaria';
+  const formLines = leadApplicationFormLines(lead);
   const templates = {
     intro: [
       name ? `Здравейте, ${name},` : 'Здравейте,',
@@ -3086,6 +3137,7 @@ function buildLeadTemplateMessage(lead = {}, type = 'intro') {
       'Пиша Ви от BODEX Bulgaria относно Вашето запитване за строителни материали.',
       interest ? `Виждам, че интересът е: ${interest}.` : '',
       'Можем бързо да уточним нужния материал, обем и срок, за да подготвим следващата стъпка.',
+      ...formLines,
       '',
       'Поздрави,',
       'BODEX Bulgaria',
@@ -3095,6 +3147,7 @@ function buildLeadTemplateMessage(lead = {}, type = 'intro') {
       '',
       `Изпращам Ви каталог / презентация от ${company}.`,
       'След като го прегледате, можем да уточним кои материали са най-подходящи за обекта и какъв е нужният обем.',
+      ...formLines,
       '',
       'Поздрави,',
       'BODEX Bulgaria',
@@ -3104,6 +3157,7 @@ function buildLeadTemplateMessage(lead = {}, type = 'intro') {
       '',
       'Пиша с кратък follow-up по изпратения каталог / презентация.',
       'Успяхте ли да ги прегледате? Ако е удобно, можем бързо да уточним кои материали Ви интересуват, какъв е обемът и да подготвим следващата стъпка.',
+      ...formLines,
       '',
       'Поздрави,',
       'BODEX Bulgaria',
@@ -3171,12 +3225,16 @@ function bulkPingTemplateForStatus(status = 'catalog_sent') {
   return (templates[status] || templates.interested).join('\n\n');
 }
 
-function buildBulkPingMessage(lead = {}, status = 'catalog_sent', body = '') {
+function buildBulkPingMessage(lead = {}, status = 'catalog_sent', body = '', forcedFormType = '') {
   const name = lead.contact_name || lead.company_name || '';
+  const formLines = ['new', 'interested', 'catalog_sent', 'thinking'].includes(status)
+    ? leadApplicationFormLines(lead, forcedFormType)
+    : [];
   return [
     name ? `Здравейте, ${name},` : 'Здравейте,',
     '',
     body || bulkPingTemplateForStatus(status),
+    ...formLines,
     '',
     'Поздрави,',
     'BODEX Bulgaria',
@@ -3228,7 +3286,12 @@ async function loadBulkPingRecipients() {
 function renderBulkPingRecipients(status) {
   const content = document.getElementById('bulk-ping-content');
   if (!content) return;
-  const emailCount = bulkPingRecipients.filter(lead => String(lead.email || '').trim()).length;
+  const emailRecipients = bulkPingRecipients.filter(lead => String(lead.email || '').trim());
+  const distributorEmailCount = emailRecipients.filter(isDistributorLead).length;
+  const objectEmailCount = emailRecipients.filter(lead => !isDistributorLead(lead) && isSpecificObjectLead(lead)).length;
+  const servicesEmailCount = emailRecipients.filter(lead => !isDistributorLead(lead) && !isSpecificObjectLead(lead) && isServicesLead(lead)).length;
+  const generalEmailCount = emailRecipients.length - distributorEmailCount - objectEmailCount - servicesEmailCount;
+  const emailCount = emailRecipients.length;
   const phoneCount = bulkPingRecipients.filter(lead => phoneDigits(lead.phone || '').length >= 6).length;
   const names = bulkPingRecipients.slice(0, 8).map(lead => lead.company_name || lead.contact_name || `Лид #${lead.id}`);
 
@@ -3244,7 +3307,10 @@ function renderBulkPingRecipients(status) {
     </div>
     ${names.length ? `<div class="bulk-ping-recipients">${names.map(name => `<span>${escapeHtml(name)}</span>`).join('')}${bulkPingRecipients.length > names.length ? `<span>+${bulkPingRecipients.length - names.length}</span>` : ''}</div>` : ''}
     <div class="bulk-ping-actions">
-      <button class="btn btn-secondary" onclick="sendBulkEmailPing()" ${emailCount ? '' : 'disabled'}>Email всем (${emailCount})</button>
+      <button class="btn btn-secondary" onclick="sendBulkEmailPing('distributor')" ${distributorEmailCount ? '' : 'disabled'}>Email дистрибьюторам (${distributorEmailCount})</button>
+      <button class="btn btn-secondary" onclick="sendBulkEmailPing('object')" ${objectEmailCount ? '' : 'disabled'}>Email по объектам (${objectEmailCount})</button>
+      <button class="btn btn-secondary" onclick="sendBulkEmailPing('services')" ${servicesEmailCount ? '' : 'disabled'}>Email по услугам (${servicesEmailCount})</button>
+      <button class="btn btn-secondary" onclick="sendBulkEmailPing('general')" ${generalEmailCount ? '' : 'disabled'}>Email остальным (${generalEmailCount})</button>
       <button class="btn btn-secondary" onclick="startBulkPingQueue('whatsapp')" ${phoneCount ? '' : 'disabled'}>WhatsApp (${phoneCount})</button>
       <button class="btn btn-secondary" onclick="startBulkPingQueue('viber')" ${phoneCount ? '' : 'disabled'}>Viber (${phoneCount})</button>
     </div>
@@ -3256,7 +3322,7 @@ function bulkPingBody() {
   return document.getElementById('bulk-ping-template')?.value.trim() || '';
 }
 
-function bulkGmailComposeUrl(recipients, status, body) {
+function bulkGmailComposeUrl(recipients, status, body, formType = '') {
   const emails = [...new Set(recipients.map(lead => String(lead.email || '').trim()).filter(Boolean))];
   if (!emails.length) return '';
   const params = new URLSearchParams({
@@ -3264,7 +3330,7 @@ function bulkGmailComposeUrl(recipients, status, body) {
     fs: '1',
     bcc: emails.join(','),
     su: `BODEX Bulgaria - ${statusLabel(status)}`,
-    body: buildBulkPingMessage({}, status, body),
+    body: buildBulkPingMessage({}, status, body, formType),
   });
   return `https://mail.google.com/mail/?${params.toString()}`;
 }
@@ -3281,10 +3347,17 @@ async function recordBulkPings(leads, channel) {
   });
 }
 
-async function sendBulkEmailPing() {
+async function sendBulkEmailPing(group = 'general') {
   const status = document.getElementById('bulk-ping-status')?.value || 'catalog_sent';
-  const recipients = bulkPingRecipients.filter(lead => String(lead.email || '').trim());
-  const url = bulkGmailComposeUrl(recipients, status, bulkPingBody());
+  const recipients = bulkPingRecipients.filter(lead => {
+    if (!String(lead.email || '').trim()) return false;
+    if (group === 'distributor') return isDistributorLead(lead);
+    if (group === 'object') return !isDistributorLead(lead) && isSpecificObjectLead(lead);
+    if (group === 'services') return !isDistributorLead(lead) && !isSpecificObjectLead(lead) && isServicesLead(lead);
+    return !isDistributorLead(lead) && !isSpecificObjectLead(lead) && !isServicesLead(lead);
+  });
+  const formType = ['distributor', 'object', 'services'].includes(group) ? group : '';
+  const url = bulkGmailComposeUrl(recipients, status, bulkPingBody(), formType);
   if (!url) return;
 
   window.open(url, '_blank', 'noopener');
