@@ -21,6 +21,11 @@ const GMAIL_SENDERS = [
   { email: 'bodexbg@gmail.com', label: 'Bodex Bulgaria' },
   { email: 'vlad@bodexbg.com', label: 'Vladyslav Mes' },
 ];
+const GMAIL_SENDER_STORAGE_VERSION = '2';
+if (localStorage.getItem('bodex_gmail_sender_version') !== GMAIL_SENDER_STORAGE_VERSION) {
+  localStorage.setItem('bodex_gmail_sender', GMAIL_SENDERS[0].email);
+  localStorage.setItem('bodex_gmail_sender_version', GMAIL_SENDER_STORAGE_VERSION);
+}
 let selectedGmailSender = GMAIL_SENDERS.some(sender => sender.email === localStorage.getItem('bodex_gmail_sender'))
   ? localStorage.getItem('bodex_gmail_sender')
   : GMAIL_SENDERS[0].email;
@@ -41,6 +46,10 @@ function setGmailSender(email) {
   if (!GMAIL_SENDERS.some(sender => sender.email === email)) return;
   selectedGmailSender = email;
   localStorage.setItem('bodex_gmail_sender', email);
+}
+
+function gmailComposeBaseUrl() {
+  return `https://mail.google.com/mail/u/${encodeURIComponent(selectedGmailSender)}/`;
 }
 
 // ===== NAVIGATION =====
@@ -3382,14 +3391,13 @@ function bulkGmailComposeUrl(recipients, status, body, formType = '') {
     ? 'Каталог BODEX Bulgaria и подготовка на търговско предложение'
     : `BODEX Bulgaria - ${statusLabel(status)}`;
   const params = new URLSearchParams({
-    authuser: selectedGmailSender,
     view: 'cm',
     fs: '1',
     bcc: emails.join(','),
     su: subject,
     body: buildBulkPingMessage({}, status, body, formType),
   });
-  return `https://mail.google.com/mail/?${params.toString()}`;
+  return `${gmailComposeBaseUrl()}?${params.toString()}`;
 }
 
 async function recordBulkPings(leads, channel) {
@@ -3512,14 +3520,13 @@ function gmailComposeUrl(lead = {}, type = 'intro') {
   if (!email) return '';
   const body = buildLeadTemplateMessage(lead, type);
   const params = new URLSearchParams({
-    authuser: selectedGmailSender,
     view: 'cm',
     fs: '1',
     to: email,
     su: gmailComposeSubject(lead, type),
     body,
   });
-  return `https://mail.google.com/mail/?${params.toString()}`;
+  return `${gmailComposeBaseUrl()}?${params.toString()}`;
 }
 
 function phoneDigits(value = '') {
