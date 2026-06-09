@@ -17,10 +17,31 @@ let bulkPingQueue = [];
 let bulkPingQueueIndex = 0;
 let bulkPingQueueChannel = '';
 const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
+const GMAIL_SENDERS = [
+  { email: 'bodexbg@gmail.com', label: 'Bodex Bulgaria' },
+  { email: 'vlad@bodexbg.com', label: 'Vladyslav Mes' },
+];
+let selectedGmailSender = GMAIL_SENDERS.some(sender => sender.email === localStorage.getItem('bodex_gmail_sender'))
+  ? localStorage.getItem('bodex_gmail_sender')
+  : GMAIL_SENDERS[0].email;
 const SERVICES_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSeOqHotu23EdiGiV81GOIQGrFLAFX9MflOxO1YxtlDeaJRIag/viewform?usp=header';
 const MATERIALS_OBJECT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLScqNRc5f2X_RQ92q4WaWhXjaWoc5FS5CbDF1l3BECXdHwywgA/viewform?usp=header';
 const DISTRIBUTOR_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSePY55DYlgh7BMb94fjB0G-IRIWyqmK9rlIc2d3S4CbjjuVUA/viewform?usp=header';
 const BODEX_WEBSITE_URL = 'https://bodexbg.com/';
+
+function gmailSenderOptions() {
+  return GMAIL_SENDERS.map(sender => `
+    <option value="${escapeAttr(sender.email)}" ${selectedGmailSender === sender.email ? 'selected' : ''}>
+      ${escapeHtml(sender.label)} — ${escapeHtml(sender.email)}
+    </option>
+  `).join('');
+}
+
+function setGmailSender(email) {
+  if (!GMAIL_SENDERS.some(sender => sender.email === email)) return;
+  selectedGmailSender = email;
+  localStorage.setItem('bodex_gmail_sender', email);
+}
 
 // ===== NAVIGATION =====
 function navigate(page) {
@@ -1757,6 +1778,16 @@ async function renderLeads(el, filters = {}) {
     <div class="page-header fade-in">
       <h2>📋 Лидове <span style="color:#666;font-size:14px;">(${rows.length})</span></h2>
       <div class="page-header-actions">
+        <label style="display:flex;align-items:center;gap:7px;font-size:11px;color:#999;">
+          Отправитель
+          <select
+            class="lead-city-filter"
+            style="width:230px;"
+            onchange="setGmailSender(this.value);renderLeads(document.getElementById('main'), currentLeadFilters)"
+          >
+            ${gmailSenderOptions()}
+          </select>
+        </label>
         <button class="btn btn-secondary" onclick="openBulkPingModal()">Пинг всем</button>
         <button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 Синхронизирай FB лиды</button>
         <button class="btn btn-primary" onclick="openNewLeadModal()">+ Нов лид</button>
@@ -3274,6 +3305,12 @@ async function openBulkPingModal() {
           ${CRM_STAGES.map(status => `<option value="${status}" ${status === initialStatus ? 'selected' : ''}>${statusLabel(status)}</option>`).join('')}
         </select>
       </div>
+      <div class="form-group" style="margin:0;">
+        <label>Отправитель Gmail</label>
+        <select id="bulk-ping-sender" onchange="setGmailSender(this.value)">
+          ${gmailSenderOptions()}
+        </select>
+      </div>
     </div>
     <div id="bulk-ping-content" class="bulk-ping-content">
       <div style="color:#777;">Загрузка получателей...</div>
@@ -3345,6 +3382,7 @@ function bulkGmailComposeUrl(recipients, status, body, formType = '') {
     ? 'Каталог BODEX Bulgaria и подготовка на търговско предложение'
     : `BODEX Bulgaria - ${statusLabel(status)}`;
   const params = new URLSearchParams({
+    authuser: selectedGmailSender,
     view: 'cm',
     fs: '1',
     bcc: emails.join(','),
@@ -3474,6 +3512,7 @@ function gmailComposeUrl(lead = {}, type = 'intro') {
   if (!email) return '';
   const body = buildLeadTemplateMessage(lead, type);
   const params = new URLSearchParams({
+    authuser: selectedGmailSender,
     view: 'cm',
     fs: '1',
     to: email,
