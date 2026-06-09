@@ -1383,6 +1383,77 @@ tr:hover td { background: rgba(99,102,241,0.04); }
 .modal-body { padding: 20px; }
 .modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
 
+.bulk-ping-toolbar {
+  max-width: 280px;
+}
+
+.bulk-ping-content {
+  margin-top: 16px;
+}
+
+.bulk-ping-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bulk-ping-summary span,
+.bulk-ping-recipients span {
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.035);
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.bulk-ping-summary strong {
+  color: var(--text);
+}
+
+.bulk-ping-recipients {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.bulk-ping-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.bulk-ping-queue,
+.bulk-ping-done {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(99,102,241,0.24);
+  border-radius: 8px;
+  background: rgba(99,102,241,0.06);
+}
+
+.bulk-ping-queue {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.bulk-ping-queue div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.bulk-ping-queue span,
+.bulk-ping-done {
+  color: #aeb2c2;
+  font-size: 12px;
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 1100px) {
   .pipeline { grid-template-columns: repeat(4, 1fr); }

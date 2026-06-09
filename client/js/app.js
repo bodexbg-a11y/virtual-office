@@ -12,6 +12,10 @@ let agentReportsCache = [];
 let currentOfferDraft = null;
 let currentLeadFormResponses = [];
 let currentLeadDetail = null;
+let bulkPingRecipients = [];
+let bulkPingQueue = [];
+let bulkPingQueueIndex = 0;
+let bulkPingQueueChannel = '';
 const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
 
 // ===== NAVIGATION =====
@@ -1749,6 +1753,7 @@ async function renderLeads(el, filters = {}) {
     <div class="page-header fade-in">
       <h2>📋 Лидове <span style="color:#666;font-size:14px;">(${rows.length})</span></h2>
       <div class="page-header-actions">
+        <button class="btn btn-secondary" onclick="openBulkPingModal()">Пинг всем</button>
         <button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 Синхронизирай FB лиды</button>
         <button class="btn btn-primary" onclick="openNewLeadModal()">+ Нов лид</button>
       </div>
@@ -3114,6 +3119,239 @@ function buildLeadTemplateMessage(lead = {}, type = 'intro') {
     ],
   };
   return (templates[type] || templates.intro).filter(Boolean).join('\n');
+}
+
+function bulkPingTemplateForStatus(status = 'catalog_sent') {
+  const templates = {
+    new: [
+      'Благодарим за Вашето запитване към BODEX Bulgaria.',
+      'Актуален ли е още интересът Ви? Можем да уточним материала, обема и срока и да предложим следваща стъпка.',
+    ],
+    interested: [
+      'Свързваме се във връзка с интереса Ви към нашите строителни материали.',
+      'Кажете ни за какъв обект и обем става въпрос, за да предложим най-подходящото решение.',
+    ],
+    catalog_sent: [
+      'Успяхте ли да разгледате изпратения каталог / презентация?',
+      'Ако материалите са подходящи за Вашия обект, попълнете кратката форма или ни изпратете нужния обем и срок, за да подготвим търговско предложение.',
+    ],
+    thinking: [
+      'Имате ли допълнителни въпроси по материалите, цената или приложението им?',
+      'Ще се радваме да помогнем с техническа консултация и да уточним следващата стъпка.',
+    ],
+    offer_sent: [
+      'Успяхте ли да разгледате изпратеното търговско предложение?',
+      'Очакваме Вашата обратна връзка по цената, обема и срока за доставка.',
+    ],
+    negotiation: [
+      'Свързваме се, за да продължим обсъждането на условията.',
+      'Готови сме да уточним финалната цена, количеството, доставката и срока за изпълнение.',
+    ],
+    office_meeting: [
+      'Потвърждаваме интереса към среща в офиса.',
+      'Моля, предложете удобни дата и час, за да подготвим материалите и конкретните условия за обсъждане.',
+    ],
+    contract: [
+      'Свързваме се във връзка с договора и договорените условия.',
+      'Имате ли въпроси или липсваща информация, за да преминем към подписване и плащане?',
+    ],
+    purchase: [
+      'Готови сме да финализираме поръчката.',
+      'Моля, потвърдете количеството, адреса за доставка и желания срок.',
+    ],
+    won: [
+      'Благодарим Ви за доверието и работата с BODEX Bulgaria.',
+      'Имате ли нов обект или нужда от повторна доставка, за която можем да помогнем?',
+    ],
+    lost: [
+      'Свързваме се отново, за да проверим дали проектът или нуждата от материали са станали актуални.',
+      'Ако желаете, можем да подготвим обновена информация и предложение.',
+    ],
+  };
+  return (templates[status] || templates.interested).join('\n\n');
+}
+
+function buildBulkPingMessage(lead = {}, status = 'catalog_sent', body = '') {
+  const name = lead.contact_name || lead.company_name || '';
+  return [
+    name ? `Здравейте, ${name},` : 'Здравейте,',
+    '',
+    body || bulkPingTemplateForStatus(status),
+    '',
+    'Поздрави,',
+    'BODEX Bulgaria',
+  ].join('\n');
+}
+
+async function openBulkPingModal() {
+  bulkPingRecipients = [];
+  bulkPingQueue = [];
+  bulkPingQueueIndex = 0;
+  bulkPingQueueChannel = '';
+  const initialStatus = currentLeadFilters.status || 'catalog_sent';
+
+  openModal('Массовый пинг клиентов', `
+    <div class="bulk-ping-toolbar">
+      <div class="form-group" style="margin:0;">
+        <label>Статус клиентов</label>
+        <select id="bulk-ping-status" onchange="loadBulkPingRecipients()">
+          ${CRM_STAGES.map(status => `<option value="${status}" ${status === initialStatus ? 'selected' : ''}>${statusLabel(status)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div id="bulk-ping-content" class="bulk-ping-content">
+      <div style="color:#777;">Загрузка получателей...</div>
+    </div>
+  `);
+
+  await loadBulkPingRecipients();
+}
+
+async function loadBulkPingRecipients() {
+  const status = document.getElementById('bulk-ping-status')?.value || 'catalog_sent';
+  const content = document.getElementById('bulk-ping-content');
+  if (!content) return;
+  content.innerHTML = '<div style="color:#777;">Загрузка получателей...</div>';
+
+  try {
+    const data = await api(`/api/leads?status=${encodeURIComponent(status)}&limit=500`);
+    bulkPingRecipients = data.leads || [];
+    bulkPingQueue = [];
+    bulkPingQueueIndex = 0;
+    bulkPingQueueChannel = '';
+    renderBulkPingRecipients(status);
+  } catch (err) {
+    content.innerHTML = `<div class="sync-result show err">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderBulkPingRecipients(status) {
+  const content = document.getElementById('bulk-ping-content');
+  if (!content) return;
+  const emailCount = bulkPingRecipients.filter(lead => String(lead.email || '').trim()).length;
+  const phoneCount = bulkPingRecipients.filter(lead => phoneDigits(lead.phone || '').length >= 6).length;
+  const names = bulkPingRecipients.slice(0, 8).map(lead => lead.company_name || lead.contact_name || `Лид #${lead.id}`);
+
+  content.innerHTML = `
+    <div class="bulk-ping-summary">
+      <span><strong>${bulkPingRecipients.length}</strong> клиентов</span>
+      <span><strong>${emailCount}</strong> email</span>
+      <span><strong>${phoneCount}</strong> телефонов</span>
+    </div>
+    <div class="form-group" style="margin-top:14px;">
+      <label>Текст для статуса «${statusLabel(status)}»</label>
+      <textarea id="bulk-ping-template" rows="8">${escapeHtml(bulkPingTemplateForStatus(status))}</textarea>
+    </div>
+    ${names.length ? `<div class="bulk-ping-recipients">${names.map(name => `<span>${escapeHtml(name)}</span>`).join('')}${bulkPingRecipients.length > names.length ? `<span>+${bulkPingRecipients.length - names.length}</span>` : ''}</div>` : ''}
+    <div class="bulk-ping-actions">
+      <button class="btn btn-secondary" onclick="sendBulkEmailPing()" ${emailCount ? '' : 'disabled'}>Email всем (${emailCount})</button>
+      <button class="btn btn-secondary" onclick="startBulkPingQueue('whatsapp')" ${phoneCount ? '' : 'disabled'}>WhatsApp (${phoneCount})</button>
+      <button class="btn btn-secondary" onclick="startBulkPingQueue('viber')" ${phoneCount ? '' : 'disabled'}>Viber (${phoneCount})</button>
+    </div>
+    <div id="bulk-ping-queue-state"></div>
+  `;
+}
+
+function bulkPingBody() {
+  return document.getElementById('bulk-ping-template')?.value.trim() || '';
+}
+
+function bulkGmailComposeUrl(recipients, status, body) {
+  const emails = [...new Set(recipients.map(lead => String(lead.email || '').trim()).filter(Boolean))];
+  if (!emails.length) return '';
+  const params = new URLSearchParams({
+    view: 'cm',
+    fs: '1',
+    bcc: emails.join(','),
+    su: `BODEX Bulgaria - ${statusLabel(status)}`,
+    body: buildBulkPingMessage({}, status, body),
+  });
+  return `https://mail.google.com/mail/?${params.toString()}`;
+}
+
+async function recordBulkPings(leads, channel) {
+  if (!leads.length) return;
+  await api('/api/leads/bulk-ping', {
+    method: 'POST',
+    body: {
+      lead_ids: leads.map(lead => lead.id),
+      channel,
+      performed_by: currentRole === 'admin' ? 'admin' : 'manager',
+    },
+  });
+}
+
+async function sendBulkEmailPing() {
+  const status = document.getElementById('bulk-ping-status')?.value || 'catalog_sent';
+  const recipients = bulkPingRecipients.filter(lead => String(lead.email || '').trim());
+  const url = bulkGmailComposeUrl(recipients, status, bulkPingBody());
+  if (!url) return;
+
+  window.open(url, '_blank', 'noopener');
+  try {
+    await recordBulkPings(recipients, 'gmail');
+    const state = document.getElementById('bulk-ping-queue-state');
+    if (state) state.innerHTML = `<div class="bulk-ping-done">Gmail открыт для ${recipients.length} получателей. Адреса добавлены в BCC.</div>`;
+  } catch (err) {
+    alert('Грешка: ' + err.message);
+  }
+}
+
+function startBulkPingQueue(channel) {
+  bulkPingQueueChannel = channel;
+  bulkPingQueue = bulkPingRecipients.filter(lead => phoneDigits(lead.phone || '').length >= 6);
+  bulkPingQueueIndex = 0;
+  renderBulkPingQueueState();
+}
+
+function renderBulkPingQueueState() {
+  const state = document.getElementById('bulk-ping-queue-state');
+  if (!state) return;
+  const total = bulkPingQueue.length;
+  const current = bulkPingQueue[bulkPingQueueIndex];
+
+  if (!current) {
+    state.innerHTML = total
+      ? `<div class="bulk-ping-done">Очередь завершена: обработано ${total} клиентов.</div>`
+      : '';
+    return;
+  }
+
+  state.innerHTML = `
+    <div class="bulk-ping-queue">
+      <div>
+        <strong>${bulkPingQueueIndex + 1} из ${total}</strong>
+        <span>${escapeHtml(current.company_name || current.contact_name || `Лид #${current.id}`)}</span>
+      </div>
+      <button class="btn btn-primary" onclick="openNextBulkPingRecipient()">Открыть и перейти дальше</button>
+    </div>
+  `;
+}
+
+async function openNextBulkPingRecipient() {
+  const lead = bulkPingQueue[bulkPingQueueIndex];
+  if (!lead) return;
+  const status = document.getElementById('bulk-ping-status')?.value || lead.status || 'catalog_sent';
+  const message = buildBulkPingMessage(lead, status, bulkPingBody());
+  const url = bulkPingQueueChannel === 'viber'
+    ? viberUrl(lead.phone, message)
+    : whatsappUrl(lead.phone, message);
+
+  if (url) window.open(url, '_blank', 'noopener');
+
+  try {
+    await api(`/api/leads/${lead.id}/ping`, {
+      method: 'POST',
+      body: {
+        channel: bulkPingQueueChannel,
+        performed_by: currentRole === 'admin' ? 'admin' : 'manager',
+      },
+    });
+    bulkPingQueueIndex += 1;
+    renderBulkPingQueueState();
+  } catch (err) {
+    alert('Грешка: ' + err.message);
+  }
 }
 
 function needsCatalogPing(lead = {}) {

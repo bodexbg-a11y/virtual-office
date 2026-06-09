@@ -927,6 +927,42 @@ router.delete('/:id/comments/:commentId', async (req, res) => {
   }
 });
 
+router.post('/bulk-ping', async (req, res) => {
+  try {
+    const leadIds = [...new Set(
+      (Array.isArray(req.body.lead_ids) ? req.body.lead_ids : [])
+        .map(id => Number(id))
+        .filter(Number.isInteger)
+    )].slice(0, 500);
+    const performedBy = String(req.body.performed_by || 'manager').trim() || 'manager';
+    const channel = String(req.body.channel || 'followup').trim() || 'followup';
+
+    if (!leadIds.length) {
+      return res.status(400).json({ error: 'Lead IDs are required' });
+    }
+
+    const placeholders = leadIds.map(() => '?').join(', ');
+    const { rows: existing } = await db.query(
+      `SELECT id FROM leads WHERE id IN (${placeholders})`,
+      leadIds
+    );
+
+    await Promise.all(existing.map(lead => db.query(`
+      INSERT INTO lead_activities (lead_id, action, description, new_value, performed_by)
+      VALUES (?, 'ping_followup', ?, ?, ?)
+    `, [
+      lead.id,
+      `Массовый пинг через ${channel}`,
+      channel,
+      performedBy,
+    ])));
+
+    res.status(201).json({ success: true, count: existing.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/:id/ping', async (req, res) => {
   try {
     const performedBy = String(req.body.performed_by || 'manager').trim() || 'manager';
