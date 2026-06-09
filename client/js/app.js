@@ -20,6 +20,7 @@ const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent
 const SERVICES_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSeOqHotu23EdiGiV81GOIQGrFLAFX9MflOxO1YxtlDeaJRIag/viewform?usp=header';
 const MATERIALS_OBJECT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLScqNRc5f2X_RQ92q4WaWhXjaWoc5FS5CbDF1l3BECXdHwywgA/viewform?usp=header';
 const DISTRIBUTOR_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSePY55DYlgh7BMb94fjB0G-IRIWyqmK9rlIc2d3S4CbjjuVUA/viewform?usp=header';
+const BODEX_WEBSITE_URL = 'https://bodexbg.com/';
 
 // ===== NAVIGATION =====
 function navigate(page) {
@@ -2024,6 +2025,16 @@ function leadApplicationFormLines(lead = {}, forcedType = '') {
   return form ? ['', form.cta, form.url] : [];
 }
 
+function vladislavSignatureLines() {
+  return [
+    '',
+    'С уважение,',
+    'Владислав',
+    'Търговски директор, BODEX Bulgaria',
+    BODEX_WEBSITE_URL,
+  ];
+}
+
 async function syncFacebookLeadsFromLeadsPage() {
   const el = document.getElementById('leads-sync-result');
   el.className = 'sync-result show';
@@ -3137,7 +3148,6 @@ function defaultLeadMessage(lead = {}) {
 function buildLeadTemplateMessage(lead = {}, type = 'intro') {
   const name = lead.contact_name || lead.company_name || '';
   const interest = lead.interest_products || lead.area_label || '';
-  const company = lead.company_name || 'BODEX Bulgaria';
   const formLines = leadApplicationFormLines(lead);
   const templates = {
     intro: [
@@ -3154,22 +3164,20 @@ function buildLeadTemplateMessage(lead = {}, type = 'intro') {
     catalog: [
       name ? `Здравейте, ${name},` : 'Здравейте,',
       '',
-      `Изпращам Ви каталог / презентация от ${company}.`,
-      'След като го прегледате, можем да уточним кои материали са най-подходящи за обекта и какъв е нужният обем.',
+      'Казвам се Владислав и съм търговски директор на BODEX Bulgaria.',
+      'Вие разговаряхте с нашия мениджър относно материалите и изпратения каталог / презентация.',
+      'Успяхте ли да го разгледате? Ако решенията са подходящи за Вас, моля попълнете кратката форма, за да подготвим конкретно търговско предложение.',
       ...formLines,
-      '',
-      'Поздрави,',
-      'BODEX Bulgaria',
+      ...vladislavSignatureLines(),
     ],
     catalog_ping: [
       name ? `Здравейте, ${name},` : 'Здравейте,',
       '',
-      'Пиша с кратък follow-up по изпратения каталог / презентация.',
-      'Успяхте ли да ги прегледате? Ако е удобно, можем бързо да уточним кои материали Ви интересуват, какъв е обемът и да подготвим следващата стъпка.',
+      'Казвам се Владислав и съм търговски директор на BODEX Bulgaria.',
+      'Вие разговаряхте с нашия мениджър и получихте нашия каталог / презентация.',
+      'Успяхте ли да го разгледате? Ако сте готови да продължим, моля попълнете кратката форма. По данните от нея ще подготвим конкретно търговско предложение.',
       ...formLines,
-      '',
-      'Поздрави,',
-      'BODEX Bulgaria',
+      ...vladislavSignatureLines(),
     ],
     offer_followup: [
       name ? `Здравейте, ${name},` : 'Здравейте,',
@@ -3196,8 +3204,9 @@ function bulkPingTemplateForStatus(status = 'catalog_sent') {
       'Кажете ни за какъв обект и обем става въпрос, за да предложим най-подходящото решение.',
     ],
     catalog_sent: [
-      'Успяхте ли да разгледате изпратения каталог / презентация?',
-      'Ако материалите са подходящи за Вашия обект, попълнете кратката форма или ни изпратете нужния обем и срок, за да подготвим търговско предложение.',
+      'Казвам се Владислав и съм търговски директор на BODEX Bulgaria.',
+      'Вие разговаряхте с нашия мениджър и получихте нашия каталог / презентация.',
+      'Успяхте ли да го разгледате? Ако сте готови да продължим, моля попълнете кратката форма. По данните от нея ще подготвим конкретно търговско предложение.',
     ],
     thinking: [
       'Имате ли допълнителни въпроси по материалите, цената или приложението им?',
@@ -3238,14 +3247,15 @@ function bulkPingTemplateForStatus(status = 'catalog_sent') {
 function buildBulkPingMessage(lead = {}, status = 'catalog_sent', body = '', forcedFormType = '') {
   const name = lead.contact_name || lead.company_name || '';
   const formLines = leadApplicationFormLines(lead, forcedFormType);
+  const signatureLines = status === 'catalog_sent'
+    ? vladislavSignatureLines()
+    : ['', 'Поздрави,', 'BODEX Bulgaria', BODEX_WEBSITE_URL];
   return [
     name ? `Здравейте, ${name},` : 'Здравейте,',
     '',
     body || bulkPingTemplateForStatus(status),
     ...formLines,
-    '',
-    'Поздрави,',
-    'BODEX Bulgaria',
+    ...signatureLines,
   ].join('\n');
 }
 
@@ -3331,11 +3341,14 @@ function bulkPingBody() {
 function bulkGmailComposeUrl(recipients, status, body, formType = '') {
   const emails = [...new Set(recipients.map(lead => String(lead.email || '').trim()).filter(Boolean))];
   if (!emails.length) return '';
+  const subject = status === 'catalog_sent'
+    ? 'Каталог BODEX Bulgaria и подготовка на търговско предложение'
+    : `BODEX Bulgaria - ${statusLabel(status)}`;
   const params = new URLSearchParams({
     view: 'cm',
     fs: '1',
     bcc: emails.join(','),
-    su: `BODEX Bulgaria - ${statusLabel(status)}`,
+    su: subject,
     body: buildBulkPingMessage({}, status, body, formType),
   });
   return `https://mail.google.com/mail/?${params.toString()}`;
@@ -3446,16 +3459,25 @@ function needsCatalogPing(lead = {}) {
   return (Date.now() - timestamp) >= (3 * 24 * 60 * 60 * 1000);
 }
 
+function gmailComposeSubject(lead = {}, type = 'intro') {
+  if (type === 'catalog' || type === 'catalog_ping') {
+    return 'Каталог BODEX Bulgaria и подготовка на търговско предложение';
+  }
+  if (type === 'offer_followup') {
+    return 'Търговско предложение от BODEX Bulgaria';
+  }
+  return `BODEX Bulgaria - ${lead.company_name || lead.contact_name || 'строителни материали'}`;
+}
+
 function gmailComposeUrl(lead = {}, type = 'intro') {
   const email = String(lead.email || '').trim();
   if (!email) return '';
-  const subject = `BODEX Bulgaria - ${lead.company_name || lead.contact_name || 'материали'}`;
   const body = buildLeadTemplateMessage(lead, type);
   const params = new URLSearchParams({
     view: 'cm',
     fs: '1',
     to: email,
-    su: subject,
+    su: gmailComposeSubject(lead, type),
     body,
   });
   return `https://mail.google.com/mail/?${params.toString()}`;
