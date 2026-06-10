@@ -1919,10 +1919,11 @@ async function renderLeads(el, filters = {}) {
                       ${leadStagesForLead(l).map(status => `<option value="${status}" ${leadDisplayStatus(l) === status ? 'selected' : ''}>${statusLabel(status)}</option>`).join('')}
                     </select>
                     <button
-                      class="lead-qualification-btn ${leadQualificationComplete(l) ? 'complete' : ''}"
-                      title="${leadQualificationComplete(l) ? 'Обязательные вопросы заполнены' : 'Заполнить обязательные вопросы'}"
+                      class="lead-qualification-btn ${leadQualificationProgress(l) === 100 ? 'complete' : ''}"
+                      style="--qualification-progress:${leadQualificationProgress(l)}%"
+                      title="Бриф заполнен на ${leadQualificationProgress(l)}%"
                       onclick="event.stopPropagation();openLeadQualificationModal(${l.id})"
-                    >📝</button>
+                    ><span>📝</span></button>
                   </div>
                 </td>
                 <td style="width:74px;"><span class="badge badge-${l.priority}">${l.priority}</span></td>
@@ -2096,6 +2097,43 @@ function leadQualificationData(lead = {}) {
 
 function leadQualificationComplete(lead = {}) {
   return leadQualificationData(lead).completed === true;
+}
+
+function leadQualificationProgress(lead = {}) {
+  const qualification = leadQualificationData(lead);
+  if (qualification.manual_complete === true) return 100;
+  if (Number.isFinite(Number(qualification.completion_percent))) {
+    return Math.max(0, Math.min(100, Number(qualification.completion_percent)));
+  }
+
+  const type = leadQualificationType(lead, qualification);
+  let sections = [];
+  if (type === 'concrete_object') {
+    sections = [
+      Array.isArray(qualification.problems) && qualification.problems.length > 0,
+      Boolean(qualification.object_type),
+      Boolean(qualification.volumes && Object.values(qualification.volumes).some(Boolean)),
+      Boolean(qualification.timing),
+      Boolean(qualification.executor),
+    ];
+  } else if (type === 'distributor') {
+    sections = [
+      Boolean(qualification.region),
+      Boolean(qualification.current_products),
+      Boolean(qualification.warehouse_team),
+      Boolean(qualification.sales_volume),
+      Boolean(qualification.partnership_interest),
+    ];
+  } else {
+    sections = [
+      Boolean(qualification.materials_interest),
+      Boolean(qualification.application_type),
+      Boolean(qualification.quantities),
+      Boolean(qualification.delivery_timing),
+      Boolean(qualification.has_specification),
+    ];
+  }
+  return sections.filter(Boolean).length * 20;
 }
 
 function leadQualificationType(lead = {}, qualification = leadQualificationData(lead)) {
@@ -2426,6 +2464,13 @@ async function openLeadQualificationModal(id) {
         </div>
 
         <div id="qualification-result" class="sync-result"></div>
+        <label class="qualification-manual-complete">
+          <input id="qualification-manual-complete" type="checkbox" ${qualification.manual_complete ? 'checked' : ''}>
+          <span>
+            <strong>Информации достаточно для подготовки оферты</strong>
+            <small>Отметьте, если остальные детали получены по Viber, телефону или e-mail.</small>
+          </span>
+        </label>
         <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
           <button type="button" class="btn btn-secondary" onclick="closeModal()">Отмена</button>
           <button type="submit" class="btn btn-primary">Сохранить бриф</button>
@@ -2468,6 +2513,7 @@ async function saveLeadQualification(event, id) {
   if (clientType === 'concrete_object') {
     qualificationData = {
       client_type: clientType,
+      manual_complete: document.getElementById('qualification-manual-complete')?.checked || false,
       problems,
       other_problem: document.getElementById('qualification-other-problem')?.value.trim(),
       object_type: document.getElementById('qualification-object-type')?.value,
@@ -2480,6 +2526,7 @@ async function saveLeadQualification(event, id) {
   } else if (clientType === 'construction_company') {
     qualificationData = {
       client_type: clientType,
+      manual_complete: document.getElementById('qualification-manual-complete')?.checked || false,
       materials_interest: document.getElementById('qualification-materials-interest')?.value.trim(),
       application_type: document.getElementById('qualification-application-type')?.value.trim(),
       quantities: document.getElementById('qualification-quantities')?.value.trim(),
@@ -2490,6 +2537,7 @@ async function saveLeadQualification(event, id) {
   } else {
     qualificationData = {
       client_type: 'distributor',
+      manual_complete: document.getElementById('qualification-manual-complete')?.checked || false,
       region: document.getElementById('qualification-region')?.value.trim(),
       current_products: document.getElementById('qualification-current-products')?.value.trim(),
       warehouse_team: document.getElementById('qualification-warehouse-team')?.value.trim(),

@@ -1122,7 +1122,11 @@ router.put('/:id/qualification', async (req, res) => {
     }
 
     const cleanText = value => String(value || '').trim();
-    const qualificationData = { client_type: clientType };
+    const qualificationData = {
+      client_type: clientType,
+      manual_complete: data.manual_complete === true,
+    };
+    let completedSections = 0;
 
     if (clientType === 'concrete_object') {
       qualificationData.problems = Array.isArray(data.problems)
@@ -1136,10 +1140,13 @@ router.put('/:id/qualification', async (req, res) => {
       qualificationData.other_object_type = cleanText(data.other_object_type);
       qualificationData.timing = cleanText(data.timing);
       qualificationData.executor = cleanText(data.executor);
-      if (!qualificationData.problems.length || !qualificationData.object_type
-        || !Object.keys(qualificationData.volumes).length || !qualificationData.timing || !qualificationData.executor) {
-        return res.status(400).json({ error: 'Fill all required object qualification sections' });
-      }
+      completedSections = [
+        qualificationData.problems.length > 0,
+        Boolean(qualificationData.object_type),
+        Object.keys(qualificationData.volumes).length > 0,
+        Boolean(qualificationData.timing),
+        Boolean(qualificationData.executor),
+      ].filter(Boolean).length;
     } else if (clientType === 'construction_company') {
       Object.assign(qualificationData, {
         materials_interest: cleanText(data.materials_interest),
@@ -1148,10 +1155,13 @@ router.put('/:id/qualification', async (req, res) => {
         delivery_timing: cleanText(data.delivery_timing),
         has_specification: cleanText(data.has_specification),
       });
-      if (!qualificationData.materials_interest || !qualificationData.application_type
-        || !qualificationData.quantities || !qualificationData.delivery_timing || !qualificationData.has_specification) {
-        return res.status(400).json({ error: 'Fill all required construction company sections' });
-      }
+      completedSections = [
+        qualificationData.materials_interest,
+        qualificationData.application_type,
+        qualificationData.quantities,
+        qualificationData.delivery_timing,
+        qualificationData.has_specification,
+      ].filter(Boolean).length;
     } else {
       Object.assign(qualificationData, {
         region: cleanText(data.region),
@@ -1160,16 +1170,20 @@ router.put('/:id/qualification', async (req, res) => {
         sales_volume: cleanText(data.sales_volume),
         partnership_interest: cleanText(data.partnership_interest),
       });
-      if (!qualificationData.region || !qualificationData.current_products || !qualificationData.warehouse_team
-        || !qualificationData.sales_volume || !qualificationData.partnership_interest) {
-        return res.status(400).json({ error: 'Fill all required distributor sections' });
-      }
+      completedSections = [
+        qualificationData.region,
+        qualificationData.current_products,
+        qualificationData.warehouse_team,
+        qualificationData.sales_volume,
+        qualificationData.partnership_interest,
+      ].filter(Boolean).length;
     }
 
     qualificationData.notes = cleanText(data.notes);
+    qualificationData.completion_percent = qualificationData.manual_complete ? 100 : completedSections * 20;
     Object.assign(qualificationData, {
-      completed: true,
-      completed_at: new Date().toISOString(),
+      completed: qualificationData.completion_percent === 100,
+      completed_at: qualificationData.completion_percent === 100 ? new Date().toISOString() : null,
       completed_by: performedBy,
     });
 
