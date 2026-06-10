@@ -2,10 +2,15 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const googleSheets = require('../services/googleSheets');
-const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
+const OBJECT_CRM_STAGES = ['new', 'contacted', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
+const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
+const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
 const LEGACY_STATUS_MAP = {
-  contacted: 'interested',
-  qualified: 'interested',
+  details: 'needs_discovery',
+  qualified: 'needs_discovery',
+  interested: 'needs_discovery',
+  catalog_sent: 'needs_discovery',
+  thinking: 'needs_discovery',
 };
 
 async function ensureLeadSheetColumns() {
@@ -44,6 +49,10 @@ async function ensureLeadSheetColumns() {
   if (!cols.includes('premium_manual')) {
     await db.query(`ALTER TABLE leads ADD COLUMN premium_manual BOOLEAN DEFAULT FALSE`);
   }
+
+  if (!cols.includes('crm_segment')) {
+    await db.query(`ALTER TABLE leads ADD COLUMN crm_segment TEXT`);
+  }
 }
 
 async function ensureDealOverrides() {
@@ -71,8 +80,11 @@ async function ensureIgnoredFacebookLeads() {
 function dealStageFromLeadStatus(status) {
   const map = {
     new: 'new',
-    interested: 'interested',
     contacted: 'interested',
+    needs_discovery: 'interested',
+    details: 'interested',
+    offer_preparation: 'offer_sent',
+    interested: 'interested',
     qualified: 'interested',
     catalog_sent: 'catalog_sent',
     thinking: 'thinking',
@@ -82,16 +94,48 @@ function dealStageFromLeadStatus(status) {
     contract: 'contract',
     purchase: 'purchase',
     won: 'won',
+    partner_new: 'new',
+    partner_qualification: 'interested',
+    partner_negotiation: 'negotiation',
+    partner_meeting: 'office_meeting',
+    partner_terms_sent: 'offer_sent',
+    partner_test_order: 'purchase',
+    partner_active: 'won',
     lost: 'lost',
   };
   return map[status] || null;
 }
 
-function normalizeCrmStatus(status) {
+function inferCrmSegment(lead = {}) {
+  const explicit = String(lead.crm_segment || '').trim().toLowerCase();
+  if (explicit === 'distributor' || explicit === 'objects') return explicit;
+  const text = `${lead.company_type || ''} ${lead.lead_type || ''} ${lead.interest_products || ''} ${lead.notes || ''}`.toLowerCase();
+  return /дистриб|distributor|dealer|дилър|reseller|търговец/.test(text) ? 'distributor' : 'objects';
+}
+
+function normalizeCrmStatus(status, segment = 'objects') {
   const normalized = String(status || '').trim().toLowerCase();
-  if (!normalized) return 'new';
+  if (!normalized) return segment === 'distributor' ? 'partner_new' : 'new';
+  if (DISTRIBUTOR_CRM_STAGES.includes(normalized)) return normalized;
   const mapped = LEGACY_STATUS_MAP[normalized] || normalized;
-  return CRM_STAGES.includes(mapped) ? mapped : 'new';
+  if (segment === 'distributor') {
+    const distributorMap = {
+      new: 'partner_new',
+      contacted: 'partner_qualification',
+      needs_discovery: 'partner_qualification',
+      offer_preparation: 'partner_terms_sent',
+      offer_sent: 'partner_terms_sent',
+      negotiation: 'partner_negotiation',
+      office_meeting: 'partner_meeting',
+      contract: 'partner_test_order',
+      purchase: 'partner_test_order',
+      won: 'partner_active',
+      lost: 'lost',
+    };
+    const distributorStatus = distributorMap[mapped] || mapped;
+    return DISTRIBUTOR_CRM_STAGES.includes(distributorStatus) ? distributorStatus : 'partner_new';
+  }
+  return OBJECT_CRM_STAGES.includes(mapped) ? mapped : 'new';
 }
 
 function normalizePhone(value) {
@@ -198,7 +242,7 @@ function buildLeadScore(lead = {}, extra = {}) {
   const reasons = [];
   let score = 0;
   const areaLabel = extra.area_label || extractLeadAreaLabel(lead) || null;
-  const status = normalizeCrmStatus(lead.status);
+  const status = normalizeCrmStatus(lead.status, inferCrmSegment(lead));
   const phone = String(lead.phone || '').trim();
   const email = String(lead.email || '').trim();
   const priority = String(lead.priority || '').toLowerCase();
@@ -227,7 +271,7 @@ function buildLeadScore(lead = {}, extra = {}) {
     score += 12;
     reasons.push('high priority');
   }
-  if (['interested', 'catalog_sent', 'thinking', 'negotiation', 'office_meeting'].includes(status)) {
+  if (['contacted', 'needs_discovery', 'offer_preparation', 'negotiation', 'office_meeting', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent'].includes(status)) {
     score += 10;
     reasons.push('лид уже в работе');
   }
@@ -258,17 +302,18 @@ function buildLeadScore(lead = {}, extra = {}) {
 
 function buildLeadSnapshot(lead = {}, extra = {}) {
   const areaLabel = extra.area_label || extractLeadAreaLabel(lead) || null;
-  const status = normalizeCrmStatus(lead.status);
+  const segment = inferCrmSegment(lead);
+  const status = normalizeCrmStatus(lead.status, segment);
   const score = buildLeadScore(lead, { ...extra, area_label: areaLabel });
   const latestComment = extra.latest_comment || '';
   const nextAction = status === 'offer_sent'
     ? 'Получить обратную связь по КП'
-    : status === 'catalog_sent'
-      ? 'Проверить, посмотрел ли каталог'
-      : status === 'thinking'
-        ? 'Сделать follow-up по сроку ответа'
-        : status === 'interested'
-          ? 'Уточнить объект, объём и срок'
+    : status === 'offer_preparation'
+      ? 'Подготовить и проверить КП'
+      : status === 'needs_discovery'
+        ? 'Уточнить материал, объём, срок и доставку'
+          : status === 'contacted'
+            ? 'Зафиксировать задачу клиента и параметры объекта'
           : status === 'new'
             ? 'Первичный контакт'
             : status === 'negotiation'
@@ -279,10 +324,25 @@ function buildLeadSnapshot(lead = {}, extra = {}) {
                 ? 'Подготовить договор и оплату'
                 : status === 'purchase'
                   ? 'Довести до поставки'
-                  : 'Обновить следующий шаг';
+                  : status === 'partner_new'
+                    ? 'Связаться и квалифицировать партнёра'
+                    : status === 'partner_qualification'
+                      ? 'Уточнить регионы, каналы продаж, склад и потенциал закупок'
+                      : status === 'partner_negotiation'
+                        ? 'Согласовать модель сотрудничества'
+                        : status === 'partner_meeting'
+                          ? 'Зафиксировать итоги встречи'
+                          : status === 'partner_terms_sent'
+                            ? 'Получить обратную связь по дилерским условиям'
+                            : status === 'partner_test_order'
+                              ? 'Сопроводить тестовый заказ'
+                              : status === 'partner_active'
+                                ? 'Планировать повторные закупки'
+                                : 'Обновить следующий шаг';
 
   return {
     stage: status,
+    crm_segment: segment,
     score,
     area_label: areaLabel,
     is_specific_object: isSpecificObjectByArea(areaLabel),
@@ -298,7 +358,7 @@ function buildLeadSnapshot(lead = {}, extra = {}) {
       phone: !!String(lead.phone || '').trim(),
       email: !!String(lead.email || '').trim(),
     },
-    waiting_for_offer: Number(extra.offer_count || 0) === 0 && ['interested', 'catalog_sent', 'thinking', 'negotiation', 'office_meeting'].includes(status),
+    waiting_for_offer: Number(extra.offer_count || 0) === 0 && ['contacted', 'needs_discovery', 'offer_preparation', 'negotiation', 'office_meeting'].includes(status),
   };
 }
 
@@ -311,7 +371,8 @@ function enrichLeadRow(lead = {}) {
   });
   return {
     ...lead,
-    status: normalizeCrmStatus(lead.status),
+    crm_segment: inferCrmSegment(lead),
+    status: normalizeCrmStatus(lead.status, inferCrmSegment(lead)),
     area_label: areaLabel,
     is_gold_lead: isPremium,
     has_fresh_comment: isFreshWithin24Hours(lead.latest_comment_at),
@@ -321,8 +382,16 @@ function enrichLeadRow(lead = {}) {
 }
 
 const LEAD_TEXT_SQL = "lower(concat_ws(' ', coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))";
+const DISTRIBUTOR_LEAD_SQL = `(
+  crm_segment = 'distributor'
+  OR (
+    crm_segment IS NULL
+    AND lower(concat_ws(' ', coalesce(company_type, ''), coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))
+      ~ '(дистриб|distributor|dealer|дилър|reseller|търговец)'
+  )
+)`;
 const NORMALIZED_STATUS_SQL = `CASE
-  WHEN status IN ('contacted', 'qualified') THEN 'interested'
+  WHEN status IN ('details', 'qualified', 'interested', 'catalog_sent', 'thinking') THEN 'needs_discovery'
   ELSE status
 END`;
 const MATERIAL_LEAD_SQL = `(
@@ -417,12 +486,11 @@ function inferStatusFromSheet(row) {
   if (/закуп|готов/.test(text)) return 'purchase';
   if (/договор|contract/.test(text)) return 'contract';
   if (/встреч.*офис|офис.*встреч|срещ.*офис|офис.*срещ/.test(text)) return 'office_meeting';
+  if (/подготов.*(?:кп|оферт|предложен)|расчет|разчет/.test(text)) return 'offer_preparation';
   if (/коммерческ|оферт|предложен|\bкп\b/.test(text)) return 'offer_sent';
-  if (/каталог|презентац|presentation|catalog/.test(text)) return 'catalog_sent';
-  if (/дума/.test(text)) return 'thinking';
   if (/встреч|срещ|дума|цена|жд[уе]т|ответит/.test(text)) return 'negotiation';
 
-  return 'interested';
+  return 'needs_discovery';
 }
 
 async function syncFacebookLeadsWithSheets() {
@@ -561,6 +629,15 @@ router.get('/', async (req, res) => {
       where.push(MATERIAL_LEAD_SQL);
     }
 
+    if (view === 'objects') {
+      where.push(`NOT ${DISTRIBUTOR_LEAD_SQL}`);
+      where.push(`NOT ${SERVICE_LEAD_SQL}`);
+    }
+
+    if (view === 'distributors') {
+      where.push(DISTRIBUTOR_LEAD_SQL);
+    }
+
     if (view === 'services') {
       where.push(SERVICE_LEAD_SQL);
     }
@@ -624,19 +701,21 @@ router.get('/', async (req, res) => {
       : sort === 'status'
         ? `CASE status
             WHEN 'new' THEN 1
+            WHEN 'details' THEN 2
             WHEN 'interested' THEN 2
             WHEN 'contacted' THEN 2
             WHEN 'qualified' THEN 2
-            WHEN 'catalog_sent' THEN 3
-            WHEN 'thinking' THEN 4
-            WHEN 'offer_sent' THEN 5
-            WHEN 'negotiation' THEN 6
-            WHEN 'office_meeting' THEN 7
-            WHEN 'contract' THEN 8
-            WHEN 'purchase' THEN 9
-            WHEN 'won' THEN 10
-            WHEN 'lost' THEN 11
-            ELSE 12
+            WHEN 'catalog_sent' THEN 2
+            WHEN 'thinking' THEN 2
+            WHEN 'offer_preparation' THEN 3
+            WHEN 'offer_sent' THEN 4
+            WHEN 'negotiation' THEN 5
+            WHEN 'office_meeting' THEN 6
+            WHEN 'contract' THEN 7
+            WHEN 'purchase' THEN 8
+            WHEN 'won' THEN 9
+            WHEN 'lost' THEN 10
+            ELSE 11
           END, created_at DESC`
         : `created_at DESC,
           CASE priority
@@ -744,6 +823,15 @@ router.get('/summary', async (req, res) => {
       SELECT COUNT(*)::int as count FROM leads
       WHERE ${SERVICE_LEAD_SQL}
     `);
+    const distributorsRes = await db.query(`
+      SELECT COUNT(*)::int as count FROM leads
+      WHERE ${DISTRIBUTOR_LEAD_SQL}
+    `);
+    const objectsRes = await db.query(`
+      SELECT COUNT(*)::int as count FROM leads
+      WHERE NOT ${DISTRIBUTOR_LEAD_SQL}
+        AND NOT ${SERVICE_LEAD_SQL}
+    `);
 
     const bySource = bySourceRes.rows;
     const byStatus = byStatusRes.rows;
@@ -754,6 +842,8 @@ router.get('/summary', async (req, res) => {
       facebook: bySource.find(row => row.source === 'facebook')?.count || 0,
       materials: materialsRes.rows[0]?.count || 0,
       services: servicesRes.rows[0]?.count || 0,
+      distributors: distributorsRes.rows[0]?.count || 0,
+      objects: objectsRes.rows[0]?.count || 0,
       today: todayRes.rows[0]?.count || 0,
       week: weekRes.rows[0]?.count || 0,
       followups_due: (await db.query(`
@@ -797,19 +887,21 @@ router.get('/stats/pipeline', async (req, res) => {
       GROUP BY status
       ORDER BY CASE status
         WHEN 'new' THEN 1
+        WHEN 'details' THEN 2
         WHEN 'interested' THEN 2
         WHEN 'contacted' THEN 2
         WHEN 'qualified' THEN 2
-        WHEN 'catalog_sent' THEN 3
-        WHEN 'thinking' THEN 4
-        WHEN 'offer_sent' THEN 5
-        WHEN 'negotiation' THEN 6
-        WHEN 'office_meeting' THEN 7
-        WHEN 'contract' THEN 8
-        WHEN 'purchase' THEN 9
-        WHEN 'won' THEN 10
-        WHEN 'lost' THEN 11
-        ELSE 12
+        WHEN 'catalog_sent' THEN 2
+        WHEN 'thinking' THEN 2
+        WHEN 'offer_preparation' THEN 3
+        WHEN 'offer_sent' THEN 4
+        WHEN 'negotiation' THEN 5
+        WHEN 'office_meeting' THEN 6
+        WHEN 'contract' THEN 7
+        WHEN 'purchase' THEN 8
+        WHEN 'won' THEN 9
+        WHEN 'lost' THEN 10
+        ELSE 11
       END
     `);
 
@@ -983,7 +1075,7 @@ router.post('/:id/ping', async (req, res) => {
       RETURNING *
     `, [
       req.params.id,
-      `Пинг после каталога через ${channel}`,
+      `Follow-up по КП через ${channel}`,
       channel,
       performedBy,
     ]);
@@ -1003,7 +1095,8 @@ router.post('/:id/ping', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const b = normalizeLeadPayload(req.body);
-    const status = normalizeCrmStatus(b.status || 'new');
+    const crmSegment = inferCrmSegment(b);
+    const status = normalizeCrmStatus(b.status, crmSegment);
 
     const { rows } = await db.query(`
       INSERT INTO leads (
@@ -1020,9 +1113,10 @@ router.post('/', async (req, res) => {
         interest_products,
         estimated_value,
         notes,
-        assigned_to
+        assigned_to,
+        crm_segment
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *
     `, [
       b.company_name,
@@ -1039,6 +1133,7 @@ router.post('/', async (req, res) => {
       b.estimated_value,
       b.notes,
       b.assigned_to,
+      crmSegment,
     ]);
 
     const lead = rows[0];
@@ -1075,8 +1170,10 @@ router.put('/:id', async (req, res) => {
     }
 
     const b = normalizeLeadPayload(req.body);
+    const nextSegment = inferCrmSegment({ ...old, ...b });
+    b.crm_segment = nextSegment;
     if (Object.prototype.hasOwnProperty.call(b, 'status')) {
-      b.status = normalizeCrmStatus(b.status);
+      b.status = normalizeCrmStatus(b.status, nextSegment);
     }
     const fields = [];
     const params = [];
@@ -1198,10 +1295,37 @@ router.delete('/:id', async (req, res) => {
 });
 
 async function normalizeLegacyLeadStatuses() {
+  await ensureLeadSheetColumns();
+  await ensureDealOverrides();
   await db.query(`
     UPDATE leads
-    SET status = 'interested', updated_at = NOW()
-    WHERE status IN ('contacted', 'qualified')
+    SET crm_segment = CASE
+          WHEN lower(concat_ws(' ', coalesce(company_type, ''), coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))
+            ~ '(дистриб|distributor|dealer|дилър|reseller|търговец)'
+          THEN 'distributor'
+          ELSE 'objects'
+        END
+    WHERE crm_segment IS NULL OR crm_segment NOT IN ('objects', 'distributor')
+  `);
+  await db.query(`
+    UPDATE leads
+    SET status = CASE
+          WHEN crm_segment = 'distributor' THEN CASE
+            WHEN status IN ('new') THEN 'partner_new'
+            WHEN status IN ('contacted', 'qualified', 'interested', 'catalog_sent', 'thinking', 'details', 'needs_discovery') THEN 'partner_qualification'
+            WHEN status IN ('offer_preparation', 'offer_sent') THEN 'partner_terms_sent'
+            WHEN status = 'negotiation' THEN 'partner_negotiation'
+            WHEN status = 'office_meeting' THEN 'partner_meeting'
+            WHEN status IN ('contract', 'purchase') THEN 'partner_test_order'
+            WHEN status = 'won' THEN 'partner_active'
+            ELSE status
+          END
+          WHEN status IN ('qualified', 'interested', 'catalog_sent', 'thinking', 'details') THEN 'needs_discovery'
+          ELSE status
+        END,
+        updated_at = NOW()
+    WHERE status IN ('qualified', 'interested', 'catalog_sent', 'thinking', 'details')
+       OR (crm_segment = 'distributor' AND status NOT IN ('partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'))
   `);
 }
 

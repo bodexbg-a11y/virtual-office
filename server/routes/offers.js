@@ -149,19 +149,29 @@ router.post('/', async (req, res) => {
     const offerItems = safeParse(offer.items);
 
     if (status === 'sent' && lead.status !== 'won' && lead.status !== 'lost') {
+      const nextLeadStatus = lead.crm_segment === 'distributor' ? 'partner_terms_sent' : 'offer_sent';
       await db.run(`
         UPDATE leads
-        SET status = 'offer_sent', updated_at = NOW()
+        SET status = ?, updated_at = NOW()
         WHERE id = ?
-      `, [leadId]);
+      `, [nextLeadStatus, leadId]);
 
       await db.run(`
         INSERT INTO lead_activities (lead_id, action, description, old_value, new_value, performed_by)
-        VALUES (?, 'offer_created', ?, ?, 'offer_sent', 'admin')
-      `, [leadId, `Commercial proposal ${offer.offer_number} generated`, lead.status]);
+        VALUES (?, 'offer_created', ?, ?, ?, 'admin')
+      `, [leadId, `Commercial proposal ${offer.offer_number} generated`, lead.status, nextLeadStatus]);
     }
 
-    const pdfBuffer = await generateOfferPdfBuffer({ offer, lead: { ...lead, status: status === 'sent' ? 'offer_sent' : lead.status }, items: offerItems });
+    const pdfBuffer = await generateOfferPdfBuffer({
+      offer,
+      lead: {
+        ...lead,
+        status: status === 'sent'
+          ? (lead.crm_segment === 'distributor' ? 'partner_terms_sent' : 'offer_sent')
+          : lead.status,
+      },
+      items: offerItems,
+    });
     const pdfBase64 = pdfBuffer.toString('base64');
 
     res.json({

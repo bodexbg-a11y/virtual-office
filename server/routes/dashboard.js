@@ -218,7 +218,7 @@ async function workerData() {
     SELECT
       COUNT(*) as total,
       SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_leads,
-      SUM(CASE WHEN status IN ('interested','catalog_sent','thinking','offer_sent','negotiation','office_meeting','contract','purchase') THEN 1 ELSE 0 END) as active,
+      SUM(CASE WHEN status IN ('interested','catalog_sent','thinking','offer_sent','negotiation','office_meeting','contract','purchase','contacted','qualified','needs_discovery','details','offer_preparation','partner_qualification','partner_negotiation','partner_meeting','partner_terms_sent','partner_test_order') THEN 1 ELSE 0 END) as active,
       COALESCE(SUM(CASE WHEN status != 'lost' THEN estimated_value ELSE 0 END), 0) as pipeline
     FROM leads
   `);
@@ -750,6 +750,16 @@ function normalizeDealStage(status) {
   const map = {
     contacted: 'interested',
     qualified: 'interested',
+    needs_discovery: 'interested',
+    details: 'interested',
+    offer_preparation: 'offer_sent',
+    partner_new: 'new',
+    partner_qualification: 'interested',
+    partner_negotiation: 'negotiation',
+    partner_meeting: 'office_meeting',
+    partner_terms_sent: 'offer_sent',
+    partner_test_order: 'purchase',
+    partner_active: 'won',
   };
   const id = map[status] || status || 'new';
   return DEAL_STAGES.some(stage => stage.id === id) ? id : 'new';
@@ -772,7 +782,7 @@ router.get('/stats', async (req, res) => {
       SELECT
         COUNT(*) as total_leads,
         SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_leads,
-        SUM(CASE WHEN status IN ('interested','catalog_sent','thinking','offer_sent','negotiation','office_meeting','contract','purchase') THEN 1 ELSE 0 END) as active_leads,
+        SUM(CASE WHEN status IN ('interested','catalog_sent','thinking','offer_sent','negotiation','office_meeting','contract','purchase','contacted','qualified','needs_discovery','details','offer_preparation','partner_qualification','partner_negotiation','partner_meeting','partner_terms_sent','partner_test_order') THEN 1 ELSE 0 END) as active_leads,
         SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) as won_deals,
         SUM(CASE WHEN date(created_at) = CURRENT_DATE THEN 1 ELSE 0 END) as today_leads,
         COALESCE(SUM(CASE WHEN status != 'lost' THEN estimated_value ELSE 0 END), 0) as pipeline_value,
@@ -903,7 +913,7 @@ router.get('/stats', async (req, res) => {
         l.created_at
       FROM leads l
       LEFT JOIN offers o ON o.lead_id = l.id
-      WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation', 'office_meeting')
+      WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation', 'office_meeting', 'contacted', 'qualified', 'needs_discovery', 'details', 'offer_preparation', 'partner_qualification', 'partner_negotiation', 'partner_meeting')
         AND l.status NOT IN ('won', 'lost')
         AND ${DASHBOARD_MATERIAL_LEAD_SQL_L}
       GROUP BY l.id
@@ -921,7 +931,7 @@ router.get('/stats', async (req, res) => {
         SELECT l.id
         FROM leads l
         LEFT JOIN offers o ON o.lead_id = l.id
-        WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation', 'office_meeting')
+        WHERE l.status IN ('interested', 'catalog_sent', 'thinking', 'negotiation', 'office_meeting', 'contacted', 'qualified', 'needs_discovery', 'details', 'offer_preparation', 'partner_qualification', 'partner_negotiation', 'partner_meeting')
           AND l.status NOT IN ('won', 'lost')
           AND ${DASHBOARD_MATERIAL_LEAD_SQL_L}
         GROUP BY l.id

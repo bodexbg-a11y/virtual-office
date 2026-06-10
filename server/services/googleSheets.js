@@ -1176,32 +1176,46 @@ function isServicesText(text) {
 function crmStatusLabel(status) {
   const labels = {
     new: 'Новый',
-    interested: 'Контактирован / интерес',
-    catalog_sent: 'Каталог отправлен',
-    thinking: 'Думают',
-    offer_sent: 'Оферта',
+    contacted: 'Связались',
+    needs_discovery: 'Уточнение деталей',
+    offer_preparation: 'Подготовка КП',
+    offer_sent: 'КП отправлено',
     negotiation: 'Переговоры',
     office_meeting: 'Встреча в офисе',
-    contract: 'Договор',
-    purchase: 'Закупка',
+    contract: 'Согласование договора',
+    purchase: 'Закупка и доставка',
     won: 'Закрыто успешно',
     lost: 'Отказ',
+    partner_new: 'Новый партнёр',
+    partner_qualification: 'Квалификация',
+    partner_negotiation: 'Переговоры',
+    partner_meeting: 'Встреча проведена',
+    partner_terms_sent: 'Условия направлены',
+    partner_test_order: 'Тестовый заказ',
+    partner_active: 'Активный дистрибьютор',
   };
   return labels[status] || status || '—';
 }
 
 function crmActionNeeded(lead) {
   const map = {
-    interested: 'Уточнить потребность',
-    catalog_sent: 'Пропинговать после каталога',
-    thinking: 'Перезвонить',
-    offer_sent: 'Обсудить коммерческое',
+    contacted: 'Зафиксировать параметры объекта',
+    needs_discovery: 'Уточнить материал, объём, срок и доставку',
+    offer_preparation: 'Подготовить КП',
+    offer_sent: 'Получить обратную связь по КП',
     negotiation: 'Дожать переговоры',
     office_meeting: 'Подтвердить встречу в офисе',
-    contract: 'Подготовить договор',
-    purchase: 'Сопроводить закупку',
+    contract: 'Согласовать договор',
+    purchase: 'Сопроводить закупку и доставку',
     won: 'Закрыто',
     lost: 'Не актуальный',
+    partner_new: 'Связаться с партнёром',
+    partner_qualification: 'Проверить регион, продажи, склад и потенциал',
+    partner_negotiation: 'Согласовать модель сотрудничества',
+    partner_meeting: 'Зафиксировать итоги встречи',
+    partner_terms_sent: 'Получить ответ по условиям',
+    partner_test_order: 'Сопроводить тестовый заказ',
+    partner_active: 'Планировать повторную закупку',
   };
   if (lead.next_followup_at) return 'Перезвонить';
   return map[lead.status] || 'Связаться';

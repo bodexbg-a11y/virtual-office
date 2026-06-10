@@ -16,7 +16,9 @@ let bulkPingRecipients = [];
 let bulkPingQueue = [];
 let bulkPingQueueIndex = 0;
 let bulkPingQueueChannel = '';
-const CRM_STAGES = ['new', 'interested', 'catalog_sent', 'thinking', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
+const OBJECT_CRM_STAGES = ['new', 'contacted', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
+const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
+const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
 const GMAIL_SENDERS = [
   { key: 'bodex', email: 'bodexbg@gmail.com', label: 'Bodex Bulgaria' },
   { key: 'vlad', email: 'vlad@bodexbg.com', label: 'Vladyslav Mes' },
@@ -315,7 +317,7 @@ async function renderDashboard(el) {
                 <tr>
                   <td style="font-weight:700;color:#ddd;">${l.company_name || l.contact_name || ('Лид #' + l.id)}</td>
                   <td>${l.phone || l.email || '—'}</td>
-                  <td><span class="badge badge-${l.status || 'interested'}">${statusLabel(l.status || 'interested')}</span></td>
+                  <td><span class="badge badge-${l.status || 'needs_discovery'}">${statusLabel(l.status || 'needs_discovery')}</span></td>
                   <td style="font-size:12px;color:#bbb;">${l.interest_products || 'Материалы'}</td>
                   <td style="text-align:right;">
                     <button class="btn btn-secondary btn-sm" onclick="openLeadDetail(${l.id})">Открыть</button>
@@ -1781,6 +1783,7 @@ async function pullDealsSheets() {
 
 // ===== LEADS =====
 async function renderLeads(el, filters = {}) {
+  if (!Object.keys(filters).length) filters = { view: 'objects' };
   currentLeadFilters = filters;
   const params = new URLSearchParams(filters);
   const [data, summary, gmailStatus] = await Promise.all([
@@ -1791,7 +1794,12 @@ async function renderLeads(el, filters = {}) {
   gmailAccountsCache = gmailStatus.accounts || [];
   ensureConnectedGmailSender();
   const rows = applyLeadQuickFilters(data.leads || [], filters);
-  const statusCounts = Object.fromEntries((summary.statuses || []).map(row => [row.status, row.count]));
+  const visibleStages = leadStagesForView(filters);
+  const statusCounts = rows.reduce((counts, row) => {
+    const status = leadDisplayStatus(row);
+    counts[status] = (counts[status] || 0) + 1;
+    return counts;
+  }, {});
   const cityOptions = summary.cities || [];
 
   el.innerHTML = `
@@ -1817,10 +1825,9 @@ async function renderLeads(el, filters = {}) {
     <div id="leads-sync-result" class="sync-result"></div>
 
     <div class="lead-tabs fade-in">
-      ${leadTab('Все', { }, summary.total || 0, !filters.view && !filters.status && !filters.source && !filters.followup)}
+      ${leadTab('Объекты', { view: 'objects' }, summary.objects ?? (data.leads || []).filter(lead => !isDistributorLead(lead) && !isServicesLead(lead)).length, filters.view === 'objects')}
+      ${leadTab('Дистрибьюторы', { view: 'distributors' }, summary.distributors ?? (data.leads || []).filter(isDistributorLead).length, filters.view === 'distributors')}
       ${leadTab('Facebook', { view: 'facebook' }, summary.facebook || 0, filters.view === 'facebook')}
-      ${leadTab('Новые', { status: 'new' }, statusCounts.new || 0, filters.status === 'new' && !filters.view)}
-      ${leadTab('Материалы', { view: 'materials' }, summary.materials || 0, filters.view === 'materials')}
       ${leadTab('Услуги', { view: 'services' }, summary.services || 0, filters.view === 'services')}
       ${leadTab('Сегодня', { date_range: 'today' }, summary.today || 0, filters.date_range === 'today')}
       ${leadTab('7 дней', { date_range: 'week' }, summary.week || 0, filters.date_range === 'week')}
@@ -1828,7 +1835,7 @@ async function renderLeads(el, filters = {}) {
     </div>
 
     <div class="lead-status-tabs fade-in">
-      ${CRM_STAGES.map(status =>
+      ${visibleStages.map(status =>
         `<button class="lead-status-tab ${filters.status === status ? 'active' : ''}" style="${leadStatusTabStyle(status, filters.status === status)}" onclick="renderLeads(document.getElementById('main'), {...currentLeadFilters, status: '${status}'})">
           ${statusLabel(status)} <span>${statusCounts[status] || 0}</span>
         </button>`
@@ -1850,13 +1857,6 @@ async function renderLeads(el, filters = {}) {
         style="${filters.premium === '1' ? 'background:#b68a28;border-color:#f6d365;color:#fff7d6;' : 'color:#f6d365;border-color:rgba(246,211,101,.35);'}"
       >
         ✨ Premium
-      </button>
-      <button
-        class="btn ${filters.distributors === '1' ? 'btn-primary' : 'btn-secondary'}"
-        onclick="toggleLeadQuickFilter('distributors', '1')"
-        title="Показать только дистрибьюторов"
-      >
-        🏷️ Дистрибьюторы
       </button>
       <button
         class="btn ${filters.specific_object === '1' ? 'btn-primary' : 'btn-secondary'}"
@@ -1898,24 +1898,24 @@ async function renderLeads(el, filters = {}) {
           </thead>
           <tbody>
             ${rows.length ? rows.map(l => `
-              <tr class="${l.status === 'new' ? 'lead-row-new' : ''}" onclick="openLeadDetail(${l.id})" style="cursor:pointer;">
+              <tr class="${leadDisplayStatus(l) === 'new' || leadDisplayStatus(l) === 'partner_new' ? 'lead-row-new' : ''}" onclick="openLeadDetail(${l.id})" style="cursor:pointer;">
                 <td style="font-weight:500;color:${l.is_gold_lead ? '#f6d365' : '#ddd'};max-width:148px;line-height:1.25;word-break:break-word;">${l.company_name || '—'}</td>
                 <td style="max-width:120px;line-height:1.25;word-break:break-word;">${l.contact_name || '—'}</td>
                 <td style="font-size:11px;max-width:132px;" onclick="event.stopPropagation();">
                   <div style="display:flex;align-items:center;gap:6px;min-width:0;">
                     <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;">${l.phone || l.email || '—'}</span>
-                    ${needsCatalogPing(l) ? `<button class="lead-ping-bell" title="Пропинговать после каталога" onclick="event.stopPropagation();openCatalogPingModal(${l.id})">🔔</button>` : ''}
+                    ${needsCatalogPing(l) ? `<button class="lead-ping-bell" title="Запросить обратную связь по КП" onclick="event.stopPropagation();openCatalogPingModal(${l.id})">🔔</button>` : ''}
                   </div>
                 </td>
                 <td>${l.city || '—'}</td>
                 <td onclick="event.stopPropagation();">
                   <select
-                    class="lead-inline-status-select lead-inline-status-${l.status}"
-                    data-previous-value="${l.status}"
+                    class="lead-inline-status-select lead-inline-status-${leadDisplayStatus(l)}"
+                    data-previous-value="${leadDisplayStatus(l)}"
                     onclick="event.stopPropagation();"
                     onchange="inlineUpdateLeadStatus(${l.id}, this.value, event)"
                   >
-                    ${CRM_STAGES.map(status => `<option value="${status}" ${l.status === status ? 'selected' : ''}>${statusLabel(status)}</option>`).join('')}
+                    ${leadStagesForLead(l).map(status => `<option value="${status}" ${leadDisplayStatus(l) === status ? 'selected' : ''}>${statusLabel(status)}</option>`).join('')}
                   </select>
                 </td>
                 <td style="width:74px;"><span class="badge badge-${l.priority}">${l.priority}</span></td>
@@ -1961,9 +1961,9 @@ function toggleLeadQuickFilter(key, value) {
 function leadStatusTabStyle(status, active) {
   const map = {
     new: ['rgba(96,165,250,0.12)', '#7fb3ff', 'rgba(96,165,250,0.3)'],
-    interested: ['rgba(251,191,36,0.12)', '#f6d365', 'rgba(251,191,36,0.32)'],
-    catalog_sent: ['rgba(59,130,246,0.12)', '#7dc4ff', 'rgba(59,130,246,0.32)'],
-    thinking: ['rgba(250,204,21,0.12)', '#f7d774', 'rgba(250,204,21,0.3)'],
+    contacted: ['rgba(56,189,248,0.12)', '#7dd3fc', 'rgba(56,189,248,0.3)'],
+    needs_discovery: ['rgba(251,191,36,0.12)', '#f6d365', 'rgba(251,191,36,0.32)'],
+    offer_preparation: ['rgba(59,130,246,0.12)', '#7dc4ff', 'rgba(59,130,246,0.32)'],
     offer_sent: ['rgba(167,139,250,0.12)', '#c4b5fd', 'rgba(167,139,250,0.32)'],
     negotiation: ['rgba(244,114,182,0.12)', '#f9a8d4', 'rgba(244,114,182,0.32)'],
     office_meeting: ['rgba(45,212,191,0.12)', '#99f6e4', 'rgba(45,212,191,0.32)'],
@@ -1971,6 +1971,13 @@ function leadStatusTabStyle(status, active) {
     purchase: ['rgba(16,185,129,0.1)', '#6ee7b7', 'rgba(16,185,129,0.26)'],
     won: ['rgba(74,222,128,0.14)', '#4ade80', 'rgba(74,222,128,0.35)'],
     lost: ['rgba(248,113,113,0.12)', '#fca5a5', 'rgba(248,113,113,0.28)'],
+    partner_new: ['rgba(96,165,250,0.12)', '#7fb3ff', 'rgba(96,165,250,0.3)'],
+    partner_qualification: ['rgba(251,191,36,0.12)', '#f6d365', 'rgba(251,191,36,0.32)'],
+    partner_negotiation: ['rgba(244,114,182,0.12)', '#f9a8d4', 'rgba(244,114,182,0.32)'],
+    partner_meeting: ['rgba(45,212,191,0.12)', '#99f6e4', 'rgba(45,212,191,0.32)'],
+    partner_terms_sent: ['rgba(167,139,250,0.12)', '#c4b5fd', 'rgba(167,139,250,0.32)'],
+    partner_test_order: ['rgba(16,185,129,0.1)', '#6ee7b7', 'rgba(16,185,129,0.26)'],
+    partner_active: ['rgba(74,222,128,0.14)', '#4ade80', 'rgba(74,222,128,0.35)'],
   };
   const [bg, color, border] = map[status] || ['rgba(255,255,255,0.04)', '#ddd', 'rgba(255,255,255,0.08)'];
   if (!active) return `background:${bg};color:${color};border-color:${border};`;
@@ -1979,6 +1986,14 @@ function leadStatusTabStyle(status, active) {
 
 function applyLeadQuickFilters(rows, filters = {}) {
   let result = [...rows];
+
+  if (filters.view === 'objects') {
+    result = result.filter(row => !isDistributorLead(row) && !isServicesLead(row));
+  }
+
+  if (filters.view === 'distributors') {
+    result = result.filter(isDistributorLead);
+  }
 
   if (filters.premium === '1') {
     result = result.filter(row => !!row.is_gold_lead);
@@ -2011,8 +2026,53 @@ function extractLeadAreaNumber(areaLabel = '') {
 }
 
 function isDistributorLead(lead = {}) {
+  if (String(lead.crm_segment || '').toLowerCase() === 'distributor') return true;
+  if (String(lead.crm_segment || '').toLowerCase() === 'objects') return false;
   const text = `${lead.company_type || ''} ${lead.notes || ''} ${lead.form_summary || ''}`.toLowerCase();
   return /дистриб|distributor|dealer|дилър|reseller|търговец/.test(text);
+}
+
+function leadStagesForLead(lead = {}) {
+  return isDistributorLead(lead) ? DISTRIBUTOR_CRM_STAGES : OBJECT_CRM_STAGES;
+}
+
+function leadStagesForView(filters = {}) {
+  return filters.view === 'distributors' ? DISTRIBUTOR_CRM_STAGES : OBJECT_CRM_STAGES;
+}
+
+function leadDisplayStatus(lead = {}) {
+  const status = String(lead.status || '').toLowerCase();
+  const legacyObject = {
+    details: 'needs_discovery',
+    interested: 'needs_discovery',
+    qualified: 'needs_discovery',
+    catalog_sent: 'needs_discovery',
+    thinking: 'needs_discovery',
+  };
+  const objectStatus = legacyObject[status] || status || 'new';
+  if (!isDistributorLead(lead)) {
+    return OBJECT_CRM_STAGES.includes(objectStatus) ? objectStatus : 'new';
+  }
+  const distributorMap = {
+    new: 'partner_new',
+    contacted: 'partner_qualification',
+    needs_discovery: 'partner_qualification',
+    details: 'partner_qualification',
+    interested: 'partner_qualification',
+    qualified: 'partner_qualification',
+    catalog_sent: 'partner_qualification',
+    thinking: 'partner_qualification',
+    offer_preparation: 'partner_terms_sent',
+    offer_sent: 'partner_terms_sent',
+    negotiation: 'partner_negotiation',
+    office_meeting: 'partner_meeting',
+    contract: 'partner_test_order',
+    purchase: 'partner_test_order',
+    won: 'partner_active',
+    lost: 'lost',
+  };
+  const mapped = distributorMap[status] || status || 'partner_new';
+  return DISTRIBUTOR_CRM_STAGES.includes(mapped) ? mapped : 'partner_new';
 }
 
 function isSpecificObjectLead(lead = {}) {
@@ -2982,6 +3042,13 @@ function openNewLeadModal() {
           </select>
         </div>
         <div class="form-group">
+          <label>Воронка продаж</label>
+          <select name="crm_segment">
+            <option value="objects">Объекты / покупатели материалов</option>
+            <option value="distributor">Дистрибьюторы / партнёры</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label>Източник</label>
           <select name="source">
             <option value="website">Сайт</option>
@@ -3091,10 +3158,17 @@ async function openLeadDetail(id) {
         <div class="form-group"><label>Телефон</label><input id="ld-phone" value="${l.phone || ''}"></div>
         <div class="form-group"><label>Град</label><input id="ld-city" value="${l.city || ''}"></div>
         <div class="form-group">
+          <label>Воронка продаж</label>
+          <select id="ld-crm-segment" onchange="refreshLeadStatusOptions()">
+            <option value="objects" ${isDistributorLead(l) ? '' : 'selected'}>Объекты / покупатели материалов</option>
+            <option value="distributor" ${isDistributorLead(l) ? 'selected' : ''}>Дистрибьюторы / партнёры</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label>Статус</label>
           <select id="ld-status">
-            ${CRM_STAGES.map(s =>
-              `<option value="${s}" ${l.status===s?'selected':''}>${statusLabel(s)}</option>`
+            ${leadStagesForLead(l).map(s =>
+              `<option value="${s}" ${leadDisplayStatus(l)===s?'selected':''}>${statusLabel(s)}</option>`
             ).join('')}
           </select>
         </div>
@@ -3279,8 +3353,7 @@ function renderLeadContactActions(lead = {}) {
         </div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
-        <button class="btn btn-secondary btn-sm" onclick="openLeadTemplate('intro')">Первичный контакт</button>
-        <button class="btn btn-secondary btn-sm" onclick="openLeadTemplate('catalog')">Каталог / презентация</button>
+        <button class="btn btn-secondary btn-sm" onclick="openLeadTemplate('intro')">Уточнить детали</button>
         <button class="btn btn-secondary btn-sm" onclick="openLeadTemplate('offer_followup')">Follow-up по КП</button>
       </div>
     </div>
@@ -3329,13 +3402,9 @@ function buildLeadTemplateMessage(lead = {}, type = 'intro') {
       'Благодаря Ви за интереса към решенията на BODEX Bulgaria.',
       'Ако имате въпроси за материалите, приложението или доставката, пишете ми и ще Ви съдействам.',
     ],
-    catalog: [
-      'Вие разговаряхте с нашия мениджър относно материалите и изпратения каталог / презентация.',
-      'Успяхте ли да го разгледате? Ако решенията са подходящи за Вас, моля попълнете кратката форма, за да подготвим конкретно търговско предложение.',
-    ],
     catalog_ping: [
-      'Вие разговаряхте с нашия мениджър и получихте нашия каталог / презентация.',
-      'Успяхте ли да го разгледате? Ако сте готови да продължим, моля попълнете кратката форма. По данните от нея ще подготвим конкретно търговско предложение.',
+      'Изпратихме Ви търговско предложение и бих искал да получа Вашата обратна връзка.',
+      'Имате ли въпроси по цената, количеството, срока или доставката? Готови сме да уточним условията и следващата стъпка.',
     ],
     offer_followup: [
       'Искам да проследя изпратеното търговско предложение.',
@@ -3355,23 +3424,23 @@ function buildLeadTemplateMessage(lead = {}, type = 'intro') {
   ].filter(line => line !== null && line !== undefined).join('\n');
 }
 
-function bulkPingTemplateForStatus(status = 'catalog_sent') {
+function bulkPingTemplateForStatus(status = 'needs_discovery') {
   const templates = {
     new: [
       'Благодарим за Вашето запитване към BODEX Bulgaria.',
       'Актуален ли е още интересът Ви? Можем да уточним материала, обема и срока и да предложим следваща стъпка.',
     ],
-    interested: [
+    needs_discovery: [
       'Свързваме се във връзка с интереса Ви към нашите строителни материали.',
-      'Кажете ни за какъв обект и обем става въпрос, за да предложим най-подходящото решение.',
+      'За да подготвим конкретно предложение, моля уточнете обекта, нужния материал, количеството, срока и адреса за доставка.',
     ],
-    catalog_sent: [
-      'Вие разговаряхте с нашия мениджър и получихте нашия каталог / презентация.',
-      'Успяхте ли да го разгледате? Ако сте готови да продължим, моля попълнете кратката форма. По данните от нея ще подготвим конкретно търговско предложение.',
+    contacted: [
+      'Благодаря за разговора с нашия мениджър.',
+      'За да продължим, моля потвърдете проблема, обекта, необходимото количество и желания срок.',
     ],
-    thinking: [
-      'Имате ли допълнителни въпроси по материалите, цената или приложението им?',
-      'Ще се радваме да помогнем с техническа консултация и да уточним следващата стъпка.',
+    offer_preparation: [
+      'Подготвяме Вашето търговско предложение.',
+      'Моля потвърдете дали количеството, адресът за доставка и желаният срок са актуални.',
     ],
     offer_sent: [
       'Успяхте ли да разгледате изпратеното търговско предложение?',
@@ -3401,11 +3470,33 @@ function bulkPingTemplateForStatus(status = 'catalog_sent') {
       'Свързваме се отново, за да проверим дали проектът или нуждата от материали са станали актуални.',
       'Ако желаете, можем да подготвим обновена информация и предложение.',
     ],
+    partner_new: [
+      'Свързваме се във връзка с интереса Ви към партньорство с BODEX Bulgaria.',
+      'Бихме искали да уточним регионите, в които работите, продуктовото Ви портфолио и потенциала за закупуване.',
+    ],
+    partner_qualification: [
+      'За да подготвим подходящ модел за партньорство, моля споделете регионите, каналите за продажба, складовите възможности и ориентировъчния потенциал за закупуване.',
+    ],
+    partner_negotiation: [
+      'Искам да продължим обсъждането на условията за партньорство и следващите стъпки.',
+    ],
+    partner_meeting: [
+      'Благодаря за проведената среща. Нека потвърдим договорените следващи стъпки.',
+    ],
+    partner_terms_sent: [
+      'Изпратихме условията за партньорство. Имате ли въпроси или корекции, които да обсъдим?',
+    ],
+    partner_test_order: [
+      'Готови сме да организираме тестовата поръчка. Моля потвърдете продуктите, количествата и адреса за доставка.',
+    ],
+    partner_active: [
+      'Благодарим за партньорството. Нека планираме следващата поръчка и необходимата търговска подкрепа.',
+    ],
   };
-  return (templates[status] || templates.interested).join('\n\n');
+  return (templates[status] || templates.needs_discovery).join('\n\n');
 }
 
-function buildBulkPingMessage(lead = {}, status = 'catalog_sent', body = '', forcedFormType = '') {
+function buildBulkPingMessage(lead = {}, status = 'needs_discovery', body = '', forcedFormType = '') {
   const name = lead.contact_name || lead.company_name || '';
   const formLines = leadApplicationFormLines(lead, forcedFormType);
   return [
@@ -3426,14 +3517,14 @@ async function openBulkPingModal() {
   bulkPingQueue = [];
   bulkPingQueueIndex = 0;
   bulkPingQueueChannel = '';
-  const initialStatus = currentLeadFilters.status || 'catalog_sent';
+  const initialStatus = currentLeadFilters.status || (currentLeadFilters.view === 'distributors' ? 'partner_qualification' : 'needs_discovery');
 
   openModal('Массовый пинг клиентов', `
     <div class="bulk-ping-toolbar">
       <div class="form-group" style="margin:0;">
         <label>Статус клиентов</label>
         <select id="bulk-ping-status" onchange="loadBulkPingRecipients()">
-          ${CRM_STAGES.map(status => `<option value="${status}" ${status === initialStatus ? 'selected' : ''}>${statusLabel(status)}</option>`).join('')}
+          ${leadStagesForView(currentLeadFilters).map(status => `<option value="${status}" ${status === initialStatus ? 'selected' : ''}>${statusLabel(status)}</option>`).join('')}
         </select>
       </div>
       <div class="form-group" style="margin:0;">
@@ -3452,7 +3543,7 @@ async function openBulkPingModal() {
 }
 
 async function loadBulkPingRecipients() {
-  const status = document.getElementById('bulk-ping-status')?.value || 'catalog_sent';
+  const status = document.getElementById('bulk-ping-status')?.value || 'needs_discovery';
   const content = document.getElementById('bulk-ping-content');
   if (!content) return;
   content.innerHTML = '<div style="color:#777;">Загрузка получателей...</div>';
@@ -3520,7 +3611,7 @@ async function recordBulkPings(leads, channel) {
 
 async function sendBulkEmailPing(group = 'general') {
   setGmailSender(document.getElementById('bulk-ping-sender')?.value || selectedGmailSenderKey);
-  const status = document.getElementById('bulk-ping-status')?.value || 'catalog_sent';
+  const status = document.getElementById('bulk-ping-status')?.value || 'needs_discovery';
   const recipients = bulkPingRecipients.filter(lead => {
     if (!String(lead.email || '').trim()) return false;
     if (group === 'distributor') return isDistributorLead(lead);
@@ -3535,8 +3626,8 @@ async function sendBulkEmailPing(group = 'general') {
     alert(`${sender} не подключён через Gmail OAuth.`);
     return;
   }
-  const subject = status === 'catalog_sent'
-    ? 'Каталог BODEX Bulgaria и подготовка на търговско предложение'
+  const subject = status === 'offer_preparation'
+    ? 'Подготовка на търговско предложение от BODEX Bulgaria'
     : `BODEX Bulgaria - ${statusLabel(status)}`;
   if (!confirm(`Отправить письмо?\n\nОт: ${sender}\nПолучателей: ${emails.length}\nСтатус: ${statusLabel(status)}`)) return;
 
@@ -3592,7 +3683,7 @@ function renderBulkPingQueueState() {
 async function openNextBulkPingRecipient() {
   const lead = bulkPingQueue[bulkPingQueueIndex];
   if (!lead) return;
-  const status = document.getElementById('bulk-ping-status')?.value || lead.status || 'catalog_sent';
+  const status = document.getElementById('bulk-ping-status')?.value || lead.status || 'needs_discovery';
   const message = buildBulkPingMessage(lead, status, bulkPingBody());
   const url = bulkPingQueueChannel === 'viber'
     ? viberUrl(lead.phone, message)
@@ -3616,7 +3707,7 @@ async function openNextBulkPingRecipient() {
 }
 
 function needsCatalogPing(lead = {}) {
-  if ((lead.status || '') !== 'catalog_sent') return false;
+  if ((lead.status || '') !== 'offer_sent') return false;
   if (!String(lead.email || '').trim() && !phoneDigits(lead.phone || '')) return false;
   const lastPingAt = lead.latest_ping_at ? new Date(lead.latest_ping_at).getTime() : 0;
   if (Number.isFinite(lastPingAt) && lastPingAt > 0 && (Date.now() - lastPingAt) < (3 * 24 * 60 * 60 * 1000)) {
@@ -3630,8 +3721,8 @@ function needsCatalogPing(lead = {}) {
 }
 
 function gmailComposeSubject(lead = {}, type = 'intro') {
-  if (type === 'catalog' || type === 'catalog_ping') {
-    return 'Каталог BODEX Bulgaria и подготовка на търговско предложение';
+  if (type === 'catalog_ping') {
+    return 'Обратна връзка по търговското предложение от BODEX Bulgaria';
   }
   if (type === 'offer_followup') {
     return 'Търговско предложение от BODEX Bulgaria';
@@ -3723,8 +3814,8 @@ async function openCatalogPingModal(id) {
     const whatsapp = whatsappUrl(lead.phone, message);
     const viber = viberUrl(lead.phone, message);
 
-    openModal('Пропинговать после каталога', `
-      <div style="font-size:12px;color:#9ca3af;margin-bottom:10px;">Лид молчит после каталога 3+ дня. Можно быстро напомнить о себе.</div>
+    openModal('Запросить обратную связь по КП', `
+      <div style="font-size:12px;color:#9ca3af;margin-bottom:10px;">После отправки КП прошло 3+ дня. Можно быстро запросить решение или уточняющие вопросы.</div>
       <div class="form-group" style="margin-bottom:12px;">
         <label>Отправить из Gmail-аккаунта</label>
         <select onchange="setGmailSender(this.value);openCatalogPingModal(${lead.id})">
@@ -3852,6 +3943,7 @@ async function updateLead(id) {
     email: document.getElementById('ld-email').value,
     phone: document.getElementById('ld-phone').value,
     city: document.getElementById('ld-city').value,
+    crm_segment: document.getElementById('ld-crm-segment')?.value || 'objects',
     status: document.getElementById('ld-status').value,
     priority: document.getElementById('ld-priority').value,
     premium_manual: document.getElementById('ld-premium-manual')?.checked || false,
@@ -3867,6 +3959,16 @@ async function updateLead(id) {
   } catch (err) {
     alert('Грешка: ' + err.message);
   }
+}
+
+function refreshLeadStatusOptions() {
+  const segment = document.getElementById('ld-crm-segment')?.value || 'objects';
+  const select = document.getElementById('ld-status');
+  if (!select) return;
+  const stages = segment === 'distributor' ? DISTRIBUTOR_CRM_STAGES : OBJECT_CRM_STAGES;
+  const current = select.value;
+  select.innerHTML = stages.map(status => `<option value="${status}">${statusLabel(status)}</option>`).join('');
+  select.value = stages.includes(current) ? current : stages[0];
 }
 
 async function inlineUpdateLeadStatus(id, status, event) {
@@ -4810,18 +4912,28 @@ function downloadTextFile(filename, content, type) {
 function statusLabel(s) {
   const map = {
     new: 'Новый лид',
-    interested: 'Интерес / горячий',
-    contacted: 'Интерес / горячий',
-    qualified: 'Интерес / горячий',
-    catalog_sent: 'Каталог / презентация',
-    thinking: 'Думают',
-    offer_sent: 'Коммерческое',
+    contacted: 'Связались',
+    needs_discovery: 'Уточнение деталей',
+    details: 'Уточнение деталей',
+    interested: 'Уточнение деталей',
+    qualified: 'Уточнение деталей',
+    catalog_sent: 'Уточнение деталей',
+    thinking: 'Уточнение деталей',
+    offer_preparation: 'Подготовка КП',
+    offer_sent: 'КП отправлено',
     negotiation: 'Переговоры',
     office_meeting: 'Встреча в офисе',
-    contract: 'Договор',
-    purchase: 'Закупка',
+    contract: 'Согласование договора',
+    purchase: 'Закупка и доставка',
     won: 'Закрыто успешно',
-    lost: 'Отказ / неактуально'
+    lost: 'Отказ / неактуально',
+    partner_new: 'Новый партнёр',
+    partner_qualification: 'Квалификация',
+    partner_negotiation: 'Переговоры',
+    partner_meeting: 'Встреча проведена',
+    partner_terms_sent: 'Условия направлены',
+    partner_test_order: 'Тестовый заказ',
+    partner_active: 'Активный дистрибьютор'
   };
   return map[s] || s;
 }

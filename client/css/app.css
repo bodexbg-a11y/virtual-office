@@ -260,6 +260,15 @@ tr:hover td { background: rgba(99,102,241,0.04); }
 
 .badge-new { background: rgba(99,102,241,0.15); color: var(--brand-light); }
 .badge-interested { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.badge-needs_discovery { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.badge-offer_preparation { background: rgba(66,165,245,0.15); color: var(--blue); }
+.badge-partner_new { background: rgba(99,102,241,0.15); color: var(--brand-light); }
+.badge-partner_qualification { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.badge-partner_negotiation { background: rgba(244,114,182,0.15); color: var(--pink); }
+.badge-partner_meeting { background: rgba(45,212,191,0.15); color: #99f6e4; }
+.badge-partner_terms_sent { background: rgba(167,139,250,0.15); color: var(--purple); }
+.badge-partner_test_order { background: rgba(16,185,129,0.15); color: var(--green); }
+.badge-partner_active { background: rgba(74,222,128,0.15); color: var(--green); }
 .badge-contacted { background: rgba(66,165,245,0.15); color: var(--blue); }
 .badge-qualified { background: rgba(251,191,36,0.15); color: var(--yellow); }
 .badge-catalog_sent { background: rgba(66,165,245,0.15); color: var(--blue); }
@@ -317,6 +326,15 @@ tr:hover td { background: rgba(99,102,241,0.04); }
 
 .lead-inline-status-new { background-color: rgba(99,102,241,0.15); color: var(--brand-light); }
 .lead-inline-status-interested { background-color: rgba(251,191,36,0.15); color: var(--yellow); }
+.lead-inline-status-needs_discovery { background-color: rgba(251,191,36,0.15); color: var(--yellow); }
+.lead-inline-status-offer_preparation { background-color: rgba(66,165,245,0.15); color: var(--blue); }
+.lead-inline-status-partner_new { background-color: rgba(99,102,241,0.15); color: var(--brand-light); }
+.lead-inline-status-partner_qualification { background-color: rgba(251,191,36,0.15); color: var(--yellow); }
+.lead-inline-status-partner_negotiation { background-color: rgba(244,114,182,0.15); color: var(--pink); }
+.lead-inline-status-partner_meeting { background-color: rgba(45,212,191,0.15); color: #99f6e4; }
+.lead-inline-status-partner_terms_sent { background-color: rgba(167,139,250,0.15); color: var(--purple); }
+.lead-inline-status-partner_test_order { background-color: rgba(16,185,129,0.15); color: var(--green); }
+.lead-inline-status-partner_active { background-color: rgba(74,222,128,0.15); color: var(--green); }
 .lead-inline-status-catalog_sent { background-color: rgba(66,165,245,0.15); color: var(--blue); }
 .lead-inline-status-thinking { background-color: rgba(251,191,36,0.15); color: var(--yellow); }
 .lead-inline-status-offer_sent { background-color: rgba(167,139,250,0.15); color: var(--purple); }
