@@ -1909,14 +1909,23 @@ async function renderLeads(el, filters = {}) {
                 </td>
                 <td>${l.city || '—'}</td>
                 <td onclick="event.stopPropagation();">
-                  <select
-                    class="lead-inline-status-select lead-inline-status-${leadDisplayStatus(l)}"
-                    data-previous-value="${leadDisplayStatus(l)}"
-                    onclick="event.stopPropagation();"
-                    onchange="inlineUpdateLeadStatus(${l.id}, this.value, event)"
-                  >
-                    ${leadStagesForLead(l).map(status => `<option value="${status}" ${leadDisplayStatus(l) === status ? 'selected' : ''}>${statusLabel(status)}</option>`).join('')}
-                  </select>
+                  <div class="lead-status-cell">
+                    <select
+                      class="lead-inline-status-select lead-inline-status-${leadDisplayStatus(l)}"
+                      data-previous-value="${leadDisplayStatus(l)}"
+                      onclick="event.stopPropagation();"
+                      onchange="inlineUpdateLeadStatus(${l.id}, this.value, event)"
+                    >
+                      ${leadStagesForLead(l).map(status => `<option value="${status}" ${leadDisplayStatus(l) === status ? 'selected' : ''}>${statusLabel(status)}</option>`).join('')}
+                    </select>
+                    ${!isDistributorLead(l) ? `
+                      <button
+                        class="lead-qualification-btn ${leadQualificationComplete(l) ? 'complete' : ''}"
+                        title="${leadQualificationComplete(l) ? 'Обязательные вопросы заполнены' : 'Заполнить обязательные вопросы'}"
+                        onclick="event.stopPropagation();openLeadQualificationModal(${l.id})"
+                      >📝</button>
+                    ` : ''}
+                  </div>
                 </td>
                 <td style="width:74px;"><span class="badge badge-${l.priority}">${l.priority}</span></td>
                 <td onclick="event.stopPropagation();" style="min-width:96px;width:96px;">${renderLeadTableContactActions(l)}</td>
@@ -2073,6 +2082,20 @@ function leadDisplayStatus(lead = {}) {
   };
   const mapped = distributorMap[status] || status || 'partner_new';
   return DISTRIBUTOR_CRM_STAGES.includes(mapped) ? mapped : 'partner_new';
+}
+
+function leadQualificationData(lead = {}) {
+  if (!lead.qualification_data) return {};
+  if (typeof lead.qualification_data === 'object') return lead.qualification_data;
+  try {
+    return JSON.parse(lead.qualification_data);
+  } catch {
+    return {};
+  }
+}
+
+function leadQualificationComplete(lead = {}) {
+  return leadQualificationData(lead).completed === true;
 }
 
 function isSpecificObjectLead(lead = {}) {
@@ -2246,6 +2269,162 @@ async function saveQuickLeadComment(id) {
     } else {
       alert('Грешка: ' + err.message);
     }
+  }
+}
+
+async function openLeadQualificationModal(id) {
+  try {
+    const data = await api(`/api/leads/${id}`);
+    const lead = data.lead || {};
+    const qualification = leadQualificationData(lead);
+    const selectedProblems = new Set(qualification.problems || []);
+    const volumes = qualification.volumes || {};
+    const problemOptions = [
+      ['active_leaks', 'Активные протечки'],
+      ['wall_moisture', 'Влажность стен'],
+      ['cracks', 'Трещины'],
+      ['construction_joints', 'Вода через рабочие швы'],
+      ['utility_entries', 'Вода через вводы коммуникаций'],
+      ['voids_behind_structure', 'Пустоты за конструкцией'],
+      ['structural_strengthening', 'Необходимость усиления конструкции'],
+      ['other', 'Другая проблема'],
+    ];
+
+    openModal(`Обязательные вопросы · ${lead.company_name || lead.contact_name || ('Лид #' + id)}`, `
+      <div class="qualification-intro">
+        Заполняется менеджером во время разговора. Эти данные используются для подготовки коммерческого предложения.
+      </div>
+      <form id="lead-qualification-form" onsubmit="saveLeadQualification(event, ${id})">
+        <section class="qualification-section">
+          <div class="qualification-title"><span>1</span> Какая проблема на объекте? *</div>
+          <div class="qualification-check-grid">
+            ${problemOptions.map(([value, label]) => `
+              <label class="qualification-check">
+                <input type="checkbox" name="qualification_problem" value="${value}" ${selectedProblems.has(value) ? 'checked' : ''}>
+                <span>${label}</span>
+              </label>
+            `).join('')}
+          </div>
+          <input id="qualification-other-problem" value="${escapeAttr(qualification.other_problem || '')}" placeholder="Уточнение другой проблемы">
+        </section>
+
+        <section class="qualification-section">
+          <div class="qualification-title"><span>2</span> Какой тип объекта? *</div>
+          <select id="qualification-object-type" required>
+            <option value="">Выберите тип объекта</option>
+            ${[
+              ['residential', 'Жилое здание'],
+              ['underground_parking', 'Подземный паркинг'],
+              ['basement', 'Подвал'],
+              ['industrial', 'Промышленный объект'],
+              ['reservoir', 'Резервуар'],
+              ['tunnel', 'Тоннель'],
+              ['other', 'Другое'],
+            ].map(([value, label]) => `<option value="${value}" ${qualification.object_type === value ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
+          <input id="qualification-other-object" value="${escapeAttr(qualification.other_object_type || '')}" placeholder="Уточнение другого типа объекта">
+        </section>
+
+        <section class="qualification-section">
+          <div class="qualification-title"><span>3</span> Какие ориентировочные объёмы? *</div>
+          <div class="qualification-volume-grid">
+            <label>Длина трещин<input id="qualification-crack-length" value="${escapeAttr(volumes.crack_length || '')}" placeholder="например, 50 пог. м"></label>
+            <label>Площадь поверхности<input id="qualification-surface-area" value="${escapeAttr(volumes.surface_area || '')}" placeholder="например, 400 м²"></label>
+            <label>Вводы коммуникаций<input id="qualification-utility-count" value="${escapeAttr(volumes.utility_entries || '')}" placeholder="например, 12 шт."></label>
+            <label>Общий объём работ<input id="qualification-total-work" value="${escapeAttr(volumes.total_work || '')}" placeholder="краткое описание"></label>
+          </div>
+        </section>
+
+        <div class="qualification-two-columns">
+          <section class="qualification-section">
+            <div class="qualification-title"><span>4</span> Когда нужны материалы? *</div>
+            <select id="qualification-timing" required>
+              <option value="">Выберите срок</option>
+              ${[
+                ['urgent', 'Срочно'],
+                ['1_2_weeks', 'В течение 1–2 недель'],
+                ['within_month', 'В течение месяца'],
+                ['later', 'Позже'],
+              ].map(([value, label]) => `<option value="${value}" ${qualification.timing === value ? 'selected' : ''}>${label}</option>`).join('')}
+            </select>
+          </section>
+          <section class="qualification-section">
+            <div class="qualification-title"><span>5</span> Кто будет выполнять работы? *</div>
+            <select id="qualification-executor" required>
+              <option value="">Выберите исполнителя</option>
+              ${[
+                ['own_team', 'Собственная строительная бригада'],
+                ['contractor', 'Подрядчик'],
+                ['recommendation_needed', 'Требуется рекомендация исполнителя'],
+              ].map(([value, label]) => `<option value="${value}" ${qualification.executor === value ? 'selected' : ''}>${label}</option>`).join('')}
+            </select>
+          </section>
+        </div>
+
+        <section class="qualification-section">
+          <div class="qualification-title">Дополнительные детали</div>
+          <textarea id="qualification-notes" rows="3" placeholder="Адрес объекта, ограничения доступа, технические детали...">${escapeHtml(qualification.notes || '')}</textarea>
+        </section>
+
+        <div id="qualification-result" class="sync-result"></div>
+        <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+          <button type="submit" class="btn btn-primary">Сохранить бриф</button>
+        </div>
+      </form>
+    `);
+  } catch (err) {
+    alert('Грешка: ' + err.message);
+  }
+}
+
+async function saveLeadQualification(event, id) {
+  event.preventDefault();
+  const problems = [...document.querySelectorAll('input[name="qualification_problem"]:checked')].map(input => input.value);
+  const volumes = {
+    crack_length: document.getElementById('qualification-crack-length')?.value.trim(),
+    surface_area: document.getElementById('qualification-surface-area')?.value.trim(),
+    utility_entries: document.getElementById('qualification-utility-count')?.value.trim(),
+    total_work: document.getElementById('qualification-total-work')?.value.trim(),
+  };
+  const result = document.getElementById('qualification-result');
+
+  if (!problems.length) {
+    result.className = 'sync-result show err';
+    result.textContent = 'Выберите хотя бы одну проблему на объекте.';
+    return;
+  }
+  if (!Object.values(volumes).some(Boolean)) {
+    result.className = 'sync-result show err';
+    result.textContent = 'Укажите хотя бы один ориентировочный объём.';
+    return;
+  }
+
+  result.className = 'sync-result show';
+  result.textContent = 'Сохраняю бриф объекта...';
+
+  try {
+    await api(`/api/leads/${id}/qualification`, {
+      method: 'PUT',
+      body: {
+        qualification_data: {
+          problems,
+          other_problem: document.getElementById('qualification-other-problem')?.value.trim(),
+          object_type: document.getElementById('qualification-object-type')?.value,
+          other_object_type: document.getElementById('qualification-other-object')?.value.trim(),
+          volumes,
+          timing: document.getElementById('qualification-timing')?.value,
+          executor: document.getElementById('qualification-executor')?.value,
+          notes: document.getElementById('qualification-notes')?.value.trim(),
+        },
+        performed_by: currentRole === 'admin' ? 'admin' : 'manager',
+      },
+    });
+    closeModal();
+    await renderLeads(document.getElementById('main'), currentLeadFilters);
+  } catch (err) {
+    result.className = 'sync-result show err';
+    result.textContent = 'Ошибка: ' + err.message;
   }
 }
 
@@ -3273,6 +3452,7 @@ function leadActivityLabel(action) {
     comment: 'комментарий',
     followup_change: 'следующий звонок',
     google_form: 'Google Form',
+    qualification: 'бриф объекта',
   };
   return map[action] || action || 'активность';
 }

@@ -53,6 +53,10 @@ async function ensureLeadSheetColumns() {
   if (!cols.includes('crm_segment')) {
     await db.query(`ALTER TABLE leads ADD COLUMN crm_segment TEXT`);
   }
+
+  if (!cols.includes('qualification_data')) {
+    await db.query(`ALTER TABLE leads ADD COLUMN qualification_data JSONB DEFAULT '{}'::jsonb`);
+  }
 }
 
 async function ensureDealOverrides() {
@@ -1086,6 +1090,77 @@ router.post('/:id/ping', async (req, res) => {
     );
 
     res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/:id/qualification', async (req, res) => {
+  try {
+    await ensureLeadSheetColumns();
+    const { rows: leads } = await db.query(
+      'SELECT id FROM leads WHERE id = ?',
+      [req.params.id]
+    );
+
+    if (!leads.length) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    const data = req.body?.qualification_data;
+    const performedBy = String(req.body?.performed_by || 'manager').trim() || 'manager';
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return res.status(400).json({ error: 'Qualification data is required' });
+    }
+
+    const problems = Array.isArray(data.problems)
+      ? data.problems.map(value => String(value || '').trim()).filter(Boolean)
+      : [];
+    const volumes = data.volumes && typeof data.volumes === 'object' && !Array.isArray(data.volumes)
+      ? Object.fromEntries(
+          Object.entries(data.volumes)
+            .map(([key, value]) => [key, String(value || '').trim()])
+            .filter(([, value]) => value)
+        )
+      : {};
+
+    if (!problems.length || !String(data.object_type || '').trim() || !Object.keys(volumes).length
+      || !String(data.timing || '').trim() || !String(data.executor || '').trim()) {
+      return res.status(400).json({ error: 'Fill all required qualification sections' });
+    }
+
+    const qualificationData = {
+      problems,
+      other_problem: String(data.other_problem || '').trim(),
+      object_type: String(data.object_type || '').trim(),
+      other_object_type: String(data.other_object_type || '').trim(),
+      volumes,
+      timing: String(data.timing || '').trim(),
+      executor: String(data.executor || '').trim(),
+      notes: String(data.notes || '').trim(),
+      completed: true,
+      completed_at: new Date().toISOString(),
+      completed_by: performedBy,
+    };
+
+    const { rows } = await db.query(`
+      UPDATE leads
+      SET qualification_data = ?::jsonb,
+          updated_at = NOW()
+      WHERE id = ?
+      RETURNING *
+    `, [JSON.stringify(qualificationData), req.params.id]);
+
+    await db.query(`
+      INSERT INTO lead_activities (lead_id, action, description, new_value, performed_by)
+      VALUES (?, 'qualification', 'Заполнен обязательный бриф объекта', ?, ?)
+    `, [
+      req.params.id,
+      JSON.stringify(qualificationData),
+      performedBy,
+    ]);
+
+    res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
