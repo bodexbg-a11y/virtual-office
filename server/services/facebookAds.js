@@ -713,7 +713,7 @@ function inferLeadStatusFromSheet(row) {
   if (/подготов.*(?:кп|оферт|предложен)|расчет|разчет/.test(text)) return 'offer_preparation';
   if (/коммерческ|оферт|предложен|\bкп\b/.test(text)) return 'offer_sent';
   if (/встреч|срещ|дума|цена|жд[уе]т|ответит/.test(text)) return 'negotiation';
-  if (/поговор|говор|звон|вайбер|пинг|пропинг|посмотр|интерес|каталог|презентац|форма/.test(text)) return 'contacted';
+  if (/поговор|говор|звон|вайбер|пинг|пропинг|посмотр|интерес|каталог|презентац|форма/.test(text)) return 'needs_discovery';
 
   return 'needs_discovery';
 }

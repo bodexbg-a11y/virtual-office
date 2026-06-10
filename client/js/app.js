@@ -16,7 +16,7 @@ let bulkPingRecipients = [];
 let bulkPingQueue = [];
 let bulkPingQueueIndex = 0;
 let bulkPingQueueChannel = '';
-const OBJECT_CRM_STAGES = ['new', 'contacted', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
+const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
 const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
 const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
 const GMAIL_SENDERS = [
@@ -1827,7 +1827,7 @@ async function renderLeads(el, filters = {}) {
     <div class="lead-tabs fade-in">
       ${leadTab('Объекты', { view: 'objects' }, summary.objects ?? (data.leads || []).filter(lead => !isDistributorLead(lead) && !isServicesLead(lead)).length, filters.view === 'objects')}
       ${leadTab('Дистрибьюторы', { view: 'distributors' }, summary.distributors ?? (data.leads || []).filter(isDistributorLead).length, filters.view === 'distributors')}
-      ${leadTab('Facebook', { view: 'facebook' }, summary.facebook || 0, filters.view === 'facebook')}
+      ${leadTab('Все лиды', { view: 'all' }, summary.total || 0, filters.view === 'all')}
       ${leadTab('Услуги', { view: 'services' }, summary.services || 0, filters.view === 'services')}
       ${leadTab('Сегодня', { date_range: 'today' }, summary.today || 0, filters.date_range === 'today')}
       ${leadTab('7 дней', { date_range: 'week' }, summary.week || 0, filters.date_range === 'week')}
@@ -2035,6 +2035,7 @@ function extractLeadAreaNumber(areaLabel = '') {
 }
 
 function isDistributorLead(lead = {}) {
+  if (/solvarex/i.test(String(lead.company_name || ''))) return true;
   if (String(lead.crm_segment || '').toLowerCase() === 'distributor') return true;
   if (String(lead.crm_segment || '').toLowerCase() === 'objects') return false;
   const text = `${lead.company_type || ''} ${lead.notes || ''} ${lead.form_summary || ''}`.toLowerCase();
@@ -2052,6 +2053,7 @@ function leadStagesForView(filters = {}) {
 function leadDisplayStatus(lead = {}) {
   const status = String(lead.status || '').toLowerCase();
   const legacyObject = {
+    contacted: 'needs_discovery',
     details: 'needs_discovery',
     interested: 'needs_discovery',
     qualified: 'needs_discovery',
@@ -2111,12 +2113,7 @@ function isServicesLead(lead = {}) {
   const leadType = String(lead.lead_type || '').toLowerCase();
   if (/материал|material/.test(leadType)) return false;
   if (/услуг|service/.test(leadType)) return true;
-
-  const text = `${lead.company_type || ''} ${lead.notes || ''} ${lead.form_summary || ''} ${lead.interest_products || ''}`.toLowerCase();
-  if (/материал|material|смол|polymer|полимер|epoxy|епокс|полиуретан|инжекц|packer|пакер|arcan/.test(text)) {
-    return false;
-  }
-  return /услуг|service|ремонт|теч|укреп|фундамент/.test(text);
+  return false;
 }
 
 function leadApplicationForm(lead = {}, forcedType = '') {
@@ -2177,7 +2174,7 @@ async function syncFacebookLeadsFromLeadsPage() {
     const result = await api('/api/facebook/sync/leads', { method: 'POST' });
     el.className = 'sync-result show ok';
     el.textContent = `✅ FB лиды: проверено ${result.leads_checked || 0}, новых добавлено ${result.new_leads || 0}, существующих пропущено ${result.skipped_existing || 0}.`;
-    setTimeout(() => renderLeads(document.getElementById('main'), { view: 'facebook' }), 900);
+    setTimeout(() => renderLeads(document.getElementById('main'), { view: 'all' }), 900);
   } catch (err) {
     el.className = 'sync-result show err';
     el.textContent = '❌ ' + err.message;

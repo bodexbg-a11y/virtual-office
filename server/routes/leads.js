@@ -2,10 +2,11 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const googleSheets = require('../services/googleSheets');
-const OBJECT_CRM_STAGES = ['new', 'contacted', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
+const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
 const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
 const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
 const LEGACY_STATUS_MAP = {
+  contacted: 'needs_discovery',
   details: 'needs_discovery',
   qualified: 'needs_discovery',
   interested: 'needs_discovery',
@@ -111,6 +112,7 @@ function dealStageFromLeadStatus(status) {
 }
 
 function inferCrmSegment(lead = {}) {
+  if (/solvarex/i.test(String(lead.company_name || ''))) return 'distributor';
   const explicit = String(lead.crm_segment || '').trim().toLowerCase();
   if (explicit === 'distributor' || explicit === 'objects') return explicit;
   const text = `${lead.company_type || ''} ${lead.lead_type || ''} ${lead.interest_products || ''} ${lead.notes || ''}`.toLowerCase();
@@ -387,7 +389,8 @@ function enrichLeadRow(lead = {}) {
 
 const LEAD_TEXT_SQL = "lower(concat_ws(' ', coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))";
 const DISTRIBUTOR_LEAD_SQL = `(
-  crm_segment = 'distributor'
+  lower(coalesce(company_name, '')) ~ 'solvarex'
+  OR crm_segment = 'distributor'
   OR (
     crm_segment IS NULL
     AND lower(concat_ws(' ', coalesce(company_type, ''), coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))
@@ -395,7 +398,7 @@ const DISTRIBUTOR_LEAD_SQL = `(
   )
 )`;
 const NORMALIZED_STATUS_SQL = `CASE
-  WHEN status IN ('details', 'qualified', 'interested', 'catalog_sent', 'thinking') THEN 'needs_discovery'
+  WHEN status IN ('contacted', 'details', 'qualified', 'interested', 'catalog_sent', 'thinking') THEN 'needs_discovery'
   ELSE status
 END`;
 const MATERIAL_LEAD_SQL = `(
@@ -409,8 +412,7 @@ const SERVICE_LEAD_SQL = `(
   google_sheet_name = 'УСЛУГИ'
   OR (
     google_sheet_name IS NULL
-    AND NOT ${MATERIAL_LEAD_SQL}
-    AND ${LEAD_TEXT_SQL} ~ '(услуг|service|ремонт|обект|объект|теч|хидроизолац|укреп|фундамент)'
+    AND lower(coalesce(lead_type, '')) ~ '(услуг|service)'
   )
 )`;
 const TOUCHED_TODAY_SQL = `EXISTS (
@@ -1374,6 +1376,11 @@ async function normalizeLegacyLeadStatuses() {
   await ensureDealOverrides();
   await db.query(`
     UPDATE leads
+    SET crm_segment = 'distributor'
+    WHERE lower(coalesce(company_name, '')) ~ 'solvarex'
+  `);
+  await db.query(`
+    UPDATE leads
     SET crm_segment = CASE
           WHEN lower(concat_ws(' ', coalesce(company_type, ''), coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))
             ~ '(дистриб|distributor|dealer|дилър|reseller|търговец)'
@@ -1395,11 +1402,11 @@ async function normalizeLegacyLeadStatuses() {
             WHEN status = 'won' THEN 'partner_active'
             ELSE status
           END
-          WHEN status IN ('qualified', 'interested', 'catalog_sent', 'thinking', 'details') THEN 'needs_discovery'
+          WHEN status IN ('contacted', 'qualified', 'interested', 'catalog_sent', 'thinking', 'details') THEN 'needs_discovery'
           ELSE status
         END,
         updated_at = NOW()
-    WHERE status IN ('qualified', 'interested', 'catalog_sent', 'thinking', 'details')
+    WHERE status IN ('contacted', 'qualified', 'interested', 'catalog_sent', 'thinking', 'details')
        OR (crm_segment = 'distributor' AND status NOT IN ('partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'))
   `);
 }
