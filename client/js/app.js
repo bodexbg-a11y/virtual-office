@@ -1822,7 +1822,7 @@ async function renderLeads(el, filters = {}) {
         </label>
         ${tireMode ? '' : '<button class="btn btn-secondary" onclick="openBulkPingModal()">Пинг всем</button>'}
         <button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 Синхронизирай FB лиды</button>
-        ${tireMode ? '' : '<button class="btn btn-primary" onclick="openNewLeadModal()">+ Нов лид</button>'}
+        <button class="btn btn-primary" onclick="openNewLeadModal('${tireMode ? 'tires' : 'materials'}')">+ Нов лид</button>
       </div>
     </div>
 
@@ -2051,7 +2051,7 @@ function isDistributorLead(lead = {}) {
 }
 
 function isTireLead(lead = {}) {
-  const text = `${lead.fb_campaign_name || ''} ${lead.fb_ad_name || ''} ${lead.interest_products || ''}`.toLowerCase();
+  const text = `${lead.lead_type || ''} ${lead.fb_campaign_name || ''} ${lead.fb_ad_name || ''} ${lead.interest_products || ''}`.toLowerCase();
   return /(tiers|tires|tyres|tire|шины|гуми)/.test(text);
 }
 
@@ -3423,9 +3423,14 @@ function closeModal() {
   document.getElementById('modal-overlay').classList.remove('show');
 }
 
-function openNewLeadModal() {
-  openModal('Нов лид', `
-    <form onsubmit="createLead(event)">
+function openNewLeadModal(section = 'materials') {
+  const tireMode = section === 'tires';
+  openModal(tireMode ? 'Новый лид · Шины' : 'Нов лид', `
+    <form onsubmit="createLead(event, '${tireMode ? 'tires' : 'materials'}')">
+      ${tireMode ? `
+        <input type="hidden" name="lead_type" value="tire_inquiry">
+        <input type="hidden" name="crm_segment" value="objects">
+      ` : ''}
       <div class="form-grid">
         <div class="form-group"><label>Компания</label><input name="company_name" required></div>
         <div class="form-group"><label>Контакт</label><input name="contact_name"></div>
@@ -3435,24 +3440,31 @@ function openNewLeadModal() {
         <div class="form-group">
           <label>Тип фирма</label>
           <select name="company_type">
-            <option value="construction">Строителна фирма</option>
-            <option value="designer">Проектант</option>
-            <option value="distributor">Дистрибутор</option>
+            ${tireMode ? `
+              <option value="private">Частный клиент</option>
+              <option value="company">Компания / автопарк</option>
+              <option value="service">Автосервис / шиномонтаж</option>
+              <option value="dealer">Магазин / дилер</option>
+            ` : `
+              <option value="construction">Строителна фирма</option>
+              <option value="designer">Проектант</option>
+              <option value="distributor">Дистрибутор</option>
+            `}
             <option value="other">Друго</option>
           </select>
         </div>
-        <div class="form-group">
+        ${tireMode ? '' : `<div class="form-group">
           <label>Воронка продаж</label>
           <select name="crm_segment">
             <option value="objects">Объекты / покупатели материалов</option>
             <option value="distributor">Дистрибьюторы / партнёры</option>
           </select>
-        </div>
+        </div>`}
         <div class="form-group">
           <label>Източник</label>
           <select name="source">
-            <option value="website">Сайт</option>
-            <option value="facebook">Facebook</option>
+            <option value="facebook" ${tireMode ? 'selected' : ''}>Facebook</option>
+            <option value="website" ${tireMode ? '' : 'selected'}>Сайт</option>
             <option value="phone">Телефон</option>
             <option value="email">Email</option>
             <option value="chatbot">Чатбот</option>
@@ -3467,9 +3479,9 @@ function openNewLeadModal() {
             <option value="low">Нисък</option>
           </select>
         </div>
-        <div class="form-group"><label>Продукти (интерес)</label><input name="interest_products" placeholder="HB-PU500, PAK-01..."></div>
+        <div class="form-group"><label>${tireMode ? 'Шины / диски (интерес)' : 'Продукти (интерес)'}</label><input name="interest_products" value="${tireMode ? 'Шины' : ''}" placeholder="${tireMode ? 'Michelin, Dunlop, Goodyear, диски...' : 'HB-PU500, PAK-01...'}"></div>
         <div class="form-group"><label>Стойност (лв)</label><input name="estimated_value" type="number"></div>
-        <div class="form-group full"><label>Бележки</label><textarea name="notes" rows="2"></textarea></div>
+        <div class="form-group full"><label>Бележки</label><textarea name="notes" rows="2" placeholder="${tireMode ? 'Автомобиль, размер шин, сезон, количество, нужны ли диски...' : ''}"></textarea></div>
       </div>
       <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:12px;">
         <button type="button" class="btn btn-secondary" onclick="closeModal()">Отказ</button>
@@ -3479,7 +3491,7 @@ function openNewLeadModal() {
   `);
 }
 
-async function createLead(e) {
+async function createLead(e, section = 'materials') {
   e.preventDefault();
   const form = e.target;
   const data = Object.fromEntries(new FormData(form));
@@ -3493,7 +3505,7 @@ async function createLead(e) {
   try {
     await api('/api/leads', { method: 'POST', body: data });
     closeModal();
-    navigate('leads');
+    navigate(section === 'tires' ? 'tires' : 'leads');
   } catch (err) {
     alert('Грешка: ' + err.message);
   }

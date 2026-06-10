@@ -417,14 +417,17 @@ const SERVICE_LEAD_SQL = `(
   )
 )`;
 const TIRES_LEAD_SQL = `(
-  leads.source = 'facebook'
-  AND lower(concat_ws(' ', coalesce(leads.fb_campaign_name, ''), coalesce(leads.fb_ad_name, ''), coalesce(leads.interest_products, '')))
-    ~ '(tiers|tires|tyres|tire|шины|гуми)'
-  AND EXISTS (
-    SELECT 1
-    FROM fb_campaigns tire_campaign
-    WHERE tire_campaign.fb_campaign_id = leads.fb_campaign_id
-      AND tire_campaign.status = 'ACTIVE'
+  lower(coalesce(leads.lead_type, '')) IN ('tire_inquiry', 'tires')
+  OR (
+    leads.source = 'facebook'
+    AND lower(concat_ws(' ', coalesce(leads.fb_campaign_name, ''), coalesce(leads.fb_ad_name, ''), coalesce(leads.interest_products, '')))
+      ~ '(tiers|tires|tyres|tire|шины|гуми)'
+    AND EXISTS (
+      SELECT 1
+      FROM fb_campaigns tire_campaign
+      WHERE tire_campaign.fb_campaign_id = leads.fb_campaign_id
+        AND tire_campaign.status = 'ACTIVE'
+    )
   )
 )`;
 const TOUCHED_TODAY_SQL = `EXISTS (
@@ -1270,6 +1273,10 @@ router.put('/:id/qualification', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const b = normalizeLeadPayload(req.body);
+    const isManualTireLead = ['tire_inquiry', 'tires'].includes(String(b.lead_type || '').toLowerCase());
+    if (isManualTireLead && auth.getRoleFromRequest(req) !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
     const crmSegment = inferCrmSegment(b);
     const status = normalizeCrmStatus(b.status, crmSegment);
 
