@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const googleSheets = require('../services/googleSheets');
+const auth = require('../services/auth');
 const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
 const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
 const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
@@ -415,6 +416,17 @@ const SERVICE_LEAD_SQL = `(
     AND lower(coalesce(lead_type, '')) ~ '(услуг|service)'
   )
 )`;
+const TIRES_LEAD_SQL = `(
+  leads.source = 'facebook'
+  AND lower(concat_ws(' ', coalesce(leads.fb_campaign_name, ''), coalesce(leads.fb_ad_name, ''), coalesce(leads.interest_products, '')))
+    ~ '(tiers|tires|tyres|tire|шины|гуми)'
+  AND EXISTS (
+    SELECT 1
+    FROM fb_campaigns tire_campaign
+    WHERE tire_campaign.fb_campaign_id = leads.fb_campaign_id
+      AND tire_campaign.status = 'ACTIVE'
+  )
+)`;
 const TOUCHED_TODAY_SQL = `EXISTS (
   SELECT 1
   FROM lead_activities la
@@ -611,6 +623,10 @@ router.get('/', async (req, res) => {
     const where = [];
     const params = [];
 
+    if (view === 'tires' && auth.getRoleFromRequest(req) !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
     if (status) {
       where.push(`${NORMALIZED_STATUS_SQL} = ?`);
       params.push(normalizeCrmStatus(status));
@@ -638,6 +654,7 @@ router.get('/', async (req, res) => {
     if (view === 'objects') {
       where.push(`NOT ${DISTRIBUTOR_LEAD_SQL}`);
       where.push(`NOT ${SERVICE_LEAD_SQL}`);
+      where.push(`NOT ${TIRES_LEAD_SQL}`);
     }
 
     if (view === 'distributors') {
@@ -646,6 +663,14 @@ router.get('/', async (req, res) => {
 
     if (view === 'services') {
       where.push(SERVICE_LEAD_SQL);
+    }
+
+    if (view === 'tires') {
+      where.push(TIRES_LEAD_SQL);
+    }
+
+    if (view === 'all') {
+      where.push(`NOT ${TIRES_LEAD_SQL}`);
     }
 
     if (search) {
@@ -782,7 +807,7 @@ router.get('/', async (req, res) => {
 // GET lead summary
 router.get('/summary', async (req, res) => {
   try {
-    const totalRes = await db.query(`SELECT COUNT(*)::int as count FROM leads`);
+    const totalRes = await db.query(`SELECT COUNT(*)::int as count FROM leads WHERE NOT ${TIRES_LEAD_SQL}`);
     const byStatusRes = await db.query(`
       SELECT ${NORMALIZED_STATUS_SQL} as status, COUNT(*)::int as count
       FROM leads
@@ -812,17 +837,20 @@ router.get('/summary', async (req, res) => {
       SELECT COUNT(*)::int as count
       FROM leads
       WHERE DATE(created_at) = CURRENT_DATE
+        AND NOT ${TIRES_LEAD_SQL}
     `);
 
     const weekRes = await db.query(`
       SELECT COUNT(*)::int as count
       FROM leads
       WHERE created_at >= NOW() - INTERVAL '7 days'
+        AND NOT ${TIRES_LEAD_SQL}
     `);
 
     const materialsRes = await db.query(`
       SELECT COUNT(*)::int as count FROM leads
       WHERE ${MATERIAL_LEAD_SQL}
+        AND NOT ${TIRES_LEAD_SQL}
     `);
 
     const servicesRes = await db.query(`
@@ -837,6 +865,11 @@ router.get('/summary', async (req, res) => {
       SELECT COUNT(*)::int as count FROM leads
       WHERE NOT ${DISTRIBUTOR_LEAD_SQL}
         AND NOT ${SERVICE_LEAD_SQL}
+        AND NOT ${TIRES_LEAD_SQL}
+    `);
+    const tiresRes = await db.query(`
+      SELECT COUNT(*)::int as count FROM leads
+      WHERE ${TIRES_LEAD_SQL}
     `);
 
     const bySource = bySourceRes.rows;
@@ -850,12 +883,14 @@ router.get('/summary', async (req, res) => {
       services: servicesRes.rows[0]?.count || 0,
       distributors: distributorsRes.rows[0]?.count || 0,
       objects: objectsRes.rows[0]?.count || 0,
+      tires: tiresRes.rows[0]?.count || 0,
       today: todayRes.rows[0]?.count || 0,
       week: weekRes.rows[0]?.count || 0,
       followups_due: (await db.query(`
         SELECT COUNT(*)::int as count
         FROM leads
         WHERE ${DAILY_CALLS_WHERE_SQL}
+          AND NOT ${TIRES_LEAD_SQL}
       `)).rows[0]?.count || 0,
       statuses: byStatus,
       sources: bySource,
@@ -1116,7 +1151,7 @@ router.put('/:id/qualification', async (req, res) => {
     }
 
     const clientType = String(data.client_type || '').trim();
-    const allowedTypes = ['concrete_object', 'construction_company', 'distributor'];
+    const allowedTypes = ['concrete_object', 'construction_company', 'distributor', 'tire_customer'];
     if (!allowedTypes.includes(clientType)) {
       return res.status(400).json({ error: 'Choose a valid client type' });
     }
@@ -1162,7 +1197,7 @@ router.put('/:id/qualification', async (req, res) => {
         qualificationData.delivery_timing,
         qualificationData.has_specification,
       ].filter(Boolean).length;
-    } else {
+    } else if (clientType === 'distributor') {
       Object.assign(qualificationData, {
         region: cleanText(data.region),
         current_products: cleanText(data.current_products),
@@ -1176,6 +1211,21 @@ router.put('/:id/qualification', async (req, res) => {
         qualificationData.warehouse_team,
         qualificationData.sales_volume,
         qualificationData.partnership_interest,
+      ].filter(Boolean).length;
+    } else {
+      Object.assign(qualificationData, {
+        vehicle: cleanText(data.vehicle),
+        tire_size: cleanText(data.tire_size),
+        tire_type: cleanText(data.tire_type),
+        preferred_brand: cleanText(data.preferred_brand),
+        quantity_and_rims: cleanText(data.quantity_and_rims),
+      });
+      completedSections = [
+        qualificationData.vehicle,
+        qualificationData.tire_size,
+        qualificationData.tire_type,
+        qualificationData.preferred_brand,
+        qualificationData.quantity_and_rims,
       ].filter(Boolean).length;
     }
 

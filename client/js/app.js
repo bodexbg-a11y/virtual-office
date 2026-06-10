@@ -1,7 +1,7 @@
 // ===== BODEX Virtual Office — Frontend App =====
 
 const API = 'https://virtual-office-f48m.onrender.com';
-const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers', 'logistics', 'payments']);
+const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers', 'logistics', 'payments', 'tires']);
 let currentPage = 'leads';
 let currentRole = 'worker';
 let adminToken = localStorage.getItem('bodex_admin_token') || '';
@@ -93,6 +93,7 @@ async function renderPage(page) {
       case 'worker-steve': await renderWorker(main, 'steve'); break;
       case 'agent-reports': await renderAgentReports(main); break;
       case 'leads': await renderLeads(main); break;
+      case 'tires': await renderLeads(main, { view: 'tires' }); break;
       case 'clients': await renderClients(main); break;
       case 'deals': await renderDeals(main); break;
       case 'pipeline': await renderPipeline(main); break;
@@ -1784,6 +1785,7 @@ async function pullDealsSheets() {
 // ===== LEADS =====
 async function renderLeads(el, filters = {}) {
   if (!Object.keys(filters).length) filters = { view: 'objects' };
+  const tireMode = filters.view === 'tires';
   currentLeadFilters = filters;
   const params = new URLSearchParams(filters);
   const [data, summary, gmailStatus] = await Promise.all([
@@ -1794,6 +1796,8 @@ async function renderLeads(el, filters = {}) {
   gmailAccountsCache = gmailStatus.accounts || [];
   ensureConnectedGmailSender();
   const rows = applyLeadQuickFilters(data.leads || [], filters);
+  const tireBadge = document.getElementById('nav-badge-tires');
+  if (tireBadge && currentRole === 'admin') tireBadge.textContent = summary.tires || 0;
   const visibleStages = leadStagesForView(filters);
   const statusCounts = rows.reduce((counts, row) => {
     const status = leadDisplayStatus(row);
@@ -1804,7 +1808,7 @@ async function renderLeads(el, filters = {}) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>📋 Лидове <span style="color:#666;font-size:14px;">(${rows.length})</span></h2>
+      <h2>${tireMode ? '🛞 Шины' : '📋 Лидове'} <span style="color:#666;font-size:14px;">(${rows.length})</span></h2>
       <div class="page-header-actions">
         <label style="display:flex;align-items:center;gap:7px;font-size:11px;color:#999;">
           Отправитель
@@ -1816,23 +1820,28 @@ async function renderLeads(el, filters = {}) {
             ${gmailSenderOptions()}
           </select>
         </label>
-        <button class="btn btn-secondary" onclick="openBulkPingModal()">Пинг всем</button>
+        ${tireMode ? '' : '<button class="btn btn-secondary" onclick="openBulkPingModal()">Пинг всем</button>'}
         <button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 Синхронизирай FB лиды</button>
-        <button class="btn btn-primary" onclick="openNewLeadModal()">+ Нов лид</button>
+        ${tireMode ? '' : '<button class="btn btn-primary" onclick="openNewLeadModal()">+ Нов лид</button>'}
       </div>
     </div>
 
     <div id="leads-sync-result" class="sync-result"></div>
 
-    <div class="lead-tabs fade-in">
+    ${tireMode ? `
+    <div class="qualification-intro fade-in" style="margin-top:0;">
+      Показаны только лиды Facebook из кампаний, где в названии есть Tiers, Tires, Tyres или «шины».
+      Основные товары: Michelin, Dunlop, Goodyear и автомобильные диски.
+    </div>
+    ` : `<div class="lead-tabs fade-in">
       ${leadTab('Объекты', { view: 'objects' }, summary.objects ?? (data.leads || []).filter(lead => !isDistributorLead(lead) && !isServicesLead(lead)).length, filters.view === 'objects')}
       ${leadTab('Дистрибьюторы', { view: 'distributors' }, summary.distributors ?? (data.leads || []).filter(isDistributorLead).length, filters.view === 'distributors')}
       ${leadTab('Все лиды', { view: 'all' }, summary.total || 0, filters.view === 'all')}
       ${leadTab('Услуги', { view: 'services' }, summary.services || 0, filters.view === 'services')}
-      ${leadTab('Сегодня', { date_range: 'today' }, summary.today || 0, filters.date_range === 'today')}
-      ${leadTab('7 дней', { date_range: 'week' }, summary.week || 0, filters.date_range === 'week')}
-      ${leadTab('Звонки сегодня', { followup: 'due' }, summary.followups_due || 0, filters.followup === 'due')}
-    </div>
+      ${leadTab('Сегодня', { view: 'all', date_range: 'today' }, summary.today || 0, filters.date_range === 'today')}
+      ${leadTab('7 дней', { view: 'all', date_range: 'week' }, summary.week || 0, filters.date_range === 'week')}
+      ${leadTab('Звонки сегодня', { view: 'all', followup: 'due' }, summary.followups_due || 0, filters.followup === 'due')}
+    </div>`}
 
     <div class="lead-status-tabs fade-in">
       ${visibleStages.map(status =>
@@ -1843,13 +1852,13 @@ async function renderLeads(el, filters = {}) {
     </div>
 
     <div class="search-bar fade-in">
-      <button
+      ${tireMode ? '' : `<button
         class="btn ${filters.volume_sort === 'desc' ? 'btn-primary' : 'btn-secondary'}"
         onclick="toggleLeadQuickFilter('volume_sort', 'desc')"
         title="Сначала самые большие объёмы"
       >
         📐 По объёму
-      </button>
+      </button>`}
       <button
         class="btn ${filters.premium === '1' ? 'btn-primary' : 'btn-secondary'}"
         onclick="toggleLeadQuickFilter('premium', '1')"
@@ -1858,13 +1867,13 @@ async function renderLeads(el, filters = {}) {
       >
         ✨ Premium
       </button>
-      <button
+      ${tireMode ? '' : `<button
         class="btn ${filters.specific_object === '1' ? 'btn-primary' : 'btn-secondary'}"
         onclick="toggleLeadQuickFilter('specific_object', '1')"
         title="Материалы под конкретный объект"
       >
         🏗️ Конкретный объект
-      </button>
+      </button>`}
       <select
         class="lead-city-filter"
         onchange="renderLeads(document.getElementById('main'), {...currentLeadFilters, city: this.value || undefined})"
@@ -1996,7 +2005,7 @@ function applyLeadQuickFilters(rows, filters = {}) {
   let result = [...rows];
 
   if (filters.view === 'objects') {
-    result = result.filter(row => !isDistributorLead(row) && !isServicesLead(row));
+    result = result.filter(row => !isDistributorLead(row) && !isServicesLead(row) && !isTireLead(row));
   }
 
   if (filters.view === 'distributors') {
@@ -2039,6 +2048,11 @@ function isDistributorLead(lead = {}) {
   if (String(lead.crm_segment || '').toLowerCase() === 'objects') return false;
   const text = `${lead.company_type || ''} ${lead.notes || ''} ${lead.form_summary || ''}`.toLowerCase();
   return /дистриб|distributor|dealer|дилър|reseller|търговец/.test(text);
+}
+
+function isTireLead(lead = {}) {
+  const text = `${lead.fb_campaign_name || ''} ${lead.fb_ad_name || ''} ${lead.interest_products || ''}`.toLowerCase();
+  return /(tiers|tires|tyres|tire|шины|гуми)/.test(text);
 }
 
 function leadStagesForLead(lead = {}) {
@@ -2124,6 +2138,14 @@ function leadQualificationProgress(lead = {}) {
       Boolean(qualification.sales_volume),
       Boolean(qualification.partnership_interest),
     ];
+  } else if (type === 'tire_customer') {
+    sections = [
+      Boolean(qualification.vehicle),
+      Boolean(qualification.tire_size),
+      Boolean(qualification.tire_type),
+      Boolean(qualification.preferred_brand),
+      Boolean(qualification.quantity_and_rims),
+    ];
   } else {
     sections = [
       Boolean(qualification.materials_interest),
@@ -2138,6 +2160,7 @@ function leadQualificationProgress(lead = {}) {
 
 function leadQualificationType(lead = {}, qualification = leadQualificationData(lead)) {
   if (qualification.client_type) return qualification.client_type;
+  if (isTireLead(lead)) return 'tire_customer';
   if (isDistributorLead(lead)) return 'distributor';
   if (qualification.problems?.length || qualification.object_type || isSpecificObjectLead(lead)) return 'concrete_object';
   return 'construction_company';
@@ -2217,7 +2240,10 @@ async function syncFacebookLeadsFromLeadsPage() {
     const result = await api('/api/facebook/sync/leads', { method: 'POST' });
     el.className = 'sync-result show ok';
     el.textContent = `✅ FB лиды: проверено ${result.leads_checked || 0}, новых добавлено ${result.new_leads || 0}, существующих пропущено ${result.skipped_existing || 0}.`;
-    setTimeout(() => renderLeads(document.getElementById('main'), { view: 'all' }), 900);
+    setTimeout(() => renderLeads(
+      document.getElementById('main'),
+      currentPage === 'tires' ? { view: 'tires' } : { view: 'all' }
+    ), 900);
   } catch (err) {
     el.className = 'sync-result show err';
     el.textContent = '❌ ' + err.message;
@@ -2335,6 +2361,7 @@ async function openLeadQualificationModal(id) {
       <div class="qualification-intro">
         Мениджърът попълва брифа по време на разговора. Данните се използват за подготовка на базова оферта.
       </div>
+      ${renderFacebookLeadBrief(lead)}
       <form id="lead-qualification-form" onsubmit="saveLeadQualification(event, ${id})">
         <section class="qualification-section qualification-type-section">
           <div class="qualification-title">Тип клиент *</div>
@@ -2342,6 +2369,7 @@ async function openLeadQualificationModal(id) {
             <option value="concrete_object" ${clientType === 'concrete_object' ? 'selected' : ''}>Клиент с конкретен обект</option>
             <option value="construction_company" ${clientType === 'construction_company' ? 'selected' : ''}>Строителна фирма</option>
             <option value="distributor" ${clientType === 'distributor' ? 'selected' : ''}>Дистрибутор / партньор</option>
+            <option value="tire_customer" ${clientType === 'tire_customer' ? 'selected' : ''}>Клиент за гуми / джанти</option>
           </select>
         </section>
 
@@ -2463,6 +2491,18 @@ async function openLeadQualificationModal(id) {
           </section>
         </div>
 
+        <div class="qualification-flow" data-qualification-type="tire_customer" ${clientType === 'tire_customer' ? '' : 'hidden'}>
+          ${qualificationTextField(1, 'За какъв автомобил са гумите?', 'qualification-vehicle', qualification.vehicle, 'Марка, модел, година')}
+          ${qualificationTextField(2, 'Какъв размер гуми търсите?', 'qualification-tire-size', qualification.tire_size, 'Например 225/45 R17')}
+          ${qualificationTextField(3, 'Какъв тип гуми са необходими?', 'qualification-tire-type', qualification.tire_type, 'Летни, зимни, всесезонни; леки, SUV, бус')}
+          ${qualificationTextField(4, 'Имате ли предпочитана марка?', 'qualification-preferred-brand', qualification.preferred_brand, 'Michelin, Dunlop, Goodyear или друга')}
+          ${qualificationTextField(5, 'Количество и нужни ли са джанти?', 'qualification-quantity-rims', qualification.quantity_and_rims, 'Брой гуми, размер и вид на джантите')}
+          <section class="qualification-section">
+            <div class="qualification-title">Срок и допълнителни детайли</div>
+            <textarea id="qualification-tire-notes" rows="3" placeholder="Кога са необходими, бюджет, доставка, монтаж...">${escapeHtml(qualification.notes || '')}</textarea>
+          </section>
+        </div>
+
         <div id="qualification-result" class="sync-result"></div>
         <label class="qualification-manual-complete">
           <input id="qualification-manual-complete" type="checkbox" ${qualification.manual_complete ? 'checked' : ''}>
@@ -2480,6 +2520,38 @@ async function openLeadQualificationModal(id) {
   } catch (err) {
     alert('Грешка: ' + err.message);
   }
+}
+
+function renderFacebookLeadBrief(lead = {}) {
+  if (lead.source !== 'facebook') return '';
+  const answerRows = String(lead.notes || '')
+    .split(/\n|\s+\|\s+/)
+    .map(value => value.trim())
+    .filter(value => value && !/^google sheets/i.test(value))
+    .slice(0, 6);
+  const items = [
+    lead.company_type ? ['Тип компания', lead.company_type] : null,
+    lead.interest_products ? ['Интерес', lead.interest_products] : null,
+    lead.fb_campaign_name ? ['Кампания', lead.fb_campaign_name] : null,
+    ...answerRows.map(row => {
+      const separator = row.indexOf(':');
+      return separator > 0
+        ? [row.slice(0, separator).trim(), row.slice(separator + 1).trim()]
+        : ['Ответ', row];
+    }),
+  ].filter(Boolean);
+
+  if (!items.length) return '';
+  return `
+    <section class="facebook-lead-brief">
+      <div class="facebook-lead-brief-title">Ответы клиента из Facebook</div>
+      <div class="facebook-lead-brief-grid">
+        ${items.map(([label, value]) => `
+          <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
+        `).join('')}
+      </div>
+    </section>
+  `;
 }
 
 function qualificationTextField(number, label, id, value = '', placeholder = '') {
@@ -2534,7 +2606,7 @@ async function saveLeadQualification(event, id) {
       has_specification: document.getElementById('qualification-has-specification')?.value,
       notes: document.getElementById('qualification-construction-notes')?.value.trim(),
     };
-  } else {
+  } else if (clientType === 'distributor') {
     qualificationData = {
       client_type: 'distributor',
       manual_complete: document.getElementById('qualification-manual-complete')?.checked || false,
@@ -2544,6 +2616,17 @@ async function saveLeadQualification(event, id) {
       sales_volume: document.getElementById('qualification-sales-volume')?.value.trim(),
       partnership_interest: document.getElementById('qualification-partnership-interest')?.value,
       notes: document.getElementById('qualification-distributor-notes')?.value.trim(),
+    };
+  } else {
+    qualificationData = {
+      client_type: 'tire_customer',
+      manual_complete: document.getElementById('qualification-manual-complete')?.checked || false,
+      vehicle: document.getElementById('qualification-vehicle')?.value.trim(),
+      tire_size: document.getElementById('qualification-tire-size')?.value.trim(),
+      tire_type: document.getElementById('qualification-tire-type')?.value.trim(),
+      preferred_brand: document.getElementById('qualification-preferred-brand')?.value.trim(),
+      quantity_and_rims: document.getElementById('qualification-quantity-rims')?.value.trim(),
+      notes: document.getElementById('qualification-tire-notes')?.value.trim(),
     };
   }
 
