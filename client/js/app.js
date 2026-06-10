@@ -1808,10 +1808,10 @@ async function renderLeads(el, filters = {}) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>${tireMode ? '🛞 Шины' : '📋 Лидове'} <span style="color:#666;font-size:14px;">(${rows.length})</span></h2>
+      <h2>${tireMode ? '🛞 Tires' : '📋 Лидове'} <span style="color:#666;font-size:14px;">(${rows.length})</span></h2>
       <div class="page-header-actions">
         <label style="display:flex;align-items:center;gap:7px;font-size:11px;color:#999;">
-          Отправитель
+          ${tireMode ? 'Sender' : 'Отправитель'}
           <select
             class="lead-city-filter"
             style="width:230px;"
@@ -1821,8 +1821,8 @@ async function renderLeads(el, filters = {}) {
           </select>
         </label>
         ${tireMode ? '' : '<button class="btn btn-secondary" onclick="openBulkPingModal()">Пинг всем</button>'}
-        <button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 Синхронизирай FB лиды</button>
-        <button class="btn btn-primary" onclick="openNewLeadModal('${tireMode ? 'tires' : 'materials'}')">+ Нов лид</button>
+        <button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 ${tireMode ? 'Sync Facebook leads' : 'Синхронизирай FB лиды'}</button>
+        <button class="btn btn-primary" onclick="openNewLeadModal('${tireMode ? 'tires' : 'materials'}')">+ ${tireMode ? 'New lead' : 'Нов лид'}</button>
       </div>
     </div>
 
@@ -1830,8 +1830,8 @@ async function renderLeads(el, filters = {}) {
 
     ${tireMode ? `
     <div class="qualification-intro fade-in" style="margin-top:0;">
-      Показаны только лиды Facebook из кампаний, где в названии есть Tiers, Tires, Tyres или «шины».
-      Основные товары: Michelin, Dunlop, Goodyear и автомобильные диски.
+      Facebook leads from active campaigns containing Tiers, Tires or Tyres.
+      Products: Michelin, Dunlop, Goodyear tires and wheels.
     </div>
     ` : `<div class="lead-tabs fade-in">
       ${leadTab('Объекты', { view: 'objects' }, summary.objects ?? (data.leads || []).filter(lead => !isDistributorLead(lead) && !isServicesLead(lead)).length, filters.view === 'objects')}
@@ -1846,7 +1846,7 @@ async function renderLeads(el, filters = {}) {
     <div class="lead-status-tabs fade-in">
       ${visibleStages.map(status =>
         `<button class="lead-status-tab ${filters.status === status ? 'active' : ''}" style="${leadStatusTabStyle(status, filters.status === status)}" onclick="renderLeads(document.getElementById('main'), {...currentLeadFilters, status: '${status}'})">
-          ${statusLabel(status)} <span>${statusCounts[status] || 0}</span>
+          ${tireMode ? tireStatusLabel(status) : statusLabel(status)} <span>${statusCounts[status] || 0}</span>
         </button>`
       ).join('')}
     </div>
@@ -1878,7 +1878,7 @@ async function renderLeads(el, filters = {}) {
         class="lead-city-filter"
         onchange="renderLeads(document.getElementById('main'), {...currentLeadFilters, city: this.value || undefined})"
       >
-        <option value="">Все города</option>
+        <option value="">${tireMode ? 'All cities' : 'Все города'}</option>
         ${cityOptions.map(item => `
           <option value="${escapeAttr(item.city)}" ${filters.city === item.city ? 'selected' : ''}>
             ${escapeHtml(item.city)}${item.count ? ` (${item.count})` : ''}
@@ -1892,16 +1892,16 @@ async function renderLeads(el, filters = {}) {
         <table>
           <thead>
             <tr>
-              <th>Компания</th>
-              <th>Контакт</th>
-              <th>Телефон / Email</th>
-              <th>Град</th>
-              <th>Статус</th>
-              <th>Приоритет</th>
-              <th>Контакт</th>
-              <th>Тип / интерес</th>
-              <th>Комментарий</th>
-              <th>Дата</th>
+              <th>${tireMode ? 'Company' : 'Компания'}</th>
+              <th>${tireMode ? 'Contact' : 'Контакт'}</th>
+              <th>${tireMode ? 'Phone / Email' : 'Телефон / Email'}</th>
+              <th>${tireMode ? 'City' : 'Град'}</th>
+              <th>${tireMode ? 'Status' : 'Статус'}</th>
+              <th>${tireMode ? 'Priority' : 'Приоритет'}</th>
+              <th>${tireMode ? 'Channels' : 'Контакт'}</th>
+              <th>${tireMode ? 'Interest' : 'Тип / интерес'}</th>
+              <th>${tireMode ? 'Comment' : 'Комментарий'}</th>
+              <th>${tireMode ? 'Date' : 'Дата'}</th>
               <th></th>
             </tr>
           </thead>
@@ -1925,12 +1925,12 @@ async function renderLeads(el, filters = {}) {
                       onclick="event.stopPropagation();"
                       onchange="inlineUpdateLeadStatus(${l.id}, this.value, event)"
                     >
-                      ${leadStagesForLead(l).map(status => `<option value="${status}" ${leadDisplayStatus(l) === status ? 'selected' : ''}>${statusLabel(status)}</option>`).join('')}
+                      ${leadStagesForLead(l).map(status => `<option value="${status}" ${leadDisplayStatus(l) === status ? 'selected' : ''}>${tireMode ? tireStatusLabel(status) : statusLabel(status)}</option>`).join('')}
                     </select>
                     <button
                       class="lead-qualification-btn ${leadQualificationProgress(l) === 100 ? 'complete' : ''}"
                       style="--qualification-progress:${leadQualificationProgress(l)}%"
-                      title="Бриф заполнен на ${leadQualificationProgress(l)}%"
+                      title="${tireMode ? 'Details completed' : 'Бриф заполнен на'} ${leadQualificationProgress(l)}%"
                       onclick="event.stopPropagation();openLeadQualificationModal(${l.id})"
                     ><span>📝</span></button>
                   </div>
@@ -1939,16 +1939,16 @@ async function renderLeads(el, filters = {}) {
                 <td onclick="event.stopPropagation();" style="min-width:96px;width:96px;">${renderLeadTableContactActions(l)}</td>
                 <td style="max-width:150px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};line-height:1.2;word-break:break-word;">${l.area_label || '—'}</td>
                 <td style="width:190px;max-width:190px;" onclick="event.stopPropagation();">
-                  <button class="btn btn-sm btn-secondary ${l.has_fresh_comment ? 'fresh-comment-btn' : ''}" title="${escapeAttr(l.latest_comment || 'Добавить комментарий')}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="width:100%;display:inline-flex;gap:6px;align-items:center;justify-content:flex-start;">
-                    <span class="fresh-comment-icon-wrap">💬${l.has_fresh_comment ? '<span class="fresh-comment-dot"></span>' : ''}</span><span style="display:inline-block;max-width:135px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : 'Добавить'}</span>
+                  <button class="btn btn-sm btn-secondary ${l.has_fresh_comment ? 'fresh-comment-btn' : ''}" title="${escapeAttr(l.latest_comment || (tireMode ? 'Add comment' : 'Добавить комментарий'))}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="width:100%;display:inline-flex;gap:6px;align-items:center;justify-content:flex-start;">
+                    <span class="fresh-comment-icon-wrap">💬${l.has_fresh_comment ? '<span class="fresh-comment-dot"></span>' : ''}</span><span style="display:inline-block;max-width:135px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : (tireMode ? 'Add' : 'Добавить')}</span>
                   </button>
                 </td>
-                <td style="color:#666;font-size:11px;width:72px;">${new Date(l.created_at).toLocaleDateString('bg-BG')}</td>
+                <td style="color:#666;font-size:11px;width:72px;">${new Date(l.created_at).toLocaleDateString(tireMode ? 'en-GB' : 'bg-BG')}</td>
                 <td style="display:flex;gap:6px;">
                   <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadDetail(${l.id})">👁</button>
                 </td>
               </tr>
-            `).join('') : '<tr><td colspan="11" style="text-align:center;color:#666;padding:30px;">Нет лидов по этому фильтру.</td></tr>'}
+            `).join('') : `<tr><td colspan="11" style="text-align:center;color:#666;padding:30px;">${tireMode ? 'No leads match this filter.' : 'Нет лидов по этому фильтру.'}</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -1999,6 +1999,21 @@ function leadStatusTabStyle(status, active) {
   const [bg, color, border] = map[status] || ['rgba(255,255,255,0.04)', '#ddd', 'rgba(255,255,255,0.08)'];
   if (!active) return `background:${bg};color:${color};border-color:${border};`;
   return `background:${color};color:#111827;border-color:${color};box-shadow:0 0 0 1px ${border} inset;`;
+}
+
+function tireStatusLabel(status) {
+  return {
+    new: 'New lead',
+    needs_discovery: 'Clarify details',
+    offer_preparation: 'Prepare offer',
+    offer_sent: 'Offer sent',
+    negotiation: 'Negotiation',
+    office_meeting: 'Meeting',
+    contract: 'Contract approval',
+    purchase: 'Purchase & delivery',
+    won: 'Won',
+    lost: 'Lost / inactive',
+  }[status] || statusLabel(status);
 }
 
 function applyLeadQuickFilters(rows, filters = {}) {
@@ -2234,38 +2249,42 @@ function vladislavSignatureLines() {
 
 async function syncFacebookLeadsFromLeadsPage() {
   const el = document.getElementById('leads-sync-result');
+  const tireMode = currentPage === 'tires';
   el.className = 'sync-result show';
-  el.textContent = 'Синхронизирую Facebook Lead Forms...';
+  el.textContent = tireMode ? 'Syncing Facebook Lead Forms...' : 'Синхронизирую Facebook Lead Forms...';
   try {
     const result = await api('/api/facebook/sync/leads', { method: 'POST' });
     el.className = 'sync-result show ok';
-    el.textContent = `✅ FB лиды: проверено ${result.leads_checked || 0}, новых добавлено ${result.new_leads || 0}, существующих пропущено ${result.skipped_existing || 0}.`;
+    el.textContent = tireMode
+      ? `✅ Facebook leads: ${result.leads_checked || 0} checked, ${result.new_leads || 0} added, ${result.skipped_existing || 0} existing skipped.`
+      : `✅ FB лиды: проверено ${result.leads_checked || 0}, новых добавлено ${result.new_leads || 0}, существующих пропущено ${result.skipped_existing || 0}.`;
     setTimeout(() => renderLeads(
       document.getElementById('main'),
       currentPage === 'tires' ? { view: 'tires' } : { view: 'all' }
     ), 900);
   } catch (err) {
     el.className = 'sync-result show err';
-    el.textContent = '❌ ' + err.message;
+    el.textContent = tireMode ? `❌ Facebook sync failed: ${err.message}` : '❌ ' + err.message;
   }
 }
 
 async function openQuickCommentModal(id, encodedLatest = '') {
   const latest = decodeURIComponent(encodedLatest || '');
-  openModal('Комментарий к лиду', `
-    ${latest ? `<div style="font-size:12px;color:#8dd3ff;margin-bottom:10px;">Последний: ${escapeHtml(latest)}</div>` : ''}
+  const tireMode = currentPage === 'tires';
+  openModal(tireMode ? 'Lead comment' : 'Комментарий к лиду', `
+    ${latest ? `<div style="font-size:12px;color:#8dd3ff;margin-bottom:10px;">${tireMode ? 'Latest' : 'Последний'}: ${escapeHtml(latest)}</div>` : ''}
     <div class="form-group full">
-      <label>Комментарий после звонка</label>
-      <textarea id="quick-lead-comment" rows="4" placeholder="Напишите короткий результат звонка..."></textarea>
+      <label>${tireMode ? 'Comment after the call' : 'Комментарий после звонка'}</label>
+      <textarea id="quick-lead-comment" rows="4" placeholder="${tireMode ? 'Write a short call result...' : 'Напишите короткий результат звонка...'}"></textarea>
     </div>
-    <div class="card-title" style="font-size:12px;margin:12px 0 8px;">🕘 История комментариев</div>
+    <div class="card-title" style="font-size:12px;margin:12px 0 8px;">🕘 ${tireMode ? 'Comment history' : 'История комментариев'}</div>
     <div id="quick-comment-history" class="quick-comment-history">
-      <div class="worker-activity-empty">Загружаю историю комментариев...</div>
+      <div class="worker-activity-empty">${tireMode ? 'Loading comment history...' : 'Загружаю историю комментариев...'}</div>
     </div>
     <div id="quick-comment-result" class="sync-result"></div>
     <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
-      <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
-      <button class="btn btn-primary" onclick="saveQuickLeadComment(${id})">Сохранить</button>
+      <button class="btn btn-secondary" onclick="closeModal()">${tireMode ? 'Cancel' : 'Отмена'}</button>
+      <button class="btn btn-primary" onclick="saveQuickLeadComment(${id})">${tireMode ? 'Save' : 'Сохранить'}</button>
     </div>
   `);
   setTimeout(() => document.getElementById('quick-lead-comment')?.focus(), 50);
@@ -2274,6 +2293,7 @@ async function openQuickCommentModal(id, encodedLatest = '') {
 
 async function loadQuickCommentHistory(id) {
   const wrap = document.getElementById('quick-comment-history');
+  const tireMode = currentPage === 'tires';
   if (!wrap) return;
   try {
     const data = await api(`/api/leads/${id}`);
@@ -2283,25 +2303,26 @@ async function loadQuickCommentHistory(id) {
         <div class="quick-comment-item">
           <div class="quick-comment-item-head">
             <span class="fresh-comment-pill">${item.performed_by || 'manager'}</span>
-            <span>${new Date(item.created_at).toLocaleString('bg-BG')}</span>
+            <span>${new Date(item.created_at).toLocaleString(tireMode ? 'en-GB' : 'bg-BG')}</span>
           </div>
           <div class="quick-comment-item-body">${escapeHtml(item.description || '')}</div>
         </div>
       `).join('')
-      : '<div class="worker-activity-empty">Комментариев пока нет.</div>';
+      : `<div class="worker-activity-empty">${tireMode ? 'No comments yet.' : 'Комментариев пока нет.'}</div>`;
   } catch (err) {
-    wrap.innerHTML = `<div class="worker-activity-empty">Не удалось загрузить историю: ${escapeHtml(err.message || 'unknown error')}</div>`;
+    wrap.innerHTML = `<div class="worker-activity-empty">${tireMode ? 'Could not load history' : 'Не удалось загрузить историю'}: ${escapeHtml(err.message || 'unknown error')}</div>`;
   }
 }
 
 async function saveQuickLeadComment(id) {
+  const tireMode = currentPage === 'tires';
   const input = document.getElementById('quick-lead-comment');
   const result = document.getElementById('quick-comment-result');
   const comment = input?.value.trim();
   if (!comment) {
     if (result) {
       result.className = 'sync-result show err';
-      result.textContent = '❌ Напишите комментарий.';
+      result.textContent = tireMode ? '❌ Enter a comment.' : '❌ Напишите комментарий.';
     } else {
       input?.focus();
     }
@@ -2310,7 +2331,7 @@ async function saveQuickLeadComment(id) {
 
   if (result) {
     result.className = 'sync-result show';
-    result.textContent = 'Сохраняю...';
+    result.textContent = tireMode ? 'Saving...' : 'Сохраняю...';
   }
 
   try {
@@ -2326,7 +2347,7 @@ async function saveQuickLeadComment(id) {
     await renderLeads(document.getElementById('main'), currentLeadFilters);
     if (result) {
       result.className = 'sync-result show ok';
-      result.textContent = '✅ Комментарий сохранён.';
+      result.textContent = tireMode ? '✅ Comment saved.' : '✅ Комментарий сохранён.';
     }
   } catch (err) {
     if (result) {
@@ -2344,6 +2365,7 @@ async function openLeadQualificationModal(id) {
     const lead = data.lead || {};
     const qualification = leadQualificationData(lead);
     const clientType = leadQualificationType(lead, qualification);
+    const tireMode = isTireLead(lead);
     const selectedProblems = new Set(qualification.problems || []);
     const volumes = qualification.volumes || {};
     const problemOptions = [
@@ -2357,19 +2379,24 @@ async function openLeadQualificationModal(id) {
       ['other', 'Друг проблем'],
     ];
 
-    openModal(`Обязательные вопросы · ${lead.company_name || lead.contact_name || ('Лид #' + id)}`, `
+    openModal(`${tireMode ? 'Required tire details' : 'Обязательные вопросы'} · ${lead.company_name || lead.contact_name || ('Лид #' + id)}`, `
       <div class="qualification-intro">
-        Мениджърът попълва брифа по време на разговора. Данните се използват за подготовка на базова оферта.
+        ${tireMode
+          ? 'Complete these details during the call. The information will be used to prepare the offer.'
+          : 'Мениджърът попълва брифа по време на разговора. Данните се използват за подготовка на базова оферта.'}
       </div>
-      ${renderFacebookLeadBrief(lead)}
+      ${renderFacebookLeadBrief(lead, tireMode)}
       <form id="lead-qualification-form" onsubmit="saveLeadQualification(event, ${id})">
         <section class="qualification-section qualification-type-section">
-          <div class="qualification-title">Тип клиент *</div>
+          <div class="qualification-title">${tireMode ? 'Customer type *' : 'Тип клиент *'}</div>
           <select id="qualification-client-type" required onchange="toggleQualificationType(this.value)">
+            ${tireMode ? `
+            <option value="tire_customer" selected>Tire / wheel customer</option>
+            ` : `
             <option value="concrete_object" ${clientType === 'concrete_object' ? 'selected' : ''}>Клиент с конкретен обект</option>
             <option value="construction_company" ${clientType === 'construction_company' ? 'selected' : ''}>Строителна фирма</option>
             <option value="distributor" ${clientType === 'distributor' ? 'selected' : ''}>Дистрибутор / партньор</option>
-            <option value="tire_customer" ${clientType === 'tire_customer' ? 'selected' : ''}>Клиент за гуми / джанти</option>
+            `}
           </select>
         </section>
 
@@ -2492,14 +2519,14 @@ async function openLeadQualificationModal(id) {
         </div>
 
         <div class="qualification-flow" data-qualification-type="tire_customer" ${clientType === 'tire_customer' ? '' : 'hidden'}>
-          ${qualificationTextField(1, 'За какъв автомобил са гумите?', 'qualification-vehicle', qualification.vehicle, 'Марка, модел, година')}
-          ${qualificationTextField(2, 'Какъв размер гуми търсите?', 'qualification-tire-size', qualification.tire_size, 'Например 225/45 R17')}
-          ${qualificationTextField(3, 'Какъв тип гуми са необходими?', 'qualification-tire-type', qualification.tire_type, 'Летни, зимни, всесезонни; леки, SUV, бус')}
-          ${qualificationTextField(4, 'Имате ли предпочитана марка?', 'qualification-preferred-brand', qualification.preferred_brand, 'Michelin, Dunlop, Goodyear или друга')}
-          ${qualificationTextField(5, 'Количество и нужни ли са джанти?', 'qualification-quantity-rims', qualification.quantity_and_rims, 'Брой гуми, размер и вид на джантите')}
+          ${qualificationTextField(1, 'Which vehicle are the tires for?', 'qualification-vehicle', qualification.vehicle, 'Make, model and year')}
+          ${qualificationTextField(2, 'What tire size is required?', 'qualification-tire-size', qualification.tire_size, 'For example: 225/45 R17')}
+          ${qualificationTextField(3, 'What type of tires are required?', 'qualification-tire-type', qualification.tire_type, 'Summer, winter or all-season; car, SUV or van')}
+          ${qualificationTextField(4, 'Preferred brand?', 'qualification-preferred-brand', qualification.preferred_brand, 'Michelin, Dunlop, Goodyear or another brand')}
+          ${qualificationTextField(5, 'Quantity and wheels required?', 'qualification-quantity-rims', qualification.quantity_and_rims, 'Number of tires, wheel size and type')}
           <section class="qualification-section">
-            <div class="qualification-title">Срок и допълнителни детайли</div>
-            <textarea id="qualification-tire-notes" rows="3" placeholder="Кога са необходими, бюджет, доставка, монтаж...">${escapeHtml(qualification.notes || '')}</textarea>
+            <div class="qualification-title">Timing and additional details</div>
+            <textarea id="qualification-tire-notes" rows="3" placeholder="Required date, budget, delivery, fitting...">${escapeHtml(qualification.notes || '')}</textarea>
           </section>
         </div>
 
@@ -2507,13 +2534,13 @@ async function openLeadQualificationModal(id) {
         <label class="qualification-manual-complete">
           <input id="qualification-manual-complete" type="checkbox" ${qualification.manual_complete ? 'checked' : ''}>
           <span>
-            <strong>Информации достаточно для подготовки оферты</strong>
-            <small>Отметьте, если остальные детали получены по Viber, телефону или e-mail.</small>
+            <strong>${tireMode ? 'Enough information to prepare an offer' : 'Информации достаточно для подготовки оферты'}</strong>
+            <small>${tireMode ? 'Check this if the remaining details were received by phone, Viber or email.' : 'Отметьте, если остальные детали получены по Viber, телефону или e-mail.'}</small>
           </span>
         </label>
         <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
-          <button type="button" class="btn btn-secondary" onclick="closeModal()">Отмена</button>
-          <button type="submit" class="btn btn-primary">Сохранить бриф</button>
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">${tireMode ? 'Cancel' : 'Отмена'}</button>
+          <button type="submit" class="btn btn-primary">${tireMode ? 'Save details' : 'Сохранить бриф'}</button>
         </div>
       </form>
     `);
@@ -2522,7 +2549,7 @@ async function openLeadQualificationModal(id) {
   }
 }
 
-function renderFacebookLeadBrief(lead = {}) {
+function renderFacebookLeadBrief(lead = {}, english = false) {
   if (lead.source !== 'facebook') return '';
   const answerRows = String(lead.notes || '')
     .split(/\n|\s+\|\s+/)
@@ -2530,21 +2557,21 @@ function renderFacebookLeadBrief(lead = {}) {
     .filter(value => value && !/^google sheets/i.test(value))
     .slice(0, 6);
   const items = [
-    lead.company_type ? ['Тип компания', lead.company_type] : null,
-    lead.interest_products ? ['Интерес', lead.interest_products] : null,
-    lead.fb_campaign_name ? ['Кампания', lead.fb_campaign_name] : null,
+    lead.company_type ? [english ? 'Company type' : 'Тип компания', lead.company_type] : null,
+    lead.interest_products ? [english ? 'Interest' : 'Интерес', lead.interest_products] : null,
+    lead.fb_campaign_name ? [english ? 'Campaign' : 'Кампания', lead.fb_campaign_name] : null,
     ...answerRows.map(row => {
       const separator = row.indexOf(':');
       return separator > 0
         ? [row.slice(0, separator).trim(), row.slice(separator + 1).trim()]
-        : ['Ответ', row];
+        : [english ? 'Answer' : 'Ответ', row];
     }),
   ].filter(Boolean);
 
   if (!items.length) return '';
   return `
     <section class="facebook-lead-brief">
-      <div class="facebook-lead-brief-title">Ответы клиента из Facebook</div>
+      <div class="facebook-lead-brief-title">${english ? 'Facebook lead answers' : 'Ответы клиента из Facebook'}</div>
       <div class="facebook-lead-brief-grid">
         ${items.map(([label, value]) => `
           <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
@@ -3425,32 +3452,32 @@ function closeModal() {
 
 function openNewLeadModal(section = 'materials') {
   const tireMode = section === 'tires';
-  openModal(tireMode ? 'Новый лид · Шины' : 'Нов лид', `
-    <form onsubmit="createLead(event, '${tireMode ? 'tires' : 'materials'}')">
+  openModal(tireMode ? 'New tire lead' : 'Нов лид', `
+    <form onsubmit="createLead(event, '${tireMode ? 'tires' : 'materials'}')" novalidate>
       ${tireMode ? `
         <input type="hidden" name="lead_type" value="tire_inquiry">
         <input type="hidden" name="crm_segment" value="objects">
       ` : ''}
       <div class="form-grid">
-        <div class="form-group"><label>Компания</label><input name="company_name" required></div>
-        <div class="form-group"><label>Контакт</label><input name="contact_name"></div>
+        <div class="form-group"><label>${tireMode ? 'Company / customer' : 'Компания'}</label><input name="company_name" required></div>
+        <div class="form-group"><label>${tireMode ? 'Contact person' : 'Контакт'}</label><input name="contact_name"></div>
         <div class="form-group"><label>Email</label><input name="email" type="email"></div>
-        <div class="form-group"><label>Телефон</label><input name="phone"></div>
-        <div class="form-group"><label>Град</label><input name="city"></div>
+        <div class="form-group"><label>${tireMode ? 'Phone' : 'Телефон'}</label><input name="phone"></div>
+        <div class="form-group"><label>${tireMode ? 'City' : 'Град'}</label><input name="city"></div>
         <div class="form-group">
-          <label>Тип фирма</label>
+          <label>${tireMode ? 'Customer type' : 'Тип фирма'}</label>
           <select name="company_type">
             ${tireMode ? `
-              <option value="private">Частный клиент</option>
-              <option value="company">Компания / автопарк</option>
-              <option value="service">Автосервис / шиномонтаж</option>
-              <option value="dealer">Магазин / дилер</option>
+              <option value="private">Private customer</option>
+              <option value="company">Company / fleet</option>
+              <option value="service">Car service / tire shop</option>
+              <option value="dealer">Store / dealer</option>
             ` : `
               <option value="construction">Строителна фирма</option>
               <option value="designer">Проектант</option>
               <option value="distributor">Дистрибутор</option>
             `}
-            <option value="other">Друго</option>
+            <option value="other">${tireMode ? 'Other' : 'Друго'}</option>
           </select>
         </div>
         ${tireMode ? '' : `<div class="form-group">
@@ -3461,31 +3488,32 @@ function openNewLeadModal(section = 'materials') {
           </select>
         </div>`}
         <div class="form-group">
-          <label>Източник</label>
+          <label>${tireMode ? 'Source' : 'Източник'}</label>
           <select name="source">
             <option value="facebook" ${tireMode ? 'selected' : ''}>Facebook</option>
-            <option value="website" ${tireMode ? '' : 'selected'}>Сайт</option>
-            <option value="phone">Телефон</option>
+            <option value="website" ${tireMode ? '' : 'selected'}>${tireMode ? 'Website' : 'Сайт'}</option>
+            <option value="phone">${tireMode ? 'Phone' : 'Телефон'}</option>
             <option value="email">Email</option>
-            <option value="chatbot">Чатбот</option>
+            <option value="chatbot">${tireMode ? 'Chatbot' : 'Чатбот'}</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Приоритет</label>
+          <label>${tireMode ? 'Priority' : 'Приоритет'}</label>
           <select name="priority">
-            <option value="medium">Среден</option>
-            <option value="high">Висок</option>
-            <option value="hot">Горещ</option>
-            <option value="low">Нисък</option>
+            <option value="medium">${tireMode ? 'Medium' : 'Среден'}</option>
+            <option value="high">${tireMode ? 'High' : 'Висок'}</option>
+            <option value="hot">${tireMode ? 'Hot' : 'Горещ'}</option>
+            <option value="low">${tireMode ? 'Low' : 'Нисък'}</option>
           </select>
         </div>
-        <div class="form-group"><label>${tireMode ? 'Шины / диски (интерес)' : 'Продукти (интерес)'}</label><input name="interest_products" value="${tireMode ? 'Шины' : ''}" placeholder="${tireMode ? 'Michelin, Dunlop, Goodyear, диски...' : 'HB-PU500, PAK-01...'}"></div>
-        <div class="form-group"><label>Стойност (лв)</label><input name="estimated_value" type="number"></div>
-        <div class="form-group full"><label>Бележки</label><textarea name="notes" rows="2" placeholder="${tireMode ? 'Автомобиль, размер шин, сезон, количество, нужны ли диски...' : ''}"></textarea></div>
+        <div class="form-group"><label>${tireMode ? 'Tires / wheels of interest' : 'Продукти (интерес)'}</label><input name="interest_products" value="${tireMode ? 'Tires' : ''}" placeholder="${tireMode ? 'Michelin, Dunlop, Goodyear, wheels...' : 'HB-PU500, PAK-01...'}"></div>
+        <div class="form-group"><label>${tireMode ? 'Estimated value (BGN)' : 'Стойност (лв)'}</label><input name="estimated_value" type="number"></div>
+        <div class="form-group full"><label>${tireMode ? 'Notes' : 'Бележки'}</label><textarea name="notes" rows="2" placeholder="${tireMode ? 'Vehicle, tire size, season, quantity, wheels required...' : ''}"></textarea></div>
       </div>
+      <div id="new-lead-result" class="sync-result"></div>
       <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:12px;">
-        <button type="button" class="btn btn-secondary" onclick="closeModal()">Отказ</button>
-        <button type="submit" class="btn btn-primary">💾 Създай</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">${tireMode ? 'Cancel' : 'Отказ'}</button>
+        <button id="new-lead-submit" type="submit" class="btn btn-primary">${tireMode ? 'Create lead' : '💾 Създай'}</button>
       </div>
     </form>
   `);
@@ -3494,6 +3522,8 @@ function openNewLeadModal(section = 'materials') {
 async function createLead(e, section = 'materials') {
   e.preventDefault();
   const form = e.target;
+  const result = document.getElementById('new-lead-result');
+  const submit = document.getElementById('new-lead-submit');
   const data = Object.fromEntries(new FormData(form));
   Object.keys(data).forEach((key) => {
     if (typeof data[key] === 'string') {
@@ -3502,12 +3532,31 @@ async function createLead(e, section = 'materials') {
     }
   });
   data.estimated_value = data.estimated_value ? parseFloat(data.estimated_value) : null;
+  if (!data.company_name) {
+    result.className = 'sync-result show err';
+    result.textContent = section === 'tires' ? 'Company or customer name is required.' : 'Компанията е задължителна.';
+    return;
+  }
+  if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+    result.className = 'sync-result show err';
+    result.textContent = section === 'tires' ? 'Enter a valid email address.' : 'Въведете валиден email.';
+    return;
+  }
+  submit.disabled = true;
+  submit.textContent = section === 'tires' ? 'Creating...' : 'Създаване...';
+  result.className = 'sync-result show';
+  result.textContent = section === 'tires' ? 'Saving lead...' : 'Запазване...';
   try {
     await api('/api/leads', { method: 'POST', body: data });
+    result.className = 'sync-result show ok';
+    result.textContent = section === 'tires' ? 'Lead created successfully.' : 'Лидът е създаден.';
     closeModal();
     navigate(section === 'tires' ? 'tires' : 'leads');
   } catch (err) {
-    alert('Грешка: ' + err.message);
+    result.className = 'sync-result show err';
+    result.textContent = (section === 'tires' ? 'Could not create lead: ' : 'Грешка: ') + err.message;
+    submit.disabled = false;
+    submit.textContent = section === 'tires' ? 'Create lead' : '💾 Създай';
   }
 }
 
