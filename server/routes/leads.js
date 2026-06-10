@@ -1101,7 +1101,7 @@ router.put('/:id/qualification', async (req, res) => {
   try {
     await ensureLeadSheetColumns();
     const { rows: leads } = await db.query(
-      'SELECT id FROM leads WHERE id = ?',
+      'SELECT * FROM leads WHERE id = ?',
       [req.params.id]
     );
 
@@ -1115,49 +1115,83 @@ router.put('/:id/qualification', async (req, res) => {
       return res.status(400).json({ error: 'Qualification data is required' });
     }
 
-    const problems = Array.isArray(data.problems)
-      ? data.problems.map(value => String(value || '').trim()).filter(Boolean)
-      : [];
-    const volumes = data.volumes && typeof data.volumes === 'object' && !Array.isArray(data.volumes)
-      ? Object.fromEntries(
-          Object.entries(data.volumes)
-            .map(([key, value]) => [key, String(value || '').trim()])
-            .filter(([, value]) => value)
-        )
-      : {};
-
-    if (!problems.length || !String(data.object_type || '').trim() || !Object.keys(volumes).length
-      || !String(data.timing || '').trim() || !String(data.executor || '').trim()) {
-      return res.status(400).json({ error: 'Fill all required qualification sections' });
+    const clientType = String(data.client_type || '').trim();
+    const allowedTypes = ['concrete_object', 'construction_company', 'distributor'];
+    if (!allowedTypes.includes(clientType)) {
+      return res.status(400).json({ error: 'Choose a valid client type' });
     }
 
-    const qualificationData = {
-      problems,
-      other_problem: String(data.other_problem || '').trim(),
-      object_type: String(data.object_type || '').trim(),
-      other_object_type: String(data.other_object_type || '').trim(),
-      volumes,
-      timing: String(data.timing || '').trim(),
-      executor: String(data.executor || '').trim(),
-      notes: String(data.notes || '').trim(),
+    const cleanText = value => String(value || '').trim();
+    const qualificationData = { client_type: clientType };
+
+    if (clientType === 'concrete_object') {
+      qualificationData.problems = Array.isArray(data.problems)
+        ? data.problems.map(cleanText).filter(Boolean)
+        : [];
+      qualificationData.volumes = data.volumes && typeof data.volumes === 'object' && !Array.isArray(data.volumes)
+        ? Object.fromEntries(Object.entries(data.volumes).map(([key, value]) => [key, cleanText(value)]).filter(([, value]) => value))
+        : {};
+      qualificationData.other_problem = cleanText(data.other_problem);
+      qualificationData.object_type = cleanText(data.object_type);
+      qualificationData.other_object_type = cleanText(data.other_object_type);
+      qualificationData.timing = cleanText(data.timing);
+      qualificationData.executor = cleanText(data.executor);
+      if (!qualificationData.problems.length || !qualificationData.object_type
+        || !Object.keys(qualificationData.volumes).length || !qualificationData.timing || !qualificationData.executor) {
+        return res.status(400).json({ error: 'Fill all required object qualification sections' });
+      }
+    } else if (clientType === 'construction_company') {
+      Object.assign(qualificationData, {
+        materials_interest: cleanText(data.materials_interest),
+        application_type: cleanText(data.application_type),
+        quantities: cleanText(data.quantities),
+        delivery_timing: cleanText(data.delivery_timing),
+        has_specification: cleanText(data.has_specification),
+      });
+      if (!qualificationData.materials_interest || !qualificationData.application_type
+        || !qualificationData.quantities || !qualificationData.delivery_timing || !qualificationData.has_specification) {
+        return res.status(400).json({ error: 'Fill all required construction company sections' });
+      }
+    } else {
+      Object.assign(qualificationData, {
+        region: cleanText(data.region),
+        current_products: cleanText(data.current_products),
+        warehouse_team: cleanText(data.warehouse_team),
+        sales_volume: cleanText(data.sales_volume),
+        partnership_interest: cleanText(data.partnership_interest),
+      });
+      if (!qualificationData.region || !qualificationData.current_products || !qualificationData.warehouse_team
+        || !qualificationData.sales_volume || !qualificationData.partnership_interest) {
+        return res.status(400).json({ error: 'Fill all required distributor sections' });
+      }
+    }
+
+    qualificationData.notes = cleanText(data.notes);
+    Object.assign(qualificationData, {
       completed: true,
       completed_at: new Date().toISOString(),
       completed_by: performedBy,
-    };
+    });
+
+    const crmSegment = clientType === 'distributor' ? 'distributor' : 'objects';
+    const normalizedStatus = normalizeCrmStatus(leads[0].status, crmSegment);
 
     const { rows } = await db.query(`
       UPDATE leads
       SET qualification_data = ?::jsonb,
+          crm_segment = ?,
+          status = ?,
           updated_at = NOW()
       WHERE id = ?
       RETURNING *
-    `, [JSON.stringify(qualificationData), req.params.id]);
+    `, [JSON.stringify(qualificationData), crmSegment, normalizedStatus, req.params.id]);
 
     await db.query(`
       INSERT INTO lead_activities (lead_id, action, description, new_value, performed_by)
-      VALUES (?, 'qualification', 'Заполнен обязательный бриф объекта', ?, ?)
+      VALUES (?, 'qualification', ?, ?, ?)
     `, [
       req.params.id,
+      `Заполнен обязательный бриф: ${clientType}`,
       JSON.stringify(qualificationData),
       performedBy,
     ]);

@@ -390,6 +390,15 @@ tr:hover td { background: rgba(99,102,241,0.04); }
   line-height: 1.45;
 }
 
+.qualification-flow[hidden] {
+  display: none;
+}
+
+.qualification-type-section {
+  border-color: rgba(96,165,250,0.24);
+  background: rgba(96,165,250,0.05);
+}
+
 .qualification-section {
   margin-bottom: 12px;
   padding: 13px;
