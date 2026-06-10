@@ -1788,8 +1788,14 @@ async function renderLeads(el, filters = {}) {
   const tireMode = filters.view === 'tires';
   currentLeadFilters = filters;
   const params = new URLSearchParams(filters);
-  const [data, summary, gmailStatus] = await Promise.all([
+  const statusCountFilters = { ...filters };
+  delete statusCountFilters.status;
+  statusCountFilters.limit = '5000';
+  statusCountFilters.offset = '0';
+  const statusCountParams = new URLSearchParams(statusCountFilters);
+  const [data, statusCountData, summary, gmailStatus] = await Promise.all([
     api(`/api/leads?${params}`),
+    api(`/api/leads?${statusCountParams}`),
     api('/api/leads/summary').catch(() => ({ total: 0, statuses: [], sources: [] })),
     currentRole === 'admin' ? api('/api/gmail/status').catch(() => ({ accounts: [] })) : Promise.resolve({ accounts: [] }),
   ]);
@@ -1799,7 +1805,8 @@ async function renderLeads(el, filters = {}) {
   const tireBadge = document.getElementById('nav-badge-tires');
   if (tireBadge && currentRole === 'admin') tireBadge.textContent = summary.tires || 0;
   const visibleStages = leadStagesForView(filters);
-  const statusCounts = rows.reduce((counts, row) => {
+  const statusCountRows = applyLeadQuickFilters(statusCountData.leads || [], statusCountFilters);
+  const statusCounts = statusCountRows.reduce((counts, row) => {
     const status = leadDisplayStatus(row);
     counts[status] = (counts[status] || 0) + 1;
     return counts;
@@ -1844,6 +1851,13 @@ async function renderLeads(el, filters = {}) {
     </div>`}
 
     <div class="lead-status-tabs fade-in">
+      <button
+        class="lead-status-tab ${filters.status ? '' : 'active'}"
+        style="${filters.status ? '' : 'background:#e5e7eb;color:#111827;border-color:#e5e7eb;'}"
+        onclick="clearLeadStatusFilter()"
+      >
+        Все клиенты <span>${statusCountRows.length}</span>
+      </button>
       ${visibleStages.map(status =>
         `<button class="lead-status-tab ${filters.status === status ? 'active' : ''}" style="${leadStatusTabStyle(status, filters.status === status)}" onclick="renderLeads(document.getElementById('main'), {...currentLeadFilters, status: '${status}'})">
           ${tireMode ? tireStatusLabel(status) : statusLabel(status)} <span>${statusCounts[status] || 0}</span>
@@ -1972,6 +1986,12 @@ function toggleLeadQuickFilter(key, value) {
   } else {
     nextFilters[key] = value;
   }
+  renderLeads(document.getElementById('main'), nextFilters);
+}
+
+function clearLeadStatusFilter() {
+  const nextFilters = { ...currentLeadFilters };
+  delete nextFilters.status;
   renderLeads(document.getElementById('main'), nextFilters);
 }
 
@@ -2379,19 +2399,19 @@ async function openLeadQualificationModal(id) {
       ['other', 'Друг проблем'],
     ];
 
-    openModal(`${tireMode ? 'Required tire details' : 'Обязательные вопросы'} · ${lead.company_name || lead.contact_name || ('Лид #' + id)}`, `
+    openModal(`Обязательные вопросы · ${lead.company_name || lead.contact_name || ('Лид #' + id)}`, `
       <div class="qualification-intro">
         ${tireMode
-          ? 'Complete these details during the call. The information will be used to prepare the offer.'
+          ? 'Менеджер заполняет бриф во время разговора. Данные используются для подготовки предложения.'
           : 'Мениджърът попълва брифа по време на разговора. Данните се използват за подготовка на базова оферта.'}
       </div>
-      ${renderFacebookLeadBrief(lead, tireMode)}
+      ${renderFacebookLeadBrief(lead)}
       <form id="lead-qualification-form" onsubmit="saveLeadQualification(event, ${id})">
         <section class="qualification-section qualification-type-section">
-          <div class="qualification-title">${tireMode ? 'Customer type *' : 'Тип клиент *'}</div>
+          <div class="qualification-title">${tireMode ? 'Тип клиента *' : 'Тип клиент *'}</div>
           <select id="qualification-client-type" required onchange="toggleQualificationType(this.value)">
             ${tireMode ? `
-            <option value="tire_customer" selected>Tire / wheel customer</option>
+            <option value="tire_customer" selected>Клиент по шинам / дискам</option>
             ` : `
             <option value="concrete_object" ${clientType === 'concrete_object' ? 'selected' : ''}>Клиент с конкретен обект</option>
             <option value="construction_company" ${clientType === 'construction_company' ? 'selected' : ''}>Строителна фирма</option>
@@ -2519,14 +2539,14 @@ async function openLeadQualificationModal(id) {
         </div>
 
         <div class="qualification-flow" data-qualification-type="tire_customer" ${clientType === 'tire_customer' ? '' : 'hidden'}>
-          ${qualificationTextField(1, 'Which vehicle are the tires for?', 'qualification-vehicle', qualification.vehicle, 'Make, model and year')}
-          ${qualificationTextField(2, 'What tire size is required?', 'qualification-tire-size', qualification.tire_size, 'For example: 225/45 R17')}
-          ${qualificationTextField(3, 'What type of tires are required?', 'qualification-tire-type', qualification.tire_type, 'Summer, winter or all-season; car, SUV or van')}
-          ${qualificationTextField(4, 'Preferred brand?', 'qualification-preferred-brand', qualification.preferred_brand, 'Michelin, Dunlop, Goodyear or another brand')}
-          ${qualificationTextField(5, 'Quantity and wheels required?', 'qualification-quantity-rims', qualification.quantity_and_rims, 'Number of tires, wheel size and type')}
+          ${qualificationTextField(1, 'Для какого автомобиля нужны шины?', 'qualification-vehicle', qualification.vehicle, 'Марка, модель и год')}
+          ${qualificationTextField(2, 'Какой размер шин нужен?', 'qualification-tire-size', qualification.tire_size, 'Например: 225/45 R17')}
+          ${qualificationTextField(3, 'Какой тип шин нужен?', 'qualification-tire-type', qualification.tire_type, 'Летние, зимние или всесезонные; легковой автомобиль, SUV или фургон')}
+          ${qualificationTextField(4, 'Предпочтительная марка?', 'qualification-preferred-brand', qualification.preferred_brand, 'Michelin, Dunlop, Goodyear или другая марка')}
+          ${qualificationTextField(5, 'Количество и нужны ли диски?', 'qualification-quantity-rims', qualification.quantity_and_rims, 'Количество шин, размер и тип дисков')}
           <section class="qualification-section">
-            <div class="qualification-title">Timing and additional details</div>
-            <textarea id="qualification-tire-notes" rows="3" placeholder="Required date, budget, delivery, fitting...">${escapeHtml(qualification.notes || '')}</textarea>
+            <div class="qualification-title">Срок и дополнительные детали</div>
+            <textarea id="qualification-tire-notes" rows="3" placeholder="Когда нужны, бюджет, доставка, монтаж...">${escapeHtml(qualification.notes || '')}</textarea>
           </section>
         </div>
 
@@ -2534,13 +2554,13 @@ async function openLeadQualificationModal(id) {
         <label class="qualification-manual-complete">
           <input id="qualification-manual-complete" type="checkbox" ${qualification.manual_complete ? 'checked' : ''}>
           <span>
-            <strong>${tireMode ? 'Enough information to prepare an offer' : 'Информации достаточно для подготовки оферты'}</strong>
-            <small>${tireMode ? 'Check this if the remaining details were received by phone, Viber or email.' : 'Отметьте, если остальные детали получены по Viber, телефону или e-mail.'}</small>
+            <strong>Информации достаточно для подготовки предложения</strong>
+            <small>Отметьте, если остальные детали получены по телефону, Viber или e-mail.</small>
           </span>
         </label>
         <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
-          <button type="button" class="btn btn-secondary" onclick="closeModal()">${tireMode ? 'Cancel' : 'Отмена'}</button>
-          <button type="submit" class="btn btn-primary">${tireMode ? 'Save details' : 'Сохранить бриф'}</button>
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+          <button type="submit" class="btn btn-primary">Сохранить бриф</button>
         </div>
       </form>
     `);
