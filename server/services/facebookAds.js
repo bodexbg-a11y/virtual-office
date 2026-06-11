@@ -2,6 +2,7 @@ const axios = require('axios');
 const db = require('../db');
 
 const LEGACY_UNMATCHED_FB_CUTOFF = '2026-05-27 00:00:00';
+const TIRE_CAMPAIGN_PATTERN = /(tiers|tires|tyres|tire|шины|гуми|gumi)/i;
 
 async function ensureIgnoredFacebookLeads() {
   await db.query(`
@@ -25,7 +26,8 @@ class FacebookAdsService {
   constructor() {
     this.accessToken = process.env.FB_ACCESS_TOKEN;
     this.adAccountId = process.env.FB_AD_ACCOUNT_ID;
-    this.baseUrl = 'https://graph.facebook.com/v19.0';
+    this.graphApiVersion = process.env.FB_GRAPH_API_VERSION || 'v25.0';
+    this.baseUrl = `https://graph.facebook.com/${this.graphApiVersion}`;
     this.initialized = false;
   }
 
@@ -226,6 +228,8 @@ class FacebookAdsService {
       let updatedLeads = 0;
       let skippedExisting = 0;
       let skippedLegacyUnmatched = 0;
+      let tireLeadsChecked = 0;
+      let newTireLeads = 0;
 
       for (const page of pages) {
         const pageToken = page.access_token || this.accessToken;
@@ -238,6 +242,7 @@ class FacebookAdsService {
 
           for (const fbLead of leads) {
             const mapped = mapFacebookLead(fbLead, page, form);
+            if (mapped.lead_type === 'tire_inquiry') tireLeadsChecked += 1;
 
             const ignoredRes = await db.query(
               'SELECT 1 FROM ignored_fb_leads WHERE fb_lead_id = ?',
@@ -260,6 +265,10 @@ class FacebookAdsService {
               await db.query(`
                 UPDATE leads
                 SET
+                  lead_type = CASE
+                    WHEN ? = 'tire_inquiry' THEN 'tire_inquiry'
+                    ELSE lead_type
+                  END,
                   fb_campaign_id = COALESCE(fb_campaign_id, ?),
                   fb_campaign_name = COALESCE(fb_campaign_name, ?),
                   fb_ad_id = COALESCE(fb_ad_id, ?),
@@ -267,6 +276,7 @@ class FacebookAdsService {
                   fb_form_id = COALESCE(fb_form_id, ?)
                 WHERE id = ?
               `, [
+                mapped.lead_type,
                 mapped.fb_campaign_id,
                 mapped.fb_campaign_name,
                 mapped.fb_ad_id,
@@ -278,7 +288,10 @@ class FacebookAdsService {
               continue;
             }
 
-            const sheetMatch = await findOperationalSheetMatch(mapped);
+            // Tire leads have their own CRM flow and must always enter as new.
+            const sheetMatch = mapped.lead_type === 'tire_inquiry'
+              ? null
+              : await findOperationalSheetMatch(mapped);
 
             if (sheetMatch) {
               mapped.status = inferLeadStatusFromSheet(sheetMatch);
@@ -321,7 +334,8 @@ class FacebookAdsService {
                 google_sheet_row,
                 created_at
               )
-              VALUES (?, ?, ?, ?, ?, 'fb_lead', 'facebook', ?, ?, ?, ?, ?, 'rostislav', ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?::timestamp, NOW()))
+              VALUES (?, ?, ?, ?, ?, ?, 'facebook', ?, ?, ?, ?, ?, 'rostislav', ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?::timestamp, NOW()))
+              ON CONFLICT (fb_lead_id) WHERE fb_lead_id IS NOT NULL DO NOTHING
               RETURNING id
             `, [
               mapped.company_name,
@@ -329,6 +343,7 @@ class FacebookAdsService {
               mapped.email,
               mapped.phone,
               mapped.city,
+              mapped.lead_type,
               mapped.status || 'new',
               mapped.priority,
               mapped.company_type,
@@ -345,7 +360,11 @@ class FacebookAdsService {
               mapped.created_at,
             ]);
 
-            const leadId = insertRes.rows[0].id;
+            const leadId = insertRes.rows[0]?.id;
+            if (!leadId) {
+              skippedExisting += 1;
+              continue;
+            }
 
             await db.query(`
               INSERT INTO lead_activities (
@@ -381,6 +400,7 @@ class FacebookAdsService {
             }
 
             newLeads += 1;
+            if (mapped.lead_type === 'tire_inquiry') newTireLeads += 1;
           }
         }
       }
@@ -394,6 +414,8 @@ class FacebookAdsService {
         updated_leads: updatedLeads,
         skipped_existing: skippedExisting,
         skipped_legacy_unmatched: skippedLegacyUnmatched,
+        tire_leads_checked: tireLeadsChecked,
+        new_tire_leads: newTireLeads,
       };
     } catch (err) {
       throw new Error(facebookErrorMessage(err));
@@ -610,6 +632,7 @@ function mapFacebookLead(lead, page, form) {
   const campaign = lead.campaign_name || lead.ad_name || '';
   const formName = form.name || '';
   const combined = `${materialInterest} ${serviceInterest} ${campaign} ${formName}`.toLowerCase();
+  const tireLead = TIRE_CAMPAIGN_PATTERN.test(combined);
 
   return {
     fb_lead_id: lead.id,
@@ -619,6 +642,7 @@ function mapFacebookLead(lead, page, form) {
     fb_ad_name: lead.ad_name || null,
     fb_form_id: lead.form_id || form.id || null,
     created_at: lead.created_time ? lead.created_time.replace('T', ' ').replace(/\+\d{4}$/, '') : null,
+    lead_type: tireLead ? 'tire_inquiry' : 'fb_lead',
     status: 'new',
     company_name: company || fullName || `Facebook Lead ${lead.id}`,
     contact_name: company ? fullName : '',

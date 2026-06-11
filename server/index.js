@@ -88,8 +88,8 @@ async function initializeServices() {
     }
   });
 
-  // Cron: sync FB campaigns every 30 minutes
-  cron.schedule('*/30 * * * *', async () => {
+  // Poll Meta frequently while campaigns are active so new leads reach CRM quickly.
+  cron.schedule('*/5 * * * *', async () => {
     console.log('[CRON] Syncing Facebook Ads...');
     try {
       await facebookAds.syncCampaigns();
@@ -98,6 +98,17 @@ async function initializeServices() {
       console.error('[CRON] FB sync error:', err.message);
     }
   });
+
+  // Do not wait for the first cron tick after a Render restart.
+  setTimeout(async () => {
+    console.log('[STARTUP] Syncing Facebook Ads...');
+    try {
+      await facebookAds.syncCampaigns();
+      await facebookAds.syncLeadForms();
+    } catch (err) {
+      console.error('[STARTUP] FB sync error:', err.message);
+    }
+  }, 5000);
 
   // Cron: Mark scans material market prices twice per working day.
   cron.schedule('0 9,15 * * 1-5', async () => {

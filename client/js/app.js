@@ -2276,7 +2276,7 @@ async function syncFacebookLeadsFromLeadsPage() {
     const result = await api('/api/facebook/sync/leads', { method: 'POST' });
     el.className = 'sync-result show ok';
     el.textContent = tireMode
-      ? `✅ Facebook leads: ${result.leads_checked || 0} checked, ${result.new_leads || 0} added, ${result.skipped_existing || 0} existing skipped.`
+      ? `✅ Tire leads: ${result.tire_leads_checked || 0} checked, ${result.new_tire_leads || 0} new added. Campaigns refreshed: ${result.campaigns_synced || 0}.`
       : `✅ FB лиды: проверено ${result.leads_checked || 0}, новых добавлено ${result.new_leads || 0}, существующих пропущено ${result.skipped_existing || 0}.`;
     setTimeout(() => renderLeads(
       document.getElementById('main'),

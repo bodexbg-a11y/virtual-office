@@ -15,9 +15,14 @@ router.post('/sync/campaigns', async (req, res) => {
 // POST sync lead forms from FB
 router.post('/sync/leads', async (req, res) => {
   try {
+    const campaigns = await facebookAds.syncCampaigns();
     const result = await facebookAds.syncLeadForms();
     const campaignFallback = await facebookAds.syncCampaignLeadCountsFromLeads();
-    res.json({ ...result, campaign_lead_fallback: campaignFallback.updated_campaigns });
+    res.json({
+      ...result,
+      campaigns_synced: campaigns.campaigns || 0,
+      campaign_lead_fallback: campaignFallback.updated_campaigns,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
