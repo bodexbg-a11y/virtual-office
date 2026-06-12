@@ -2560,6 +2560,7 @@ async function openLeadQualificationModal(id) {
         </label>
         <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
           <button type="button" class="btn btn-secondary" onclick="closeModal()">${tireMode ? 'Отмена' : 'Отказ'}</button>
+          ${tireMode ? `<button type="button" class="btn btn-secondary" onclick="downloadLeadQualificationTxt(${id})">Загрузить ответы</button>` : ''}
           <button type="submit" class="btn btn-primary">${tireMode ? 'Сохранить ответы' : 'Запази отговорите'}</button>
         </div>
       </form>
@@ -2618,8 +2619,7 @@ function toggleQualificationType(type) {
   });
 }
 
-async function saveLeadQualification(event, id) {
-  event.preventDefault();
+function collectLeadQualificationFormData() {
   const clientType = document.getElementById('qualification-client-type')?.value;
   const problems = [...document.querySelectorAll('input[name="qualification_problem"]:checked')].map(input => input.value);
   const volumes = {
@@ -2628,7 +2628,6 @@ async function saveLeadQualification(event, id) {
     utility_entries: document.getElementById('qualification-utility-count')?.value.trim(),
     total_work: document.getElementById('qualification-total-work')?.value.trim(),
   };
-  const result = document.getElementById('qualification-result');
   let qualificationData;
 
   if (clientType === 'concrete_object') {
@@ -2678,6 +2677,72 @@ async function saveLeadQualification(event, id) {
       notes: document.getElementById('qualification-tire-notes')?.value.trim(),
     };
   }
+
+  return qualificationData;
+}
+
+function formatLeadQualificationTxt(lead, qualificationData) {
+  const lines = [
+    `Лид: ${lead.company_name || lead.contact_name || `#${lead.id}`}`,
+    `Контакт: ${lead.contact_name || '-'}`,
+    `Телефон: ${lead.phone || '-'}`,
+    `Email: ${lead.email || '-'}`,
+    `Город: ${lead.city || '-'}`,
+    `Тип клиента: ${lead.company_type || '-'}`,
+    `Кампания: ${lead.fb_campaign_name || '-'}`,
+    ''
+  ];
+
+  if (qualificationData.client_type === 'tire_customer') {
+    lines.push(
+      `1. Для какого автомобиля нужны шины: ${qualificationData.vehicle || '-'}`,
+      `2. Какой размер шин нужен: ${qualificationData.tire_size || '-'}`,
+      `3. Какой тип шин нужен: ${qualificationData.tire_type || '-'}`,
+      `4. Какой бренд предпочитает клиент: ${qualificationData.preferred_brand || '-'}`,
+      `5. Сколько шин нужно и нужны ли диски: ${qualificationData.quantity_and_rims || '-'}`,
+      `Дополнительные детали: ${qualificationData.notes || '-'}`,
+      `Информации достаточно для предложения: ${qualificationData.manual_complete ? 'Да' : 'Нет'}`
+    );
+  } else {
+    lines.push(`Данные формы относятся к типу: ${qualificationData.client_type || '-'}`);
+    lines.push(JSON.stringify(qualificationData, null, 2));
+  }
+
+  return lines.join('\n');
+}
+
+async function downloadLeadQualificationTxt(id) {
+  const result = document.getElementById('qualification-result');
+  try {
+    const data = await api(`/api/leads/${id}`);
+    const lead = data.lead || {};
+    const qualificationData = collectLeadQualificationFormData();
+    const content = formatLeadQualificationTxt(lead, qualificationData);
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tire-lead-${id}-answers.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    if (result) {
+      result.className = 'sync-result show ok';
+      result.textContent = 'TXT с ответами загружен.';
+    }
+  } catch (err) {
+    if (result) {
+      result.className = 'sync-result show err';
+      result.textContent = 'Ошибка загрузки TXT: ' + err.message;
+    }
+  }
+}
+
+async function saveLeadQualification(event, id) {
+  event.preventDefault();
+  const result = document.getElementById('qualification-result');
+  const qualificationData = collectLeadQualificationFormData();
 
   result.className = 'sync-result show';
   result.textContent = 'Сохраняю квалификационный бриф...';
