@@ -2399,19 +2399,19 @@ async function openLeadQualificationModal(id) {
       ['other', 'Друг проблем'],
     ];
 
-    openModal(`Обязательные вопросы · ${lead.company_name || lead.contact_name || ('Лид #' + id)}`, `
+    openModal(`${tireMode ? 'Обязательные вопросы по шинам' : 'Задължителни въпроси'} · ${lead.company_name || lead.contact_name || ('Лид #' + id)}`, `
       <div class="qualification-intro">
         ${tireMode
-          ? 'Менеджер заполняет бриф во время разговора. Данные используются для подготовки предложения.'
+          ? 'Менеджер заполняет эту форму во время разговора с клиентом. Ответы используются для подбора шин и подготовки предложения.'
           : 'Мениджърът попълва брифа по време на разговора. Данните се използват за подготовка на базова оферта.'}
       </div>
-      ${renderFacebookLeadBrief(lead)}
+      ${renderFacebookLeadBrief(lead, tireMode ? 'ru' : 'bg')}
       <form id="lead-qualification-form" onsubmit="saveLeadQualification(event, ${id})">
         <section class="qualification-section qualification-type-section">
           <div class="qualification-title">${tireMode ? 'Тип клиента *' : 'Тип клиент *'}</div>
           <select id="qualification-client-type" required onchange="toggleQualificationType(this.value)">
             ${tireMode ? `
-            <option value="tire_customer" selected>Клиент по шинам / дискам</option>
+            <option value="tire_customer" selected>Клиент по шинам и дискам</option>
             ` : `
             <option value="concrete_object" ${clientType === 'concrete_object' ? 'selected' : ''}>Клиент с конкретен обект</option>
             <option value="construction_company" ${clientType === 'construction_company' ? 'selected' : ''}>Строителна фирма</option>
@@ -2539,14 +2539,14 @@ async function openLeadQualificationModal(id) {
         </div>
 
         <div class="qualification-flow" data-qualification-type="tire_customer" ${clientType === 'tire_customer' ? '' : 'hidden'}>
-          ${qualificationTextField(1, 'Для какого автомобиля нужны шины?', 'qualification-vehicle', qualification.vehicle, 'Марка, модель и год')}
+          ${qualificationTextField(1, 'Для какого автомобиля нужны шины?', 'qualification-vehicle', qualification.vehicle, 'Марка, модель и год выпуска')}
           ${qualificationTextField(2, 'Какой размер шин нужен?', 'qualification-tire-size', qualification.tire_size, 'Например: 225/45 R17')}
-          ${qualificationTextField(3, 'Какой тип шин нужен?', 'qualification-tire-type', qualification.tire_type, 'Летние, зимние или всесезонные; легковой автомобиль, SUV или фургон')}
-          ${qualificationTextField(4, 'Предпочтительная марка?', 'qualification-preferred-brand', qualification.preferred_brand, 'Michelin, Dunlop, Goodyear или другая марка')}
-          ${qualificationTextField(5, 'Количество и нужны ли диски?', 'qualification-quantity-rims', qualification.quantity_and_rims, 'Количество шин, размер и тип дисков')}
+          ${qualificationTextField(3, 'Какой тип шин нужен?', 'qualification-tire-type', qualification.tire_type, 'Летние, зимние или всесезонные; для легкового автомобиля, SUV или фургона')}
+          ${qualificationTextField(4, 'Какой бренд предпочитает клиент?', 'qualification-preferred-brand', qualification.preferred_brand, 'Michelin, Dunlop, Goodyear или другой бренд')}
+          ${qualificationTextField(5, 'Сколько шин нужно и нужны ли диски?', 'qualification-quantity-rims', qualification.quantity_and_rims, 'Количество шин, а также размер и тип дисков')}
           <section class="qualification-section">
-            <div class="qualification-title">Срок и дополнительные детали</div>
-            <textarea id="qualification-tire-notes" rows="3" placeholder="Когда нужны, бюджет, доставка, монтаж...">${escapeHtml(qualification.notes || '')}</textarea>
+            <div class="qualification-title">Дополнительные детали</div>
+            <textarea id="qualification-tire-notes" rows="3" placeholder="Когда нужны шины, бюджет, доставка, монтаж и другие пожелания клиента...">${escapeHtml(qualification.notes || '')}</textarea>
           </section>
         </div>
 
@@ -2554,44 +2554,46 @@ async function openLeadQualificationModal(id) {
         <label class="qualification-manual-complete">
           <input id="qualification-manual-complete" type="checkbox" ${qualification.manual_complete ? 'checked' : ''}>
           <span>
-            <strong>Информации достаточно для подготовки предложения</strong>
-            <small>Отметьте, если остальные детали получены по телефону, Viber или e-mail.</small>
+            <strong>${tireMode ? 'Информации достаточно для подготовки предложения' : 'Информацията е достатъчна за подготовка на оферта'}</strong>
+            <small>${tireMode ? 'Отметьте, если все необходимые детали уже получены по телефону, Viber или e-mail.' : 'Отбележете, ако останалите детайли са получени по телефон, Viber или e-mail.'}</small>
           </span>
         </label>
         <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
-          <button type="button" class="btn btn-secondary" onclick="closeModal()">Отмена</button>
-          <button type="submit" class="btn btn-primary">Сохранить бриф</button>
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">${tireMode ? 'Отмена' : 'Отказ'}</button>
+          <button type="submit" class="btn btn-primary">${tireMode ? 'Сохранить ответы' : 'Запази отговорите'}</button>
         </div>
       </form>
     `);
   } catch (err) {
-    alert('Грешка: ' + err.message);
+    alert((currentPage === 'tires' ? 'Ошибка: ' : 'Грешка: ') + err.message);
   }
 }
 
-function renderFacebookLeadBrief(lead = {}, english = false) {
+function renderFacebookLeadBrief(lead = {}, locale = 'bg') {
   if (lead.source !== 'facebook') return '';
+  const english = locale === 'en';
+  const russian = locale === 'ru';
   const answerRows = String(lead.notes || '')
     .split(/\n|\s+\|\s+/)
     .map(value => value.trim())
     .filter(value => value && !/^google sheets/i.test(value))
     .slice(0, 6);
   const items = [
-    lead.company_type ? [english ? 'Company type' : 'Тип компания', lead.company_type] : null,
-    lead.interest_products ? [english ? 'Interest' : 'Интерес', lead.interest_products] : null,
-    lead.fb_campaign_name ? [english ? 'Campaign' : 'Кампания', lead.fb_campaign_name] : null,
+    lead.company_type ? [english ? 'Company type' : russian ? 'Тип клиента' : 'Тип компания', lead.company_type] : null,
+    lead.interest_products ? [english ? 'Interest' : russian ? 'Интерес клиента' : 'Интерес', lead.interest_products] : null,
+    lead.fb_campaign_name ? [english ? 'Campaign' : russian ? 'Рекламная кампания' : 'Кампания', lead.fb_campaign_name] : null,
     ...answerRows.map(row => {
       const separator = row.indexOf(':');
       return separator > 0
         ? [row.slice(0, separator).trim(), row.slice(separator + 1).trim()]
-        : [english ? 'Answer' : 'Ответ', row];
+        : [english ? 'Answer' : russian ? 'Ответ клиента' : 'Отговор', row];
     }),
   ].filter(Boolean);
 
   if (!items.length) return '';
   return `
     <section class="facebook-lead-brief">
-      <div class="facebook-lead-brief-title">${english ? 'Facebook lead answers' : 'Ответы клиента из Facebook'}</div>
+      <div class="facebook-lead-brief-title">${english ? 'Facebook lead answers' : russian ? 'Ответы клиента из Facebook' : 'Отговори на клиента от Facebook'}</div>
       <div class="facebook-lead-brief-grid">
         ${items.map(([label, value]) => `
           <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
