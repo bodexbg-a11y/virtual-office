@@ -1811,7 +1811,7 @@ async function renderLeads(el, filters = {}) {
     counts[status] = (counts[status] || 0) + 1;
     return counts;
   }, {});
-  const responseMetrics = buildLeadResponseMetrics(statusCountRows);
+  const responseMetrics = buildLeadResponseMetrics(statusCountRows, tireMode);
   const cityOptions = summary.cities || [];
 
   el.innerHTML = `
@@ -1868,9 +1868,9 @@ async function renderLeads(el, filters = {}) {
 
     <div class="qualification-intro fade-in" style="margin-top:12px;padding:12px 14px;">
       <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
-        <div><strong>Средний 1-й ответ</strong>: ${responseMetrics.avgMinutes === null ? 'пока нет данных' : formatBusinessResponseShort(responseMetrics.avgMinutes, false)}</div>
+        <div><strong>Средний 1-й ответ</strong>: ${responseMetrics.avgMinutes === null ? 'пока нет данных' : formatBusinessResponseShort(responseMetrics.avgMinutes, tireMode)}</div>
         <div style="color:#8b97b7;">Замерено лидов: ${responseMetrics.measured}</div>
-        <div style="color:#8b97b7;">Часовой пояс: Europe/Berlin · 09:00–18:00 · пн–пт</div>
+        <div style="color:#8b97b7;">Часовой пояс: ${tireMode ? 'Europe/Berlin' : 'Europe/Sofia'} · 09:00–18:00 · пн–пт</div>
       </div>
     </div>
 
@@ -1959,7 +1959,7 @@ async function renderLeads(el, filters = {}) {
                 </td>
                 <td onclick="event.stopPropagation();" style="min-width:96px;width:96px;">${renderLeadTableContactActions(l)}</td>
                 <td style="max-width:150px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};line-height:1.2;word-break:break-word;">${l.area_label || '—'}</td>
-                <td style="width:118px;">${renderLeadTimingCell(l, false)}</td>
+                <td style="width:118px;">${renderLeadTimingCell(l, tireMode)}</td>
                 <td style="width:180px;max-width:180px;" onclick="event.stopPropagation();">
                   <button class="btn btn-sm btn-secondary ${l.has_fresh_comment ? 'fresh-comment-btn' : ''}" title="${escapeAttr(l.latest_comment || (tireMode ? 'Add comment' : 'Добавить комментарий'))}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="width:100%;display:inline-flex;gap:6px;align-items:center;justify-content:flex-start;">
                     <span class="fresh-comment-icon-wrap">💬${l.has_fresh_comment ? '<span class="fresh-comment-dot"></span>' : ''}</span><span style="display:inline-block;max-width:135px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : (tireMode ? 'Add' : 'Добавить')}</span>
@@ -5453,8 +5453,13 @@ function formatFollowupShort(value) {
 }
 
 const BERLIN_TIMEZONE = 'Europe/Berlin';
+const SOFIA_TIMEZONE = 'Europe/Sofia';
 const BERLIN_WORK_START_HOUR = 9;
 const BERLIN_WORK_END_HOUR = 18;
+
+function getLeadBusinessTimeZone(tireMode = false) {
+  return tireMode ? BERLIN_TIMEZONE : SOFIA_TIMEZONE;
+}
 
 function parseApiDate(value) {
   if (!value) return null;
@@ -5504,22 +5509,22 @@ function makeDateInTimeZone(year, month, day, hour, minute = 0, second = 0, time
   return new Date(Date.UTC(year, month - 1, day, hour, minute, second) - offsetMs);
 }
 
-function nextBerlinBusinessStart(date) {
+function nextBusinessStart(date, timeZone = BERLIN_TIMEZONE) {
   let cursor = new Date(date.getTime() + 60 * 1000);
   for (let i = 0; i < 10; i += 1) {
-    const parts = getTimeZoneParts(cursor);
+    const parts = getTimeZoneParts(cursor, timeZone);
     if (!parts) return cursor;
-    const atStart = makeDateInTimeZone(parts.year, parts.month, parts.day, BERLIN_WORK_START_HOUR);
+    const atStart = makeDateInTimeZone(parts.year, parts.month, parts.day, BERLIN_WORK_START_HOUR, 0, 0, timeZone);
     if (parts.weekday >= 1 && parts.weekday <= 5 && cursor <= atStart) {
       return atStart;
     }
-    const nextDayStart = makeDateInTimeZone(parts.year, parts.month, parts.day + 1, BERLIN_WORK_START_HOUR);
+    const nextDayStart = makeDateInTimeZone(parts.year, parts.month, parts.day + 1, BERLIN_WORK_START_HOUR, 0, 0, timeZone);
     cursor = nextDayStart;
   }
   return cursor;
 }
 
-function calculateBusinessMinutesBetween(startValue, endValue) {
+function calculateBusinessMinutesBetween(startValue, endValue, timeZone = BERLIN_TIMEZONE) {
   const start = parseApiDate(startValue);
   const end = parseApiDate(endValue);
   if (!start || !end || end <= start) return 0;
@@ -5528,16 +5533,16 @@ function calculateBusinessMinutesBetween(startValue, endValue) {
   let minutes = 0;
 
   while (cursor < end) {
-    const parts = getTimeZoneParts(cursor);
+    const parts = getTimeZoneParts(cursor, timeZone);
     if (!parts) break;
 
     if (parts.weekday === 0 || parts.weekday === 6) {
-      cursor = nextBerlinBusinessStart(cursor);
+      cursor = nextBusinessStart(cursor, timeZone);
       continue;
     }
 
-    const workStart = makeDateInTimeZone(parts.year, parts.month, parts.day, BERLIN_WORK_START_HOUR);
-    const workEnd = makeDateInTimeZone(parts.year, parts.month, parts.day, BERLIN_WORK_END_HOUR);
+    const workStart = makeDateInTimeZone(parts.year, parts.month, parts.day, BERLIN_WORK_START_HOUR, 0, 0, timeZone);
+    const workEnd = makeDateInTimeZone(parts.year, parts.month, parts.day, BERLIN_WORK_END_HOUR, 0, 0, timeZone);
 
     if (cursor < workStart) {
       cursor = workStart;
@@ -5545,7 +5550,7 @@ function calculateBusinessMinutesBetween(startValue, endValue) {
     }
 
     if (cursor >= workEnd) {
-      cursor = nextBerlinBusinessStart(cursor);
+      cursor = nextBusinessStart(cursor, timeZone);
       continue;
     }
 
@@ -5554,7 +5559,7 @@ function calculateBusinessMinutesBetween(startValue, endValue) {
     cursor = segmentEnd;
 
     if (cursor >= workEnd) {
-      cursor = nextBerlinBusinessStart(cursor);
+      cursor = nextBusinessStart(cursor, timeZone);
     }
   }
 
@@ -5571,10 +5576,11 @@ function formatBusinessResponseShort(minutes, tireMode = false) {
     : `${hours}ч ${restMinutes}м раб.`;
 }
 
-function buildLeadResponseMetrics(rows = []) {
+function buildLeadResponseMetrics(rows = [], tireMode = false) {
+  const timeZone = getLeadBusinessTimeZone(tireMode);
   const values = (rows || [])
     .filter(row => row.first_manager_comment_at)
-    .map(row => calculateBusinessMinutesBetween(row.created_at, row.first_manager_comment_at))
+    .map(row => calculateBusinessMinutesBetween(row.created_at, row.first_manager_comment_at, timeZone))
     .filter(value => Number.isFinite(value) && value >= 0);
 
   if (!values.length) {
@@ -5588,22 +5594,22 @@ function buildLeadResponseMetrics(rows = []) {
   };
 }
 
-function formatBerlinDateOnly(value, tireMode = false) {
+function formatLeadDateOnly(value, tireMode = false) {
   const date = parseApiDate(value);
   if (!date) return '—';
   return date.toLocaleDateString(tireMode ? 'en-GB' : 'ru-RU', {
-    timeZone: BERLIN_TIMEZONE,
+    timeZone: getLeadBusinessTimeZone(tireMode),
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   });
 }
 
-function formatBerlinTimeOnly(value, tireMode = false) {
+function formatLeadTimeOnly(value, tireMode = false) {
   const date = parseApiDate(value);
   if (!date) return '—';
   return date.toLocaleTimeString(tireMode ? 'en-GB' : 'ru-RU', {
-    timeZone: BERLIN_TIMEZONE,
+    timeZone: getLeadBusinessTimeZone(tireMode),
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -5611,16 +5617,17 @@ function formatBerlinTimeOnly(value, tireMode = false) {
 }
 
 function renderLeadTimingCell(lead, tireMode = false) {
+  const timeZone = getLeadBusinessTimeZone(tireMode);
   const responseMinutes = lead.first_manager_comment_at
-    ? calculateBusinessMinutesBetween(lead.created_at, lead.first_manager_comment_at)
+    ? calculateBusinessMinutesBetween(lead.created_at, lead.first_manager_comment_at, timeZone)
     : null;
   const responseLabel = responseMinutes === null
     ? (tireMode ? 'SLA —' : 'SLA —')
     : `SLA ${formatBusinessResponseShort(responseMinutes, tireMode)}`;
   return `
     <div style="display:flex;flex-direction:column;gap:3px;min-width:106px;">
-      <div style="color:#8b97b7;font-size:10px;">CRM ${formatBerlinDateOnly(lead.created_at, tireMode)} ${formatBerlinTimeOnly(lead.created_at, tireMode)}</div>
-      <div style="color:${lead.first_manager_comment_at ? 'var(--green)' : '#8b97b7'};font-size:10px;">${tireMode ? '1st contact' : '1-й контакт'} ${lead.first_manager_comment_at ? `${formatBerlinDateOnly(lead.first_manager_comment_at, tireMode)} ${formatBerlinTimeOnly(lead.first_manager_comment_at, tireMode)}` : '—'}</div>
+      <div style="color:#8b97b7;font-size:10px;">CRM ${formatLeadDateOnly(lead.created_at, tireMode)} ${formatLeadTimeOnly(lead.created_at, tireMode)}</div>
+      <div style="color:${lead.first_manager_comment_at ? 'var(--green)' : '#8b97b7'};font-size:10px;">${tireMode ? '1st contact' : '1-й контакт'} ${lead.first_manager_comment_at ? `${formatLeadDateOnly(lead.first_manager_comment_at, tireMode)} ${formatLeadTimeOnly(lead.first_manager_comment_at, tireMode)}` : '—'}</div>
       <div style="font-size:10px;color:${lead.first_manager_comment_at ? '#f6d365' : '#a1a1aa'};">${responseLabel}</div>
     </div>
   `;
