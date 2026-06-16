@@ -1811,6 +1811,7 @@ async function renderLeads(el, filters = {}) {
     counts[status] = (counts[status] || 0) + 1;
     return counts;
   }, {});
+  const responseMetrics = buildLeadResponseMetrics(statusCountRows);
   const cityOptions = summary.cities || [];
 
   el.innerHTML = `
@@ -1863,6 +1864,14 @@ async function renderLeads(el, filters = {}) {
           ${tireMode ? tireStatusLabel(status) : statusLabel(status)} <span>${statusCounts[status] || 0}</span>
         </button>`
       ).join('')}
+    </div>
+
+    <div class="qualification-intro fade-in" style="margin-top:12px;padding:12px 14px;">
+      <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
+        <div><strong>${tireMode ? 'Average 1st response' : 'Средний 1-й ответ'}</strong>: ${responseMetrics.avgMinutes === null ? (tireMode ? 'no data yet' : 'пока нет данных') : formatBusinessResponseShort(responseMetrics.avgMinutes, tireMode)}</div>
+        <div style="color:#8b97b7;">${tireMode ? 'Measured leads' : 'Замерено лидов'}: ${responseMetrics.measured}</div>
+        <div style="color:#8b97b7;">${tireMode ? 'Timezone' : 'Часовой пояс'}: Europe/Berlin · 09:00–18:00 · ${tireMode ? 'Mon–Fri' : 'пн–пт'}</div>
+      </div>
     </div>
 
     <div class="search-bar fade-in">
@@ -5562,6 +5571,23 @@ function formatBusinessResponseShort(minutes, tireMode = false) {
   return tireMode
     ? `${hours}h ${restMinutes}m work`
     : `${hours}ч ${restMinutes}м раб.`;
+}
+
+function buildLeadResponseMetrics(rows = []) {
+  const values = (rows || [])
+    .filter(row => row.first_manager_comment_at)
+    .map(row => calculateBusinessMinutesBetween(row.created_at, row.first_manager_comment_at))
+    .filter(value => Number.isFinite(value) && value >= 0);
+
+  if (!values.length) {
+    return { avgMinutes: null, measured: 0 };
+  }
+
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return {
+    avgMinutes: Math.round(total / values.length),
+    measured: values.length,
+  };
 }
 
 function formatBerlinDateOnly(value, tireMode = false) {

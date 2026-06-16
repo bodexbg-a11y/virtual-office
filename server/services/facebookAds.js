@@ -20,6 +20,15 @@ async function ensureFacebookLeadColumns() {
   await db.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS fb_ad_id TEXT`);
   await db.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS fb_ad_name TEXT`);
   await db.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS fb_form_id TEXT`);
+  await db.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS fb_created_time_raw TEXT`);
+}
+
+function normalizeFacebookCreatedTime(createdTime) {
+  if (!createdTime) return null;
+  const date = new Date(createdTime);
+  if (Number.isNaN(date.getTime())) return null;
+  const pad = value => String(value).padStart(2, '0');
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
 }
 
 class FacebookAdsService {
@@ -273,7 +282,12 @@ class FacebookAdsService {
                   fb_campaign_name = COALESCE(fb_campaign_name, ?),
                   fb_ad_id = COALESCE(fb_ad_id, ?),
                   fb_ad_name = COALESCE(fb_ad_name, ?),
-                  fb_form_id = COALESCE(fb_form_id, ?)
+                  fb_form_id = COALESCE(fb_form_id, ?),
+                  created_at = CASE
+                    WHEN fb_created_time_raw IS NULL AND ? IS NOT NULL THEN ?::timestamp
+                    ELSE created_at
+                  END,
+                  fb_created_time_raw = COALESCE(fb_created_time_raw, ?)
                 WHERE id = ?
               `, [
                 mapped.lead_type,
@@ -282,6 +296,9 @@ class FacebookAdsService {
                 mapped.fb_ad_id,
                 mapped.fb_ad_name,
                 mapped.fb_form_id,
+                mapped.created_at,
+                mapped.created_at,
+                mapped.fb_created_time_raw,
                 existing.id,
               ]);
               skippedExisting += 1;
@@ -330,11 +347,12 @@ class FacebookAdsService {
                 fb_ad_id,
                 fb_ad_name,
                 fb_form_id,
+                fb_created_time_raw,
                 google_sheet_name,
                 google_sheet_row,
                 created_at
               )
-              VALUES (?, ?, ?, ?, ?, ?, 'facebook', ?, ?, ?, ?, ?, 'rostislav', ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?::timestamp, NOW()))
+              VALUES (?, ?, ?, ?, ?, ?, 'facebook', ?, ?, ?, ?, ?, 'rostislav', ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?::timestamp, NOW()))
               ON CONFLICT (fb_lead_id) WHERE fb_lead_id IS NOT NULL DO NOTHING
               RETURNING id
             `, [
@@ -355,6 +373,7 @@ class FacebookAdsService {
               mapped.fb_ad_id,
               mapped.fb_ad_name,
               mapped.fb_form_id,
+              mapped.fb_created_time_raw,
               mapped.google_sheet_name || null,
               mapped.google_sheet_row || null,
               mapped.created_at,
@@ -641,7 +660,8 @@ function mapFacebookLead(lead, page, form) {
     fb_ad_id: lead.ad_id || null,
     fb_ad_name: lead.ad_name || null,
     fb_form_id: lead.form_id || form.id || null,
-    created_at: lead.created_time ? lead.created_time.replace('T', ' ').replace(/\+\d{4}$/, '') : null,
+    fb_created_time_raw: lead.created_time || null,
+    created_at: normalizeFacebookCreatedTime(lead.created_time),
     lead_type: tireLead ? 'tire_inquiry' : 'fb_lead',
     status: 'new',
     company_name: company || fullName || `Facebook Lead ${lead.id}`,
