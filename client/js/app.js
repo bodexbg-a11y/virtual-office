@@ -1920,7 +1920,6 @@ async function renderLeads(el, filters = {}) {
               <th>${tireMode ? 'Phone / Email' : 'Телефон / Email'}</th>
               <th>${tireMode ? 'City' : 'Град'}</th>
               <th>${tireMode ? 'Status' : 'Статус'}</th>
-              <th>${tireMode ? 'Priority' : 'Приоритет'}</th>
               <th>${tireMode ? 'Channels' : 'Контакт'}</th>
               <th>${tireMode ? 'Interest' : 'Тип / интерес'}</th>
               <th>Время</th>
@@ -1958,7 +1957,6 @@ async function renderLeads(el, filters = {}) {
                     ><span>📝</span></button>
                   </div>
                 </td>
-                <td style="width:74px;"><span class="badge badge-${l.priority}">${l.priority}</span></td>
                 <td onclick="event.stopPropagation();" style="min-width:96px;width:96px;">${renderLeadTableContactActions(l)}</td>
                 <td style="max-width:150px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};line-height:1.2;word-break:break-word;">${l.area_label || '—'}</td>
                 <td style="width:118px;">${renderLeadTimingCell(l, false)}</td>
@@ -1971,7 +1969,7 @@ async function renderLeads(el, filters = {}) {
                   <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadDetail(${l.id})">👁</button>
                 </td>
               </tr>
-            `).join('') : `<tr><td colspan="11" style="text-align:center;color:#666;padding:30px;">${tireMode ? 'No leads match this filter.' : 'Нет лидов по этому фильтру.'}</td></tr>`}
+            `).join('') : `<tr><td colspan="10" style="text-align:center;color:#666;padding:30px;">${tireMode ? 'No leads match this filter.' : 'Нет лидов по этому фильтру.'}</td></tr>`}
           </tbody>
         </table>
       </div>
