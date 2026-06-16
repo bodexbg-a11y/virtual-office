@@ -5618,9 +5618,9 @@ function renderLeadTimingCell(lead, tireMode = false) {
   return `
     <div style="display:flex;flex-direction:column;gap:3px;min-width:106px;">
       <div style="color:#ddd;font-size:11px;">${formatBerlinDateOnly(lead.created_at, tireMode)}</div>
-      <div style="color:#8b97b7;font-size:10px;">${tireMode ? 'Arrived in CRM' : 'Пришёл в CRM'} ${formatBerlinTimeOnly(lead.created_at, tireMode)}</div>
-      <div style="color:${lead.first_manager_comment_at ? 'var(--green)' : '#8b97b7'};font-size:10px;">${tireMode ? '1st manager contact' : '1-й контакт менеджера'} ${lead.first_manager_comment_at ? formatBerlinTimeOnly(lead.first_manager_comment_at, tireMode) : '—'}</div>
-      <div style="font-size:10px;color:${lead.first_manager_comment_at ? '#f6d365' : '#a1a1aa'};">${tireMode ? 'Work-time gap' : 'Прошло рабочего времени'}: ${responseLabel}</div>
+      <div style="color:#8b97b7;font-size:10px;">${tireMode ? 'CRM' : 'CRM'} ${formatBerlinTimeOnly(lead.created_at, tireMode)}</div>
+      <div style="color:${lead.first_manager_comment_at ? 'var(--green)' : '#8b97b7'};font-size:10px;">${tireMode ? '1st' : '1-й'} ${lead.first_manager_comment_at ? formatBerlinTimeOnly(lead.first_manager_comment_at, tireMode) : '—'}</div>
+      <div style="font-size:10px;color:${lead.first_manager_comment_at ? '#f6d365' : '#a1a1aa'};">${responseLabel}</div>
     </div>
   `;
 }
