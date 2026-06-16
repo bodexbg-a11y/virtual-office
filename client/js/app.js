@@ -5614,7 +5614,9 @@ function renderLeadTimingCell(lead, tireMode = false) {
   const responseMinutes = lead.first_manager_comment_at
     ? calculateBusinessMinutesBetween(lead.created_at, lead.first_manager_comment_at)
     : null;
-  const responseLabel = formatBusinessResponseShort(responseMinutes, tireMode);
+  const responseLabel = responseMinutes === null
+    ? (tireMode ? 'SLA —' : 'SLA —')
+    : `SLA ${formatBusinessResponseShort(responseMinutes, tireMode)}`;
   return `
     <div style="display:flex;flex-direction:column;gap:3px;min-width:106px;">
       <div style="color:#ddd;font-size:11px;">${formatBerlinDateOnly(lead.created_at, tireMode)}</div>
