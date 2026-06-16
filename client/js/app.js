@@ -1868,9 +1868,9 @@ async function renderLeads(el, filters = {}) {
 
     <div class="qualification-intro fade-in" style="margin-top:12px;padding:12px 14px;">
       <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
-        <div><strong>${tireMode ? 'Average 1st response' : 'Средний 1-й ответ'}</strong>: ${responseMetrics.avgMinutes === null ? (tireMode ? 'no data yet' : 'пока нет данных') : formatBusinessResponseShort(responseMetrics.avgMinutes, tireMode)}</div>
-        <div style="color:#8b97b7;">${tireMode ? 'Measured leads' : 'Замерено лидов'}: ${responseMetrics.measured}</div>
-        <div style="color:#8b97b7;">${tireMode ? 'Timezone' : 'Часовой пояс'}: Europe/Berlin · 09:00–18:00 · ${tireMode ? 'Mon–Fri' : 'пн–пт'}</div>
+        <div><strong>Средний 1-й ответ</strong>: ${responseMetrics.avgMinutes === null ? 'пока нет данных' : formatBusinessResponseShort(responseMetrics.avgMinutes, false)}</div>
+        <div style="color:#8b97b7;">Замерено лидов: ${responseMetrics.measured}</div>
+        <div style="color:#8b97b7;">Часовой пояс: Europe/Berlin · 09:00–18:00 · пн–пт</div>
       </div>
     </div>
 
@@ -1923,8 +1923,8 @@ async function renderLeads(el, filters = {}) {
               <th>${tireMode ? 'Priority' : 'Приоритет'}</th>
               <th>${tireMode ? 'Channels' : 'Контакт'}</th>
               <th>${tireMode ? 'Interest' : 'Тип / интерес'}</th>
-              <th>${tireMode ? 'Comment' : 'Комментарий'}</th>
-              <th>${tireMode ? 'Timing' : 'Время'}</th>
+              <th>Время</th>
+              <th>${tireMode ? 'Комментарий' : 'Комментарий'}</th>
               <th></th>
             </tr>
           </thead>
@@ -1961,12 +1961,12 @@ async function renderLeads(el, filters = {}) {
                 <td style="width:74px;"><span class="badge badge-${l.priority}">${l.priority}</span></td>
                 <td onclick="event.stopPropagation();" style="min-width:96px;width:96px;">${renderLeadTableContactActions(l)}</td>
                 <td style="max-width:150px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};line-height:1.2;word-break:break-word;">${l.area_label || '—'}</td>
-                <td style="width:190px;max-width:190px;" onclick="event.stopPropagation();">
+                <td style="width:118px;">${renderLeadTimingCell(l, false)}</td>
+                <td style="width:180px;max-width:180px;" onclick="event.stopPropagation();">
                   <button class="btn btn-sm btn-secondary ${l.has_fresh_comment ? 'fresh-comment-btn' : ''}" title="${escapeAttr(l.latest_comment || (tireMode ? 'Add comment' : 'Добавить комментарий'))}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="width:100%;display:inline-flex;gap:6px;align-items:center;justify-content:flex-start;">
                     <span class="fresh-comment-icon-wrap">💬${l.has_fresh_comment ? '<span class="fresh-comment-dot"></span>' : ''}</span><span style="display:inline-block;max-width:135px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : (tireMode ? 'Add' : 'Добавить')}</span>
                   </button>
                 </td>
-                <td style="width:118px;">${renderLeadTimingCell(l, tireMode)}</td>
                 <td style="display:flex;gap:6px;">
                   <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadDetail(${l.id})">👁</button>
                 </td>
