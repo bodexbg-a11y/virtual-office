@@ -772,6 +772,14 @@ router.get('/', async (req, res) => {
           SELECT created_at
           FROM lead_activities
           WHERE lead_id = leads.id AND action = 'comment'
+            AND performed_by = 'manager'
+          ORDER BY created_at ASC
+          LIMIT 1
+        ) as first_manager_comment_at,
+        (
+          SELECT created_at
+          FROM lead_activities
+          WHERE lead_id = leads.id AND action = 'comment'
           ORDER BY created_at DESC
           LIMIT 1
         ) as latest_comment_at,

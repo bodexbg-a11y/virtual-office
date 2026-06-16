@@ -1915,7 +1915,7 @@ async function renderLeads(el, filters = {}) {
               <th>${tireMode ? 'Channels' : 'Контакт'}</th>
               <th>${tireMode ? 'Interest' : 'Тип / интерес'}</th>
               <th>${tireMode ? 'Comment' : 'Комментарий'}</th>
-              <th>${tireMode ? 'Date' : 'Дата'}</th>
+              <th>${tireMode ? 'Timing' : 'Время'}</th>
               <th></th>
             </tr>
           </thead>
@@ -1957,7 +1957,7 @@ async function renderLeads(el, filters = {}) {
                     <span class="fresh-comment-icon-wrap">💬${l.has_fresh_comment ? '<span class="fresh-comment-dot"></span>' : ''}</span><span style="display:inline-block;max-width:135px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : (tireMode ? 'Add' : 'Добавить')}</span>
                   </button>
                 </td>
-                <td style="color:#666;font-size:11px;width:72px;">${new Date(l.created_at).toLocaleDateString(tireMode ? 'en-GB' : 'bg-BG')}</td>
+                <td style="width:118px;">${renderLeadTimingCell(l, tireMode)}</td>
                 <td style="display:flex;gap:6px;">
                   <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadDetail(${l.id})">👁</button>
                 </td>
@@ -5443,6 +5443,162 @@ function formatFollowupShort(value) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+const BERLIN_TIMEZONE = 'Europe/Berlin';
+const BERLIN_WORK_START_HOUR = 9;
+const BERLIN_WORK_END_HOUR = 18;
+
+function parseApiDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const raw = String(value);
+  const normalized = raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getTimeZoneParts(date, timeZone = BERLIN_TIMEZONE) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    weekday: 'short',
+  }).formatToParts(date);
+  const map = Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+  const weekdayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 0 };
+  return {
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+    hour: Number(map.hour),
+    minute: Number(map.minute),
+    second: Number(map.second),
+    weekday: weekdayMap[map.weekday],
+  };
+}
+
+function getTimeZoneOffsetMs(date, timeZone = BERLIN_TIMEZONE) {
+  const parts = getTimeZoneParts(date, timeZone);
+  if (!parts) return 0;
+  const zonedAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return zonedAsUtc - date.getTime();
+}
+
+function makeDateInTimeZone(year, month, day, hour, minute = 0, second = 0, timeZone = BERLIN_TIMEZONE) {
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const offsetMs = getTimeZoneOffsetMs(utcGuess, timeZone);
+  return new Date(Date.UTC(year, month - 1, day, hour, minute, second) - offsetMs);
+}
+
+function nextBerlinBusinessStart(date) {
+  let cursor = new Date(date.getTime() + 60 * 1000);
+  for (let i = 0; i < 10; i += 1) {
+    const parts = getTimeZoneParts(cursor);
+    if (!parts) return cursor;
+    const atStart = makeDateInTimeZone(parts.year, parts.month, parts.day, BERLIN_WORK_START_HOUR);
+    if (parts.weekday >= 1 && parts.weekday <= 5 && cursor <= atStart) {
+      return atStart;
+    }
+    const nextDayStart = makeDateInTimeZone(parts.year, parts.month, parts.day + 1, BERLIN_WORK_START_HOUR);
+    cursor = nextDayStart;
+  }
+  return cursor;
+}
+
+function calculateBusinessMinutesBetween(startValue, endValue) {
+  const start = parseApiDate(startValue);
+  const end = parseApiDate(endValue);
+  if (!start || !end || end <= start) return 0;
+
+  let cursor = new Date(start);
+  let minutes = 0;
+
+  while (cursor < end) {
+    const parts = getTimeZoneParts(cursor);
+    if (!parts) break;
+
+    if (parts.weekday === 0 || parts.weekday === 6) {
+      cursor = nextBerlinBusinessStart(cursor);
+      continue;
+    }
+
+    const workStart = makeDateInTimeZone(parts.year, parts.month, parts.day, BERLIN_WORK_START_HOUR);
+    const workEnd = makeDateInTimeZone(parts.year, parts.month, parts.day, BERLIN_WORK_END_HOUR);
+
+    if (cursor < workStart) {
+      cursor = workStart;
+      continue;
+    }
+
+    if (cursor >= workEnd) {
+      cursor = nextBerlinBusinessStart(cursor);
+      continue;
+    }
+
+    const segmentEnd = end < workEnd ? end : workEnd;
+    minutes += Math.max(0, Math.round((segmentEnd - cursor) / 60000));
+    cursor = segmentEnd;
+
+    if (cursor >= workEnd) {
+      cursor = nextBerlinBusinessStart(cursor);
+    }
+  }
+
+  return minutes;
+}
+
+function formatBusinessResponseShort(minutes, tireMode = false) {
+  if (minutes === null || minutes === undefined) return tireMode ? 'No contact' : 'Нет контакта';
+  if (minutes < 60) return tireMode ? `${minutes}m work` : `${minutes}м раб.`;
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return tireMode
+    ? `${hours}h ${restMinutes}m work`
+    : `${hours}ч ${restMinutes}м раб.`;
+}
+
+function formatBerlinDateOnly(value, tireMode = false) {
+  const date = parseApiDate(value);
+  if (!date) return '—';
+  return date.toLocaleDateString(tireMode ? 'en-GB' : 'ru-RU', {
+    timeZone: BERLIN_TIMEZONE,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function formatBerlinTimeOnly(value, tireMode = false) {
+  const date = parseApiDate(value);
+  if (!date) return '—';
+  return date.toLocaleTimeString(tireMode ? 'en-GB' : 'ru-RU', {
+    timeZone: BERLIN_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+function renderLeadTimingCell(lead, tireMode = false) {
+  const responseMinutes = lead.first_manager_comment_at
+    ? calculateBusinessMinutesBetween(lead.created_at, lead.first_manager_comment_at)
+    : null;
+  const responseLabel = formatBusinessResponseShort(responseMinutes, tireMode);
+  return `
+    <div style="display:flex;flex-direction:column;gap:3px;min-width:106px;">
+      <div style="color:#ddd;font-size:11px;">${formatBerlinDateOnly(lead.created_at, tireMode)}</div>
+      <div style="color:#8b97b7;font-size:10px;">${tireMode ? 'Lead' : 'Лид'} ${formatBerlinTimeOnly(lead.created_at, tireMode)}</div>
+      <div style="color:${lead.first_manager_comment_at ? 'var(--green)' : '#8b97b7'};font-size:10px;">${tireMode ? '1st contact' : '1-й контакт'} ${lead.first_manager_comment_at ? formatBerlinTimeOnly(lead.first_manager_comment_at, tireMode) : '—'}</div>
+      <div style="font-size:10px;color:${lead.first_manager_comment_at ? '#f6d365' : '#a1a1aa'};">${responseLabel}</div>
+    </div>
+  `;
 }
 
 function downloadTextFile(filename, content, type) {
