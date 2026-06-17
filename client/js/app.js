@@ -16,6 +16,7 @@ let bulkPingRecipients = [];
 let bulkPingQueue = [];
 let bulkPingQueueIndex = 0;
 let bulkPingQueueChannel = '';
+let currentLeadRowsForExport = [];
 const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
 const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
 const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
@@ -1802,6 +1803,7 @@ async function renderLeads(el, filters = {}) {
   gmailAccountsCache = gmailStatus.accounts || [];
   ensureConnectedGmailSender();
   const rows = applyLeadQuickFilters(data.leads || [], filters);
+  currentLeadRowsForExport = rows;
   const tireBadge = document.getElementById('nav-badge-tires');
   if (tireBadge && currentRole === 'admin') tireBadge.textContent = summary.tires || 0;
   const visibleStages = leadStagesForView(filters);
@@ -1829,6 +1831,7 @@ async function renderLeads(el, filters = {}) {
           </select>
         </label>
         ${tireMode ? '' : '<button class="btn btn-secondary" onclick="openBulkPingModal()">Пинг всем</button>'}
+        <button class="btn btn-secondary" onclick="downloadLeadAnalysisCsv()">${tireMode ? '⬇ Analysis CSV' : '⬇ CSV для анализа'}</button>
         <button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 ${tireMode ? 'Sync Facebook leads' : 'Синхронизирай FB лиды'}</button>
         <button class="btn btn-primary" onclick="openNewLeadModal('${tireMode ? 'tires' : 'materials'}')">+ ${tireMode ? 'New lead' : 'Нов лид'}</button>
       </div>
@@ -5689,6 +5692,73 @@ function renderLeadTimingCell(lead, tireMode = false) {
       <div style="font-size:10px;color:${lead.first_manager_comment_at ? '#f6d365' : '#a1a1aa'};">${responseLabel}</div>
     </div>
   `;
+}
+
+function stringifyQualificationData(lead = {}) {
+  const data = leadQualificationData(lead);
+  const entries = Object.entries(data || {}).filter(([, value]) => {
+    if (value === null || value === undefined || value === '') return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') return Object.keys(value).length > 0;
+    return true;
+  });
+  return entries.map(([key, value]) => {
+    if (Array.isArray(value)) return `${key}: ${value.join(' | ')}`;
+    if (value && typeof value === 'object') {
+      return `${key}: ${Object.entries(value).map(([subKey, subValue]) => `${subKey}=${subValue}`).join(' | ')}`;
+    }
+    return `${key}: ${value}`;
+  }).join(' || ');
+}
+
+function downloadLeadAnalysisCsv() {
+  const tireMode = currentLeadFilters.view === 'tires';
+  const rows = currentLeadRowsForExport || [];
+  if (!rows.length) {
+    alert(tireMode ? 'No leads to export.' : 'Нет лидов для выгрузки.');
+    return;
+  }
+
+  const exportRows = rows.map(lead => {
+    const responseMinutes = lead.first_manager_comment_at
+      ? calculateBusinessMinutesBetween(lead.created_at, lead.first_manager_comment_at, getLeadBusinessTimeZone(tireMode))
+      : null;
+    return {
+      lead_id: lead.id,
+      company: lead.company_name || '',
+      contact: lead.contact_name || '',
+      phone: lead.phone || '',
+      email: lead.email || '',
+      city: lead.city || '',
+      source: lead.source || '',
+      crm_segment: lead.crm_segment || '',
+      status: tireMode ? tireStatusLabel(leadDisplayStatus(lead)) : statusLabel(leadDisplayStatus(lead)),
+      status_code: leadDisplayStatus(lead),
+      interest: lead.interest_products || '',
+      area_label: lead.area_label || '',
+      lead_score: lead.lead_score || '',
+      lead_score_label: lead.lead_score_label || '',
+      created_at_crm: `${formatLeadDateOnly(lead.created_at, tireMode)} ${formatLeadTimeOnly(lead.created_at, tireMode)}`,
+      first_contact_at: lead.first_manager_comment_at ? `${formatLeadDateOnly(lead.first_manager_comment_at, tireMode)} ${formatLeadTimeOnly(lead.first_manager_comment_at, tireMode)}` : '',
+      sla: responseMinutes === null ? '' : formatBusinessResponseShort(responseMinutes, tireMode),
+      latest_comment: lead.latest_comment || '',
+      latest_comment_at: lead.latest_comment_at || '',
+      form_answers: lead.notes || '',
+      qualification_data: stringifyQualificationData(lead),
+      fb_campaign: lead.fb_campaign_name || '',
+      created_raw: lead.fb_created_time_raw || '',
+    };
+  });
+
+  const keys = [...new Set(exportRows.flatMap(row => Object.keys(row)))];
+  const csv = [
+    keys.map(csvCell).join(','),
+    ...exportRows.map(row => keys.map(key => csvCell(row[key])).join(',')),
+  ].join('\n');
+
+  const scope = tireMode ? 'tires' : (currentLeadFilters.view || 'leads');
+  const dateStamp = new Date().toISOString().slice(0, 10);
+  downloadTextFile(`lead-analysis-${scope}-${dateStamp}.csv`, csv, 'text/csv;charset=utf-8');
 }
 
 function downloadTextFile(filename, content, type) {
