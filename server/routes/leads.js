@@ -796,7 +796,28 @@ router.get('/', async (req, res) => {
           WHERE lead_id = leads.id AND action = 'ping_followup'
           ORDER BY created_at DESC
           LIMIT 1
-        ) as latest_ping_at
+        ) as latest_ping_at,
+        (
+          SELECT created_at
+          FROM lead_activities
+          WHERE lead_id = leads.id AND action = 'ping_followup' AND new_value = 'whatsapp_fu1'
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) as tire_fu1_sent_at,
+        (
+          SELECT created_at
+          FROM lead_activities
+          WHERE lead_id = leads.id AND action = 'ping_followup' AND new_value = 'whatsapp_fu2'
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) as tire_fu2_sent_at,
+        (
+          SELECT created_at
+          FROM lead_activities
+          WHERE lead_id = leads.id AND action = 'ping_followup' AND new_value = 'whatsapp_fu3'
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) as tire_fu3_sent_at
       FROM leads ${whereClause}
       ORDER BY ${orderBy}
       LIMIT ? OFFSET ?

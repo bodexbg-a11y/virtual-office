@@ -3925,13 +3925,16 @@ function renderLeadTableContactActions(lead = {}) {
     && String(lead.email || '').trim();
   const showTireFollowups = currentLeadFilters.view === 'tires' && currentLeadFilters.status === 'offer_sent' && leadDisplayStatus(lead) === 'offer_sent';
 
+  if (showTireFollowups) {
+    return renderTireOfferFollowupButtons(lead);
+  }
+
   return `
     <div class="lead-contact-actions">
       <button class="lead-contact-btn ${gmailEnabled ? '' : 'disabled'}" title="Отправить с ${escapeAttr(selectedGmailSender().email)}" onclick="event.stopPropagation();sendLeadEmail(${lead.id}, 'intro')" ${gmailEnabled ? '' : 'disabled'}>✉️</button>
       <a class="lead-contact-btn ${whatsapp ? '' : 'disabled'}" title="WhatsApp" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬</a>
       <a class="lead-contact-btn ${viber ? '' : 'disabled'}" title="Viber" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲</a>
     </div>
-    ${showTireFollowups ? renderTireOfferFollowupButtons(lead) : ''}
   `;
 }
 
@@ -4016,10 +4019,11 @@ function renderTireOfferFollowupButtons(lead = {}) {
   const phone = String(lead.phone || '').trim();
   const steps = [1, 2, 3];
   return `
-    <div class="lead-followup-steps" style="display:flex;gap:4px;margin-top:6px;">
+    <div class="lead-followup-steps" style="display:flex;gap:4px;align-items:center;">
       ${steps.map(step => {
         const url = whatsappUrl(phone, buildTireOfferFollowupMessage(lead, step));
-        const active = step === 1;
+        const sentAt = lead[`tire_fu${step}_sent_at`];
+        const active = Boolean(sentAt);
         return `
           <button
             class="lead-followup-step-btn ${active ? 'is-active' : ''} ${url ? '' : 'disabled'}"
