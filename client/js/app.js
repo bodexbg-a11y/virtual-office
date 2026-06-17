@@ -3923,6 +3923,7 @@ function renderLeadTableContactActions(lead = {}) {
   const gmailEnabled = currentRole === 'admin'
     && gmailSenderConnected(selectedGmailSender().email)
     && String(lead.email || '').trim();
+  const showTireFollowups = currentLeadFilters.view === 'tires' && currentLeadFilters.status === 'offer_sent' && leadDisplayStatus(lead) === 'offer_sent';
 
   return `
     <div class="lead-contact-actions">
@@ -3930,6 +3931,7 @@ function renderLeadTableContactActions(lead = {}) {
       <a class="lead-contact-btn ${whatsapp ? '' : 'disabled'}" title="WhatsApp" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬</a>
       <a class="lead-contact-btn ${viber ? '' : 'disabled'}" title="Viber" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲</a>
     </div>
+    ${showTireFollowups ? renderTireOfferFollowupButtons(lead) : ''}
   `;
 }
 
@@ -3978,6 +3980,58 @@ function buildLeadTemplateMessage(lead = {}, type = 'intro') {
     'Ако имате въпроси, можете да ми отговорите директно на този имейл.',
     ...vladislavSignatureLines(),
   ].filter(line => line !== null && line !== undefined).join('\n');
+}
+
+function germanLeadSalutation(lead = {}) {
+  const contact = String(lead.contact_name || '').trim();
+  if (!contact) return 'Guten Tag,';
+  return `Guten Tag Herr ${contact},`;
+}
+
+function buildTireOfferFollowupMessage(lead = {}, step = 1) {
+  const messages = {
+    1: [
+      germanLeadSalutation(lead),
+      '',
+      'ich habe Ihnen soeben unser Angebot per E-Mail gesendet.',
+      'Bei Fragen stehe ich Ihnen gerne zur Verfügung.',
+      'Mit freundlichen Grüßen',
+    ],
+    2: [
+      germanLeadSalutation(lead),
+      '',
+      'ich wollte kurz nachfragen, ob Sie unser Angebot erhalten haben.',
+      'Passt die angebotene Variante grundsätzlich für Sie, oder sollen wir etwas anpassen?',
+    ],
+    3: [
+      'Gibt es bereits eine Rückmeldung zu unserem Angebot?',
+      'Falls Preis, Menge oder Marke angepasst werden sollen, können wir das gerne prüfen.',
+    ],
+  };
+
+  return (messages[step] || messages[1]).join('\n');
+}
+
+function renderTireOfferFollowupButtons(lead = {}) {
+  const phone = String(lead.phone || '').trim();
+  const steps = [1, 2, 3];
+  return `
+    <div class="lead-followup-steps" style="display:flex;gap:4px;margin-top:6px;">
+      ${steps.map(step => {
+        const url = whatsappUrl(phone, buildTireOfferFollowupMessage(lead, step));
+        const active = step === 1;
+        return `
+          <button
+            class="lead-followup-step-btn ${active ? 'is-active' : ''} ${url ? '' : 'disabled'}"
+            title="FU${step}"
+            onclick="event.stopPropagation();${url ? `markLeadPingAndOpen(${lead.id}, 'whatsapp_fu${step}', '${encodeURIComponent(url)}')` : 'return false;'}"
+            ${url ? '' : 'disabled'}
+            style="width:24px;height:24px;border-radius:7px;border:1px solid ${active ? 'rgba(34,197,94,0.7)' : 'rgba(99,102,241,0.24)'};background:${active ? 'rgba(34,197,94,0.18)' : 'rgba(99,102,241,0.08)'};color:${active ? '#86efac' : '#cbd5e1'};font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;cursor:${url ? 'pointer' : 'not-allowed'};"
+          >${step}</button>
+        `;
+      }).join('')}
+    </div>
+  `;
 }
 
 function bulkPingTemplateForStatus(status = 'needs_discovery') {
