@@ -1787,6 +1787,7 @@ async function pullDealsSheets() {
 async function renderLeads(el, filters = {}) {
   if (!Object.keys(filters).length) filters = { view: 'objects' };
   const tireMode = filters.view === 'tires';
+  const dailyBriefScope = tireMode ? 'tires' : 'materials';
   currentLeadFilters = filters;
   const params = new URLSearchParams(filters);
   const statusCountFilters = { ...filters };
@@ -1794,11 +1795,16 @@ async function renderLeads(el, filters = {}) {
   statusCountFilters.limit = '5000';
   statusCountFilters.offset = '0';
   const statusCountParams = new URLSearchParams(statusCountFilters);
-  const [data, statusCountData, summary, gmailStatus] = await Promise.all([
+  const [data, statusCountData, summary, gmailStatus, dailyBrief] = await Promise.all([
     api(`/api/leads?${params}`),
     api(`/api/leads?${statusCountParams}`),
     api('/api/leads/summary').catch(() => ({ total: 0, statuses: [], sources: [] })),
     currentRole === 'admin' ? api('/api/gmail/status').catch(() => ({ accounts: [] })) : Promise.resolve({ accounts: [] }),
+    api(`/api/dashboard/daily-brief?scope=${encodeURIComponent(dailyBriefScope)}`).catch(() => ({
+      scope: dailyBriefScope,
+      content: '',
+      updated_at: null,
+    })),
   ]);
   gmailAccountsCache = gmailStatus.accounts || [];
   ensureConnectedGmailSender();
@@ -1838,6 +1844,23 @@ async function renderLeads(el, filters = {}) {
     </div>
 
     <div id="leads-sync-result" class="sync-result"></div>
+
+    <div class="qualification-intro fade-in" style="margin-top:0;display:flex;justify-content:space-between;align-items:flex-start;gap:14px;">
+      <div style="min-width:0;">
+        <div style="font-weight:700;color:#f3f4f6;">Задача от админа на сегодня</div>
+        <div style="font-size:13px;line-height:1.45;color:${dailyBrief.content ? '#d6dcf5' : '#8b97b7'};margin-top:4px;word-break:break-word;">
+          ${escapeHtml(dailyBrief.content || 'Пока задача не указана.')}
+        </div>
+      </div>
+      ${currentRole === 'admin' ? `
+        <button
+          class="btn btn-secondary"
+          onclick="openDailyBriefModal('${dailyBriefScope}')"
+          title="Редактировать задачу дня"
+          style="padding:10px 12px;min-width:44px;flex:0 0 auto;"
+        >📝</button>
+      ` : ''}
+    </div>
 
     ${tireMode ? `
     <div class="qualification-intro fade-in" style="margin-top:0;">
@@ -3545,6 +3568,50 @@ function openModal(title, bodyHtml) {
 
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('show');
+}
+
+async function openDailyBriefModal(scope = 'materials') {
+  if (currentRole !== 'admin') return;
+  const brief = await api(`/api/dashboard/daily-brief?scope=${encodeURIComponent(scope)}`).catch(() => ({
+    scope,
+    content: '',
+  }));
+  openModal('Задача от админа на сегодня', `
+    <div class="form-group">
+      <label>Что менеджер должен сделать сегодня</label>
+      <textarea id="daily-brief-content" rows="7" placeholder="Например: Прозвонить клиентов со статусом КП отправлено, пропинговать 5 лидов, уточнить детали по новым заявкам...">${escapeHtml(brief.content || '')}</textarea>
+    </div>
+    <div id="daily-brief-result" class="sync-result"></div>
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="saveDailyBrief('${escapeAttr(scope)}')">Сохранить</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('daily-brief-content')?.focus(), 50);
+}
+
+async function saveDailyBrief(scope = 'materials') {
+  const result = document.getElementById('daily-brief-result');
+  result.className = 'sync-result show';
+  result.textContent = 'Сохранение...';
+  try {
+    await api('/api/dashboard/daily-brief', {
+      method: 'PUT',
+      body: {
+        scope,
+        content: document.getElementById('daily-brief-content')?.value || '',
+      },
+    });
+    result.className = 'sync-result show ok';
+    result.textContent = '✅ Задача обновлена.';
+    setTimeout(() => {
+      closeModal();
+      renderLeads(document.getElementById('main'), currentLeadFilters);
+    }, 350);
+  } catch (err) {
+    result.className = 'sync-result show err';
+    result.textContent = `❌ ${err.message}`;
+  }
 }
 
 function openNewLeadModal(section = 'materials') {

@@ -415,6 +415,19 @@ async function ensureTaskTableOnly() {
   `);
 }
 
+async function ensureDailyBriefTable() {
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS daily_admin_briefs (
+      scope TEXT NOT NULL,
+      brief_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      content TEXT,
+      updated_by TEXT DEFAULT 'admin',
+      updated_at TIMESTAMP DEFAULT NOW(),
+      PRIMARY KEY (scope, brief_date)
+    );
+  `);
+}
+
 function tasksFor(id, data) {
   const c = data.clients || {};
   const l = data.leads || {};
@@ -1114,6 +1127,52 @@ router.post('/workers/:id/tasks', auth.requireAdmin, async (req, res) => {
 
     const task = await db.get('SELECT * FROM worker_tasks WHERE id = ?', [info.lastInsertRowid]);
     res.status(201).json(task);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/daily-brief', async (req, res) => {
+  try {
+    await ensureDailyBriefTable();
+    const scope = String(req.query.scope || 'materials');
+    const row = await db.get(`
+      SELECT scope, brief_date, content, updated_by, updated_at
+      FROM daily_admin_briefs
+      WHERE scope = ? AND brief_date = CURRENT_DATE
+    `, [scope]);
+    res.json(row || {
+      scope,
+      brief_date: null,
+      content: '',
+      updated_by: null,
+      updated_at: null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/daily-brief', auth.requireAdmin, async (req, res) => {
+  try {
+    await ensureDailyBriefTable();
+    const scope = String(req.body?.scope || 'materials');
+    const content = String(req.body?.content || '').trim();
+    await db.run(`
+      INSERT INTO daily_admin_briefs (scope, brief_date, content, updated_by, updated_at)
+      VALUES (?, CURRENT_DATE, ?, 'admin', NOW())
+      ON CONFLICT (scope, brief_date) DO UPDATE SET
+        content = EXCLUDED.content,
+        updated_by = 'admin',
+        updated_at = NOW()
+    `, [scope, content]);
+
+    const row = await db.get(`
+      SELECT scope, brief_date, content, updated_by, updated_at
+      FROM daily_admin_briefs
+      WHERE scope = ? AND brief_date = CURRENT_DATE
+    `, [scope]);
+    res.json(row);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
