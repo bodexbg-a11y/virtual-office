@@ -1862,12 +1862,7 @@ async function renderLeads(el, filters = {}) {
       ` : ''}
     </div>
 
-    ${tireMode ? `
-    <div class="qualification-intro fade-in" style="margin-top:0;">
-      Facebook leads from active campaigns containing Tiers, Tires or Tyres.
-      Products: Michelin, Dunlop, Goodyear tires and wheels.
-    </div>
-    ` : `<div class="lead-tabs fade-in">
+    ${tireMode ? `` : `<div class="lead-tabs fade-in">
       ${leadTab('Объекты', { view: 'objects' }, summary.objects ?? (data.leads || []).filter(lead => !isDistributorLead(lead) && !isServicesLead(lead)).length, filters.view === 'objects')}
       ${leadTab('Дистрибьюторы', { view: 'distributors' }, summary.distributors ?? (data.leads || []).filter(isDistributorLead).length, filters.view === 'distributors')}
       ${leadTab('Все лиды', { view: 'all' }, summary.total || 0, filters.view === 'all')}
