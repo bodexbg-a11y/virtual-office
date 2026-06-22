@@ -2,9 +2,29 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const auth = require('../services/auth');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 
 const PROJECT_STATUSES = ['new', 'discovery', 'estimate', 'offer_preparation', 'offer_sent', 'waiting_client', 'approved', 'archived'];
 router.use(auth.requireAdmin);
+const PROJECT_UPLOAD_DIR = path.join(__dirname, '..', '..', 'client', 'uploads', 'projects');
+
+if (!fs.existsSync(PROJECT_UPLOAD_DIR)) {
+  fs.mkdirSync(PROJECT_UPLOAD_DIR, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, PROJECT_UPLOAD_DIR),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || '').slice(0, 10) || '.jpg';
+    const safeBase = path.basename(file.originalname || 'photo', path.extname(file.originalname || ''))
+      .replace(/[^a-zA-Z0-9_-]+/g, '-')
+      .slice(0, 40) || 'photo';
+    cb(null, `${Date.now()}-${safeBase}${ext}`);
+  },
+});
+const upload = multer({ storage });
 
 async function ensureProjectsTable() {
   await db.exec(`
@@ -19,10 +39,13 @@ async function ensureProjectsTable() {
       city TEXT,
       site_address TEXT,
       object_type TEXT,
+      approximate_area_m2 TEXT,
       problem_description TEXT,
       repair_scope TEXT,
+      client_answers TEXT,
       materials_needed TEXT,
       photos_info TEXT,
+      project_photos JSONB DEFAULT '[]'::jsonb,
       estimated_value NUMERIC(12,2) DEFAULT 0,
       currency TEXT DEFAULT 'EUR',
       status TEXT DEFAULT 'new',
@@ -36,6 +59,10 @@ async function ensureProjectsTable() {
     CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
     CREATE INDEX IF NOT EXISTS idx_projects_city ON projects(city);
     CREATE INDEX IF NOT EXISTS idx_projects_created_at ON projects(created_at);
+
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS approximate_area_m2 TEXT;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_answers TEXT;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_photos JSONB DEFAULT '[]'::jsonb;
   `);
 }
 
@@ -55,8 +82,10 @@ function payloadFromBody(body = {}) {
     city: String(body.city || '').trim(),
     site_address: String(body.site_address || '').trim(),
     object_type: String(body.object_type || '').trim(),
+    approximate_area_m2: String(body.approximate_area_m2 || '').trim(),
     problem_description: String(body.problem_description || '').trim(),
     repair_scope: String(body.repair_scope || '').trim(),
+    client_answers: String(body.client_answers || '').trim(),
     materials_needed: String(body.materials_needed || '').trim(),
     photos_info: String(body.photos_info || '').trim(),
     estimated_value: 0,
@@ -166,10 +195,10 @@ router.post('/', async (req, res) => {
     const { rows } = await db.query(`
       INSERT INTO projects (
         title, lead_id, client_name, contact_name, phone, email, city, site_address,
-        object_type, problem_description, repair_scope, materials_needed, photos_info,
+        object_type, approximate_area_m2, problem_description, repair_scope, client_answers, materials_needed, photos_info,
         estimated_value, currency, status, next_step, notes, created_by
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *
     `, [
       payload.title,
@@ -181,8 +210,10 @@ router.post('/', async (req, res) => {
       payload.city,
       payload.site_address,
       payload.object_type,
+      payload.approximate_area_m2,
       payload.problem_description,
       payload.repair_scope,
+      payload.client_answers,
       payload.materials_needed,
       payload.photos_info,
       payload.estimated_value,
@@ -219,8 +250,10 @@ router.put('/:id', async (req, res) => {
           city = ?,
           site_address = ?,
           object_type = ?,
+          approximate_area_m2 = ?,
           problem_description = ?,
           repair_scope = ?,
+          client_answers = ?,
           materials_needed = ?,
           photos_info = ?,
           estimated_value = ?,
@@ -241,8 +274,10 @@ router.put('/:id', async (req, res) => {
       payload.city,
       payload.site_address,
       payload.object_type,
+      payload.approximate_area_m2,
       payload.problem_description,
       payload.repair_scope,
+      payload.client_answers,
       payload.materials_needed,
       payload.photos_info,
       payload.estimated_value,
@@ -254,6 +289,34 @@ router.put('/:id', async (req, res) => {
     ]);
 
     res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:id/photos', upload.array('photos', 12), async (req, res) => {
+  try {
+    await ensureProjectsTable();
+    const project = await db.get('SELECT id, project_photos FROM projects WHERE id = ?', [req.params.id]);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const existing = Array.isArray(project.project_photos) ? project.project_photos : [];
+    const uploaded = (req.files || []).map(file => ({
+      url: `/uploads/projects/${file.filename}`,
+      name: file.originalname,
+      uploaded_at: new Date().toISOString(),
+    }));
+    const merged = [...existing, ...uploaded];
+
+    const { rows } = await db.query(`
+      UPDATE projects
+      SET project_photos = ?::jsonb,
+          updated_at = NOW()
+      WHERE id = ?
+      RETURNING project_photos
+    `, [JSON.stringify(merged), req.params.id]);
+
+    res.json({ success: true, photos: rows[0]?.project_photos || merged });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

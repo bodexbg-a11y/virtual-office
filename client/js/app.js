@@ -5045,7 +5045,7 @@ async function renderProjects(el) {
                 </td>
                 <td>
                   <div>${escapeHtml(r.object_type || '—')}</div>
-                  <div style="font-size:11px;color:#777;">${escapeHtml(r.city || '—')}</div>
+                  <div style="font-size:11px;color:#777;">${escapeHtml(r.city || '—')}${r.approximate_area_m2 ? ` · ~${escapeHtml(r.approximate_area_m2)} м²` : ''}</div>
                 </td>
                 <td style="max-width:220px;">
                   <div style="color:#cbd5e1;">${escapeHtml((r.problem_description || '—').slice(0, 140))}${(r.problem_description || '').length > 140 ? '…' : ''}</div>
@@ -5067,6 +5067,7 @@ async function renderProjects(el) {
 
 function openProjectModal(leads = [], record = null) {
   const r = record || {};
+  const photos = Array.isArray(r.project_photos) ? r.project_photos : [];
   openModal(record ? 'Редактировать проект' : 'Новый проект', `
     <div class="form-grid">
       <div class="form-group"><label>Название проекта</label><input id="pr-title" value="${escapeHtml(r.title || '')}" placeholder="Например: Паркинг Mall Sofia / Инъектирование трещин"></div>
@@ -5083,6 +5084,7 @@ function openProjectModal(leads = [], record = null) {
       <div class="form-group"><label>Город</label><input id="pr-city" value="${escapeHtml(r.city || '')}"></div>
       <div class="form-group"><label>Адрес объекта</label><input id="pr-site-address" value="${escapeHtml(r.site_address || '')}" placeholder="Адрес, локация, ориентир"></div>
       <div class="form-group"><label>Тип объекта</label><input id="pr-object-type" value="${escapeHtml(r.object_type || '')}" placeholder="Подземный паркинг, подвал, цех, фасад..."></div>
+      <div class="form-group"><label>Примерно м²</label><input id="pr-approximate-area" value="${escapeHtml(r.approximate_area_m2 || '')}" placeholder="Например: 120-150"></div>
       <div class="form-group"><label>Статус проекта</label>
         <select id="pr-status">
           ${['new','discovery','estimate','offer_preparation','offer_sent','waiting_client','approved','archived'].map(s => `<option value="${s}" ${String(r.status || 'new') === s ? 'selected' : ''}>${projectStatusLabel(s)}</option>`).join('')}
@@ -5091,8 +5093,24 @@ function openProjectModal(leads = [], record = null) {
       <div class="form-group"><label>Валюта</label><input value="EUR" disabled></div>
       <div class="form-group full"><label>Проблема / дефект</label><textarea id="pr-problem-description" rows="3" placeholder="Течове, пукнатини, влага, вода през шевове, нужда от инжектиране...">${escapeHtml(r.problem_description || '')}</textarea></div>
       <div class="form-group full"><label>Объём работ / оценка ремонта</label><textarea id="pr-repair-scope" rows="3" placeholder="м², линейные метры, количество проходов, ориентировочный объём...">${escapeHtml(r.repair_scope || '')}</textarea></div>
+      <div class="form-group full"><label>Ответы на вопросы клиента</label><textarea id="pr-client-answers" rows="4" placeholder="Сюда можно заносить ответы клиента: тип объекта, сроки, кто выполняет работы, что именно болит, какие фото прислал...">${escapeHtml(r.client_answers || '')}</textarea></div>
       <div class="form-group full"><label>Материалы / решение</label><textarea id="pr-materials-needed" rows="3" placeholder="Какие материалы предполагаются: смолы, пакеры, гидроизоляция, ремонтные составы...">${escapeHtml(r.materials_needed || '')}</textarea></div>
       <div class="form-group full"><label>Фото / ссылки / файлы</label><textarea id="pr-photos-info" rows="2" placeholder="Ссылки на фото, Google Drive, короткое описание фото объекта...">${escapeHtml(r.photos_info || '')}</textarea></div>
+      <div class="form-group full">
+        <label>Загрузить фотографии</label>
+        <input id="pr-photo-files" type="file" accept="image/*" multiple>
+      </div>
+      <div class="form-group full">
+        <label>Галерея проекта</label>
+        <div id="pr-gallery" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;">
+          ${photos.length ? photos.map(photo => `
+            <a href="${escapeAttr(photo.url)}" target="_blank" style="display:block;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:rgba(255,255,255,0.03);text-decoration:none;">
+              <img src="${escapeAttr(photo.url)}" alt="${escapeAttr(photo.name || 'photo')}" style="width:100%;height:90px;object-fit:cover;display:block;">
+              <div style="padding:6px 8px;font-size:11px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(photo.name || 'photo')}</div>
+            </a>
+          `).join('') : '<div style="font-size:12px;color:#777;">Пока фото не загружены.</div>'}
+        </div>
+      </div>
       <div class="form-group full"><label>Следующий шаг</label><textarea id="pr-next-step" rows="2" placeholder="Что нужно сделать дальше: выезд, расчёт, подбор решения, отправить КП...">${escapeHtml(r.next_step || '')}</textarea></div>
       <div class="form-group full"><label>Внутренние заметки</label><textarea id="pr-notes" rows="3" placeholder="Дополнительные данные по проекту, проблемам, комментарии менеджера...">${escapeHtml(r.notes || '')}</textarea></div>
     </div>
@@ -5131,8 +5149,10 @@ async function saveProjectRecord(id = null) {
     city: document.getElementById('pr-city')?.value || '',
     site_address: document.getElementById('pr-site-address')?.value || '',
     object_type: document.getElementById('pr-object-type')?.value || '',
+    approximate_area_m2: document.getElementById('pr-approximate-area')?.value || '',
     problem_description: document.getElementById('pr-problem-description')?.value || '',
     repair_scope: document.getElementById('pr-repair-scope')?.value || '',
+    client_answers: document.getElementById('pr-client-answers')?.value || '',
     materials_needed: document.getElementById('pr-materials-needed')?.value || '',
     photos_info: document.getElementById('pr-photos-info')?.value || '',
     estimated_value: 0,
@@ -5147,13 +5167,30 @@ async function saveProjectRecord(id = null) {
   try {
     const path = id ? `/api/projects/${id}` : '/api/projects';
     const method = id ? 'PUT' : 'POST';
-    await api(path, { method, body: payload });
+    const project = await api(path, { method, body: payload });
+    await uploadProjectPhotos(project.id);
     closeModal();
     navigate('projects');
   } catch (err) {
     result.className = 'sync-result show err';
     result.textContent = `❌ ${err.message}`;
   }
+}
+
+async function uploadProjectPhotos(projectId) {
+  const input = document.getElementById('pr-photo-files');
+  const files = input?.files ? Array.from(input.files) : [];
+  if (!files.length) return;
+  const formData = new FormData();
+  files.forEach(file => formData.append('photos', file));
+  const res = await fetch(`${API}/api/projects/${projectId}/photos`, {
+    method: 'POST',
+    headers: adminToken ? { 'X-Admin-Token': adminToken } : {},
+    body: formData,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
 }
 
 async function renderLogistics(el) {
