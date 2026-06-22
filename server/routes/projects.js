@@ -7,7 +7,6 @@ const fs = require('fs');
 const multer = require('multer');
 
 const PROJECT_STATUSES = ['new', 'discovery', 'estimate', 'offer_preparation', 'offer_sent', 'waiting_client', 'approved', 'archived'];
-router.use(auth.requireAdmin);
 const PROJECT_UPLOAD_DIR = path.join(__dirname, '..', '..', 'client', 'uploads', 'projects');
 
 if (!fs.existsSync(PROJECT_UPLOAD_DIR)) {
@@ -94,6 +93,186 @@ function payloadFromBody(body = {}) {
     next_step: String(body.next_step || '').trim(),
     notes: String(body.notes || '').trim(),
   };
+}
+
+function normalizePhone(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function mapProjectStatusToLeadStatus(status = '') {
+  const map = {
+    new: 'new',
+    discovery: 'needs_discovery',
+    estimate: 'offer_preparation',
+    offer_preparation: 'offer_preparation',
+    offer_sent: 'offer_sent',
+    waiting_client: 'negotiation',
+    approved: 'won',
+    archived: 'lost',
+  };
+  return map[String(status || '').trim()] || 'needs_discovery';
+}
+
+function buildProjectLeadNotes(payload = {}) {
+  const lines = [
+    payload.site_address ? `Проект: ${payload.site_address}` : '',
+    payload.object_type ? `Тип объекта: ${payload.object_type}` : '',
+    payload.approximate_area_m2 ? `Примерно м²: ${payload.approximate_area_m2}` : '',
+    payload.problem_description ? `Проблема: ${payload.problem_description}` : '',
+    payload.repair_scope ? `Объём работ: ${payload.repair_scope}` : '',
+    payload.client_answers ? `Ответы клиента: ${payload.client_answers}` : '',
+    payload.materials_needed ? `Материалы: ${payload.materials_needed}` : '',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+async function ensureLinkedLead(payload = {}, currentLeadId = null, performedBy = 'manager') {
+  const normalizedEmail = normalizeEmail(payload.email);
+  const normalizedPhone = normalizePhone(payload.phone);
+  const companyName = String(payload.client_name || '').trim();
+  const contactName = String(payload.contact_name || '').trim();
+  const leadStatus = mapProjectStatusToLeadStatus(payload.status);
+  const leadNotes = buildProjectLeadNotes(payload);
+
+  if (!companyName && !contactName && !normalizedEmail && !normalizedPhone) {
+    return currentLeadId || null;
+  }
+
+  if (currentLeadId) {
+    await db.query(`
+      UPDATE leads
+      SET company_name = COALESCE(NULLIF(?, ''), company_name),
+          contact_name = COALESCE(NULLIF(?, ''), contact_name),
+          email = COALESCE(NULLIF(?, ''), email),
+          phone = COALESCE(NULLIF(?, ''), phone),
+          city = COALESCE(NULLIF(?, ''), city),
+          lead_type = COALESCE(NULLIF(?, ''), lead_type),
+          interest_products = COALESCE(NULLIF(?, ''), interest_products),
+          notes = COALESCE(NULLIF(?, ''), notes),
+          status = COALESCE(NULLIF(?, ''), status),
+          crm_segment = 'objects',
+          updated_at = NOW()
+      WHERE id = ?
+    `, [
+      companyName,
+      contactName,
+      normalizedEmail,
+      payload.phone || '',
+      payload.city || '',
+      payload.object_type || 'project_object',
+      payload.materials_needed || payload.object_type || '',
+      leadNotes,
+      leadStatus,
+      currentLeadId,
+    ]);
+    return currentLeadId;
+  }
+
+  const params = [];
+  const where = [];
+  if (normalizedEmail) {
+    where.push('lower(coalesce(email, \'\')) = ?');
+    params.push(normalizedEmail);
+  }
+  if (normalizedPhone) {
+    where.push('regexp_replace(coalesce(phone, \'\'), \'\\D\', \'\', \'g\') = ?');
+    params.push(normalizedPhone);
+  }
+  if (companyName) {
+    where.push('lower(coalesce(company_name, \'\')) = ?');
+    params.push(companyName.toLowerCase());
+  }
+
+  let existing = null;
+  if (where.length) {
+    existing = await db.get(`
+      SELECT id FROM leads
+      WHERE ${where.join(' OR ')}
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC
+      LIMIT 1
+    `, params);
+  }
+
+  if (existing?.id) {
+    await db.query(`
+      UPDATE leads
+      SET company_name = COALESCE(NULLIF(?, ''), company_name),
+          contact_name = COALESCE(NULLIF(?, ''), contact_name),
+          email = COALESCE(NULLIF(?, ''), email),
+          phone = COALESCE(NULLIF(?, ''), phone),
+          city = COALESCE(NULLIF(?, ''), city),
+          lead_type = COALESCE(NULLIF(?, ''), lead_type),
+          interest_products = COALESCE(NULLIF(?, ''), interest_products),
+          notes = COALESCE(NULLIF(?, ''), notes),
+          crm_segment = 'objects',
+          updated_at = NOW()
+      WHERE id = ?
+    `, [
+      companyName,
+      contactName,
+      normalizedEmail,
+      payload.phone || '',
+      payload.city || '',
+      payload.object_type || 'project_object',
+      payload.materials_needed || payload.object_type || '',
+      leadNotes,
+      existing.id,
+    ]);
+    return existing.id;
+  }
+
+  const { rows } = await db.query(`
+    INSERT INTO leads (
+      company_name,
+      contact_name,
+      email,
+      phone,
+      city,
+      lead_type,
+      source,
+      status,
+      priority,
+      interest_products,
+      notes,
+      assigned_to,
+      crm_segment
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    RETURNING id
+  `, [
+    companyName || contactName || payload.title || 'Проектный клиент',
+    contactName,
+    normalizedEmail,
+    payload.phone || '',
+    payload.city || '',
+    payload.object_type || 'project_object',
+    'project',
+    leadStatus,
+    'medium',
+    payload.materials_needed || payload.object_type || 'Материалы под объект',
+    leadNotes,
+    performedBy,
+    'objects',
+  ]);
+
+  const leadId = rows[0]?.id || null;
+  if (leadId) {
+    await db.query(`
+      INSERT INTO lead_activities (lead_id, action, description, new_value, performed_by)
+      VALUES (?, ?, ?, ?, ?)
+    `, [
+      leadId,
+      'created',
+      'Клиент автоматически создан из проекта',
+      leadStatus,
+      performedBy,
+    ]);
+  }
+  return leadId;
 }
 
 router.get('/meta', async (req, res) => {
@@ -191,6 +370,8 @@ router.post('/', async (req, res) => {
     await ensureProjectsTable();
     const payload = payloadFromBody(req.body);
     if (!payload.title) return res.status(400).json({ error: 'Project title is required' });
+    const performedBy = auth.getRoleFromRequest(req) === 'admin' ? 'admin' : 'manager';
+    const linkedLeadId = await ensureLinkedLead(payload, payload.lead_id, performedBy);
 
     const { rows } = await db.query(`
       INSERT INTO projects (
@@ -202,7 +383,7 @@ router.post('/', async (req, res) => {
       RETURNING *
     `, [
       payload.title,
-      payload.lead_id,
+      linkedLeadId,
       payload.client_name,
       payload.contact_name,
       payload.phone,
@@ -221,7 +402,7 @@ router.post('/', async (req, res) => {
       payload.status,
       payload.next_step,
       payload.notes,
-      'admin',
+      performedBy,
     ]);
 
     res.status(201).json(rows[0]);
@@ -238,6 +419,8 @@ router.put('/:id', async (req, res) => {
 
     const payload = payloadFromBody(req.body);
     if (!payload.title) return res.status(400).json({ error: 'Project title is required' });
+    const performedBy = auth.getRoleFromRequest(req) === 'admin' ? 'admin' : 'manager';
+    const linkedLeadId = await ensureLinkedLead(payload, payload.lead_id || existing.lead_id, performedBy);
 
     const { rows } = await db.query(`
       UPDATE projects
@@ -266,7 +449,7 @@ router.put('/:id', async (req, res) => {
       RETURNING *
     `, [
       payload.title,
-      payload.lead_id,
+      linkedLeadId,
       payload.client_name,
       payload.contact_name,
       payload.phone,

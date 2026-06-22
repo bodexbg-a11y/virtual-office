@@ -1,7 +1,7 @@
 // ===== BODEX Virtual Office — Frontend App =====
 
 const API = 'https://virtual-office-f48m.onrender.com';
-const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers', 'logistics', 'payments', 'tires', 'projects']);
+const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers', 'logistics', 'payments', 'tires']);
 let currentPage = 'leads';
 let currentRole = 'worker';
 let adminToken = localStorage.getItem('bodex_admin_token') || '';
@@ -347,7 +347,7 @@ async function renderDashboard(el) {
             <div style="font-size:11px;color:#888;margin-top:5px;line-height:1.45;">${r.description}</div>
           </div>
         `).join('') : '<div style="font-size:12px;color:#777;">Няма данни от работните таблици. Натиснете “Обнови от Google Sheets” в раздел Клиенти.</div>'}
-        <button class="btn btn-secondary" style="margin-top:12px;" onclick="navigate('clients')">👥 Отвори клиентите</button>
+        <button class="btn btn-secondary" style="margin-top:12px;" onclick="navigate('leads')">👥 Отвори клиентите</button>
       </div>
 
       <div class="card">
@@ -616,9 +616,9 @@ async function renderWorker(el, workerId) {
     ? await api('/api/agents/maria/analysis').catch(err => ({ error: err.message, rows: [] }))
     : null;
   const relatedLink = {
-    rostislav: `<button class="btn btn-secondary" onclick="navigate('clients')">👥 Клиенты</button><button class="btn btn-secondary" onclick="navigate('leads')">📋 CRM лиды</button>`,
-    mark: `<button class="btn btn-secondary" onclick="navigate('products')">📦 Продукты</button><button class="btn btn-secondary" onclick="navigate('clients')">👥 B2B база</button>`,
-    maria: `<button class="btn btn-secondary" onclick="navigate('facebook')">📢 Facebook Ads</button><button class="btn btn-secondary" onclick="navigate('clients')">👥 Лиды</button>`,
+    rostislav: `<button class="btn btn-secondary" onclick="navigate('leads')">👥 Клиенты</button><button class="btn btn-secondary" onclick="navigate('projects')">🏗️ Проекты</button>`,
+    mark: `<button class="btn btn-secondary" onclick="navigate('products')">📦 Продукты</button><button class="btn btn-secondary" onclick="navigate('leads')">👥 B2B база</button>`,
+    maria: `<button class="btn btn-secondary" onclick="navigate('facebook')">📢 Facebook Ads</button><button class="btn btn-secondary" onclick="navigate('leads')">👥 Клиенты</button>`,
     steve: `<button class="btn btn-secondary" onclick="window.open('https://bodexbg.com/', '_blank')">🌐 bodexbg.com</button>`,
   }[worker.id] || '';
 
@@ -1826,7 +1826,7 @@ async function renderLeads(el, filters = {}) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>${tireMode ? '🛞 Tires' : '📋 Лидове'} <span style="color:#666;font-size:14px;">(${rows.length})</span></h2>
+      <h2>${tireMode ? '🛞 Tires' : '👥 Клиенты'} <span style="color:#666;font-size:14px;">(${rows.length})</span></h2>
       <div class="page-header-actions">
         <label style="display:flex;align-items:center;gap:7px;font-size:11px;color:#999;">
           ${tireMode ? 'Sender' : 'Отправитель'}
@@ -4883,7 +4883,7 @@ async function renderOffers(el) {
     <div class="page-header fade-in">
       <h2>📄 Коммерческие предложения</h2>
       <div class="page-header-actions">
-        <button class="btn btn-secondary" onclick="navigate('leads')">📋 Лиды</button>
+        <button class="btn btn-secondary" onclick="navigate('leads')">👥 Клиенты</button>
       </div>
     </div>
 
