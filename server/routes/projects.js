@@ -4,6 +4,7 @@ const db = require('../db');
 const auth = require('../services/auth');
 
 const PROJECT_STATUSES = ['new', 'discovery', 'estimate', 'offer_preparation', 'offer_sent', 'waiting_client', 'approved', 'archived'];
+router.use(auth.requireAdmin);
 
 async function ensureProjectsTable() {
   await db.exec(`
@@ -23,7 +24,7 @@ async function ensureProjectsTable() {
       materials_needed TEXT,
       photos_info TEXT,
       estimated_value NUMERIC(12,2) DEFAULT 0,
-      currency TEXT DEFAULT 'BGN',
+      currency TEXT DEFAULT 'EUR',
       status TEXT DEFAULT 'new',
       next_step TEXT,
       notes TEXT,
@@ -58,8 +59,8 @@ function payloadFromBody(body = {}) {
     repair_scope: String(body.repair_scope || '').trim(),
     materials_needed: String(body.materials_needed || '').trim(),
     photos_info: String(body.photos_info || '').trim(),
-    estimated_value: Number(body.estimated_value || 0) || 0,
-    currency: String(body.currency || 'BGN').trim() || 'BGN',
+    estimated_value: 0,
+    currency: 'EUR',
     status: normalizeStatus(body.status),
     next_step: String(body.next_step || '').trim(),
     notes: String(body.notes || '').trim(),
@@ -137,7 +138,7 @@ router.get('/', async (req, res) => {
         COUNT(*) FILTER (WHERE status NOT IN ('approved', 'archived'))::int AS active,
         COUNT(*) FILTER (WHERE status = 'estimate')::int AS estimate,
         COUNT(*) FILTER (WHERE status = 'offer_sent')::int AS offers,
-        COALESCE(SUM(estimated_value), 0) AS estimated_total
+        COUNT(*) FILTER (WHERE status = 'approved')::int AS approved
       FROM projects
     `);
 
@@ -148,7 +149,7 @@ router.get('/', async (req, res) => {
         active: Number(summary?.active || 0),
         estimate: Number(summary?.estimate || 0),
         offers: Number(summary?.offers || 0),
-        estimated_total: Number(summary?.estimated_total || 0),
+        approved: Number(summary?.approved || 0),
       },
     });
   } catch (err) {
@@ -161,8 +162,6 @@ router.post('/', async (req, res) => {
     await ensureProjectsTable();
     const payload = payloadFromBody(req.body);
     if (!payload.title) return res.status(400).json({ error: 'Project title is required' });
-
-    const performedBy = auth.getRoleFromRequest(req) === 'admin' ? 'admin' : 'worker';
 
     const { rows } = await db.query(`
       INSERT INTO projects (
@@ -191,7 +190,7 @@ router.post('/', async (req, res) => {
       payload.status,
       payload.next_step,
       payload.notes,
-      performedBy,
+      'admin',
     ]);
 
     res.status(201).json(rows[0]);

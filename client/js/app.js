@@ -1,7 +1,7 @@
 // ===== BODEX Virtual Office — Frontend App =====
 
 const API = 'https://virtual-office-f48m.onrender.com';
-const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers', 'logistics', 'payments', 'tires']);
+const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers', 'logistics', 'payments', 'tires', 'projects']);
 let currentPage = 'leads';
 let currentRole = 'worker';
 let adminToken = localStorage.getItem('bodex_admin_token') || '';
@@ -4999,7 +4999,7 @@ async function renderProjects(el) {
       <div class="stat-card"><div class="stat-label">Всего проектов</div><div class="stat-value">${summary.total || 0}</div></div>
       <div class="stat-card"><div class="stat-label">Активные</div><div class="stat-value blue">${summary.active || 0}</div></div>
       <div class="stat-card"><div class="stat-label">На оценке</div><div class="stat-value yellow">${summary.estimate || 0}</div></div>
-      <div class="stat-card"><div class="stat-label">Оценочная стоимость</div><div class="stat-value green">${Number(summary.estimated_total || 0).toLocaleString()} лв</div></div>
+      <div class="stat-card"><div class="stat-label">Согласовано</div><div class="stat-value green">${summary.approved || 0}</div></div>
     </div>
 
     <div class="card fade-in" style="margin-top:18px;">
@@ -5027,7 +5027,6 @@ async function renderProjects(el) {
               <th>Объект / город</th>
               <th>Проблема</th>
               <th>Материалы</th>
-              <th>Оценка</th>
               <th>Статус</th>
               <th>След. шаг</th>
               <th></th>
@@ -5054,12 +5053,11 @@ async function renderProjects(el) {
                 <td style="max-width:220px;">
                   <div style="color:#cbd5e1;">${escapeHtml((r.materials_needed || '—').slice(0, 120))}${(r.materials_needed || '').length > 120 ? '…' : ''}</div>
                 </td>
-                <td>${Number(r.estimated_value || 0).toLocaleString()} ${escapeHtml(r.currency || 'BGN')}</td>
                 <td><span class="badge ${projectStatusBadge(r.status)}">${projectStatusLabel(r.status)}</span></td>
                 <td style="max-width:180px;">${escapeHtml(r.next_step || '—')}</td>
                 <td><button class="btn btn-secondary btn-sm" onclick='openProjectModal(${JSON.stringify(leads).replace(/'/g, "&apos;")}, ${JSON.stringify(r).replace(/'/g, "&apos;")})'>Редактировать</button></td>
               </tr>
-            `).join('') : '<tr><td colspan="9" style="text-align:center;color:#777;padding:24px;">Пока нет проектов. Создайте первый объект.</td></tr>'}
+            `).join('') : '<tr><td colspan="8" style="text-align:center;color:#777;padding:24px;">Пока нет проектов. Создайте первый объект.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -5090,10 +5088,7 @@ function openProjectModal(leads = [], record = null) {
           ${['new','discovery','estimate','offer_preparation','offer_sent','waiting_client','approved','archived'].map(s => `<option value="${s}" ${String(r.status || 'new') === s ? 'selected' : ''}>${projectStatusLabel(s)}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group"><label>Оценочная стоимость</label><input id="pr-estimated-value" type="number" step="0.01" value="${escapeHtml(String(r.estimated_value || ''))}"></div>
-      <div class="form-group"><label>Валюта</label>
-        <select id="pr-currency">${['BGN','EUR','USD'].map(c => `<option value="${c}" ${String(r.currency || 'BGN') === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
-      </div>
+      <div class="form-group"><label>Валюта</label><input value="EUR" disabled></div>
       <div class="form-group full"><label>Проблема / дефект</label><textarea id="pr-problem-description" rows="3" placeholder="Течове, пукнатини, влага, вода през шевове, нужда от инжектиране...">${escapeHtml(r.problem_description || '')}</textarea></div>
       <div class="form-group full"><label>Объём работ / оценка ремонта</label><textarea id="pr-repair-scope" rows="3" placeholder="м², линейные метры, количество проходов, ориентировочный объём...">${escapeHtml(r.repair_scope || '')}</textarea></div>
       <div class="form-group full"><label>Материалы / решение</label><textarea id="pr-materials-needed" rows="3" placeholder="Какие материалы предполагаются: смолы, пакеры, гидроизоляция, ремонтные составы...">${escapeHtml(r.materials_needed || '')}</textarea></div>
@@ -5140,8 +5135,8 @@ async function saveProjectRecord(id = null) {
     repair_scope: document.getElementById('pr-repair-scope')?.value || '',
     materials_needed: document.getElementById('pr-materials-needed')?.value || '',
     photos_info: document.getElementById('pr-photos-info')?.value || '',
-    estimated_value: document.getElementById('pr-estimated-value')?.value || 0,
-    currency: document.getElementById('pr-currency')?.value || 'BGN',
+    estimated_value: 0,
+    currency: 'EUR',
     status: document.getElementById('pr-status')?.value || 'new',
     next_step: document.getElementById('pr-next-step')?.value || '',
     notes: document.getElementById('pr-notes')?.value || '',
