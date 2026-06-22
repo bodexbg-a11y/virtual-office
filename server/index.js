@@ -29,6 +29,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/agents', require('./routes/agents'));
 app.use('/api/offers', require('./routes/offers'));
 app.use('/api/gmail', require('./routes/gmail'));
+app.use('/api/projects', require('./routes/projects'));
 
 // Health check
 app.get('/api/health', (req, res) => {

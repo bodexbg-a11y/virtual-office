@@ -7,6 +7,7 @@ let currentRole = 'worker';
 let adminToken = localStorage.getItem('bodex_admin_token') || '';
 let markAgentPoll = null;
 let currentLeadFilters = {};
+let currentProjectFilters = { q: '', status: '' };
 let agentReportsFilters = { agent: 'all', date_from: '', date_to: '', limit: 100 };
 let agentReportsCache = [];
 let currentOfferDraft = null;
@@ -97,6 +98,7 @@ async function renderPage(page) {
       case 'tires': await renderLeads(main, { view: 'tires' }); break;
       case 'clients': await renderClients(main); break;
       case 'deals': await renderDeals(main); break;
+      case 'projects': await renderProjects(main); break;
       case 'pipeline': await renderPipeline(main); break;
       case 'facebook': await renderFacebook(main); break;
       case 'sheets': await renderSheets(main); break;
@@ -4942,6 +4944,221 @@ async function renderOffers(el) {
       </div>
     </div>
   `;
+}
+
+function projectStatusLabel(status) {
+  return ({
+    new: 'Новый проект',
+    discovery: 'Сбор данных',
+    estimate: 'Оценка стоимости',
+    offer_preparation: 'Подбор материалов',
+    offer_sent: 'КП отправлено',
+    waiting_client: 'Ждём клиента',
+    approved: 'Согласовано',
+    archived: 'Архив',
+  })[status] || status || '—';
+}
+
+function projectStatusBadge(status) {
+  const map = {
+    new: 'badge-new',
+    discovery: 'badge-needs_discovery',
+    estimate: 'badge-thinking',
+    offer_preparation: 'badge-catalog_sent',
+    offer_sent: 'badge-offer_sent',
+    waiting_client: 'badge-negotiation',
+    approved: 'badge-won',
+    archived: 'badge-low',
+  };
+  return map[status] || 'badge-medium';
+}
+
+async function renderProjects(el) {
+  const query = currentProjectFilters?.q || '';
+  const status = currentProjectFilters?.status || '';
+  const qs = new URLSearchParams();
+  if (query) qs.set('q', query);
+  if (status) qs.set('status', status);
+  const [data, meta] = await Promise.all([
+    api(`/api/projects${qs.toString() ? `?${qs.toString()}` : ''}`),
+    api('/api/projects/meta').catch(() => ({ leads: [] })),
+  ]);
+  const rows = data.rows || [];
+  const summary = data.summary || {};
+  const leads = meta.leads || [];
+
+  el.innerHTML = `
+    <div class="page-header fade-in">
+      <h2>🏗️ Проекты</h2>
+      <div class="page-header-actions">
+        <button class="btn btn-primary" onclick='openProjectModal(${JSON.stringify(leads).replace(/'/g, "&apos;")})'>+ Новый проект</button>
+      </div>
+    </div>
+
+    <div class="stats-grid fade-in">
+      <div class="stat-card"><div class="stat-label">Всего проектов</div><div class="stat-value">${summary.total || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">Активные</div><div class="stat-value blue">${summary.active || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">На оценке</div><div class="stat-value yellow">${summary.estimate || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">Оценочная стоимость</div><div class="stat-value green">${Number(summary.estimated_total || 0).toLocaleString()} лв</div></div>
+    </div>
+
+    <div class="card fade-in" style="margin-top:18px;">
+      <div class="card-title">База объектов и проектов по материалам</div>
+      <div class="search-bar" style="margin-bottom:14px;">
+        <input
+          placeholder="Поиск по проекту, клиенту, городу, типу объекта, проблеме..."
+          value="${escapeAttr(query)}"
+          oninput="currentProjectFilters = {...currentProjectFilters, q: this.value}"
+          onkeydown="if(event.key==='Enter'){renderProjects(document.getElementById('main'))}"
+        >
+        <select onchange="currentProjectFilters = {...currentProjectFilters, status: this.value}; renderProjects(document.getElementById('main'))">
+          <option value="">Все статусы</option>
+          ${['new','discovery','estimate','offer_preparation','offer_sent','waiting_client','approved','archived'].map(s => `<option value="${s}" ${status === s ? 'selected' : ''}>${projectStatusLabel(s)}</option>`).join('')}
+        </select>
+        <button class="btn btn-secondary" onclick="renderProjects(document.getElementById('main'))">Поиск</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Проект</th>
+              <th>Клиент</th>
+              <th>Объект / город</th>
+              <th>Проблема</th>
+              <th>Материалы</th>
+              <th>Оценка</th>
+              <th>Статус</th>
+              <th>След. шаг</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map(r => `
+              <tr>
+                <td>
+                  <div style="font-weight:700;color:#e5e7eb;">${escapeHtml(r.title || '—')}</div>
+                  <div style="font-size:11px;color:#777;">${escapeHtml(r.site_address || '')}</div>
+                </td>
+                <td>
+                  <div style="font-weight:600;color:#ddd;">${escapeHtml(r.client_name || r.lead_company_name || '—')}</div>
+                  <div style="font-size:11px;color:#777;">${escapeHtml(r.contact_name || r.lead_contact_name || '')}</div>
+                </td>
+                <td>
+                  <div>${escapeHtml(r.object_type || '—')}</div>
+                  <div style="font-size:11px;color:#777;">${escapeHtml(r.city || '—')}</div>
+                </td>
+                <td style="max-width:220px;">
+                  <div style="color:#cbd5e1;">${escapeHtml((r.problem_description || '—').slice(0, 140))}${(r.problem_description || '').length > 140 ? '…' : ''}</div>
+                </td>
+                <td style="max-width:220px;">
+                  <div style="color:#cbd5e1;">${escapeHtml((r.materials_needed || '—').slice(0, 120))}${(r.materials_needed || '').length > 120 ? '…' : ''}</div>
+                </td>
+                <td>${Number(r.estimated_value || 0).toLocaleString()} ${escapeHtml(r.currency || 'BGN')}</td>
+                <td><span class="badge ${projectStatusBadge(r.status)}">${projectStatusLabel(r.status)}</span></td>
+                <td style="max-width:180px;">${escapeHtml(r.next_step || '—')}</td>
+                <td><button class="btn btn-secondary btn-sm" onclick='openProjectModal(${JSON.stringify(leads).replace(/'/g, "&apos;")}, ${JSON.stringify(r).replace(/'/g, "&apos;")})'>Редактировать</button></td>
+              </tr>
+            `).join('') : '<tr><td colspan="9" style="text-align:center;color:#777;padding:24px;">Пока нет проектов. Создайте первый объект.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function openProjectModal(leads = [], record = null) {
+  const r = record || {};
+  openModal(record ? 'Редактировать проект' : 'Новый проект', `
+    <div class="form-grid">
+      <div class="form-group"><label>Название проекта</label><input id="pr-title" value="${escapeHtml(r.title || '')}" placeholder="Например: Паркинг Mall Sofia / Инъектирование трещин"></div>
+      <div class="form-group"><label>Связанный клиент / лид</label>
+        <select id="pr-lead-id" onchange='fillProjectLeadData(${JSON.stringify(leads).replace(/'/g, "&apos;")})'>
+          <option value="">Без привязки</option>
+          ${leads.map(l => `<option value="${l.id}" ${Number(r.lead_id) === Number(l.id) ? 'selected' : ''}>${escapeHtml(l.company_name || l.contact_name || ('Лид #' + l.id))}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Клиент</label><input id="pr-client-name" value="${escapeHtml(r.client_name || r.lead_company_name || '')}"></div>
+      <div class="form-group"><label>Контакт</label><input id="pr-contact-name" value="${escapeHtml(r.contact_name || r.lead_contact_name || '')}"></div>
+      <div class="form-group"><label>Телефон</label><input id="pr-phone" value="${escapeHtml(r.phone || '')}"></div>
+      <div class="form-group"><label>Email</label><input id="pr-email" value="${escapeHtml(r.email || '')}"></div>
+      <div class="form-group"><label>Город</label><input id="pr-city" value="${escapeHtml(r.city || '')}"></div>
+      <div class="form-group"><label>Адрес объекта</label><input id="pr-site-address" value="${escapeHtml(r.site_address || '')}" placeholder="Адрес, локация, ориентир"></div>
+      <div class="form-group"><label>Тип объекта</label><input id="pr-object-type" value="${escapeHtml(r.object_type || '')}" placeholder="Подземный паркинг, подвал, цех, фасад..."></div>
+      <div class="form-group"><label>Статус проекта</label>
+        <select id="pr-status">
+          ${['new','discovery','estimate','offer_preparation','offer_sent','waiting_client','approved','archived'].map(s => `<option value="${s}" ${String(r.status || 'new') === s ? 'selected' : ''}>${projectStatusLabel(s)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Оценочная стоимость</label><input id="pr-estimated-value" type="number" step="0.01" value="${escapeHtml(String(r.estimated_value || ''))}"></div>
+      <div class="form-group"><label>Валюта</label>
+        <select id="pr-currency">${['BGN','EUR','USD'].map(c => `<option value="${c}" ${String(r.currency || 'BGN') === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
+      </div>
+      <div class="form-group full"><label>Проблема / дефект</label><textarea id="pr-problem-description" rows="3" placeholder="Течове, пукнатини, влага, вода през шевове, нужда от инжектиране...">${escapeHtml(r.problem_description || '')}</textarea></div>
+      <div class="form-group full"><label>Объём работ / оценка ремонта</label><textarea id="pr-repair-scope" rows="3" placeholder="м², линейные метры, количество проходов, ориентировочный объём...">${escapeHtml(r.repair_scope || '')}</textarea></div>
+      <div class="form-group full"><label>Материалы / решение</label><textarea id="pr-materials-needed" rows="3" placeholder="Какие материалы предполагаются: смолы, пакеры, гидроизоляция, ремонтные составы...">${escapeHtml(r.materials_needed || '')}</textarea></div>
+      <div class="form-group full"><label>Фото / ссылки / файлы</label><textarea id="pr-photos-info" rows="2" placeholder="Ссылки на фото, Google Drive, короткое описание фото объекта...">${escapeHtml(r.photos_info || '')}</textarea></div>
+      <div class="form-group full"><label>Следующий шаг</label><textarea id="pr-next-step" rows="2" placeholder="Что нужно сделать дальше: выезд, расчёт, подбор решения, отправить КП...">${escapeHtml(r.next_step || '')}</textarea></div>
+      <div class="form-group full"><label>Внутренние заметки</label><textarea id="pr-notes" rows="3" placeholder="Дополнительные данные по проекту, проблемам, комментарии менеджера...">${escapeHtml(r.notes || '')}</textarea></div>
+    </div>
+    <div id="pr-result" class="sync-result"></div>
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="saveProjectRecord(${r.id || 'null'})">Сохранить проект</button>
+    </div>
+  `);
+}
+
+function fillProjectLeadData(leads = []) {
+  const leadId = Number(document.getElementById('pr-lead-id')?.value || 0);
+  const lead = (leads || []).find(item => Number(item.id) === leadId);
+  if (!lead) return;
+  const company = document.getElementById('pr-client-name');
+  const contact = document.getElementById('pr-contact-name');
+  const phone = document.getElementById('pr-phone');
+  const email = document.getElementById('pr-email');
+  const city = document.getElementById('pr-city');
+  if (company && !company.value) company.value = lead.company_name || '';
+  if (contact && !contact.value) contact.value = lead.contact_name || '';
+  if (phone && !phone.value) phone.value = lead.phone || '';
+  if (email && !email.value) email.value = lead.email || '';
+  if (city && !city.value) city.value = lead.city || '';
+}
+
+async function saveProjectRecord(id = null) {
+  const payload = {
+    title: document.getElementById('pr-title')?.value || '',
+    lead_id: document.getElementById('pr-lead-id')?.value || null,
+    client_name: document.getElementById('pr-client-name')?.value || '',
+    contact_name: document.getElementById('pr-contact-name')?.value || '',
+    phone: document.getElementById('pr-phone')?.value || '',
+    email: document.getElementById('pr-email')?.value || '',
+    city: document.getElementById('pr-city')?.value || '',
+    site_address: document.getElementById('pr-site-address')?.value || '',
+    object_type: document.getElementById('pr-object-type')?.value || '',
+    problem_description: document.getElementById('pr-problem-description')?.value || '',
+    repair_scope: document.getElementById('pr-repair-scope')?.value || '',
+    materials_needed: document.getElementById('pr-materials-needed')?.value || '',
+    photos_info: document.getElementById('pr-photos-info')?.value || '',
+    estimated_value: document.getElementById('pr-estimated-value')?.value || 0,
+    currency: document.getElementById('pr-currency')?.value || 'BGN',
+    status: document.getElementById('pr-status')?.value || 'new',
+    next_step: document.getElementById('pr-next-step')?.value || '',
+    notes: document.getElementById('pr-notes')?.value || '',
+  };
+  const result = document.getElementById('pr-result');
+  result.className = 'sync-result show';
+  result.textContent = 'Сохранение проекта...';
+  try {
+    const path = id ? `/api/projects/${id}` : '/api/projects';
+    const method = id ? 'PUT' : 'POST';
+    await api(path, { method, body: payload });
+    closeModal();
+    navigate('projects');
+  } catch (err) {
+    result.className = 'sync-result show err';
+    result.textContent = `❌ ${err.message}`;
+  }
 }
 
 async function renderLogistics(el) {
