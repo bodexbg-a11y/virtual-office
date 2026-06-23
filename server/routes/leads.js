@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const googleSheets = require('../services/googleSheets');
 const auth = require('../services/auth');
+const tireColdBaseSeed = require('../data/tire_cold_base_seed.json');
 const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
 const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
 const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
@@ -416,9 +417,15 @@ const SERVICE_LEAD_SQL = `(
     AND lower(coalesce(lead_type, '')) ~ '(услуг|service)'
   )
 )`;
+const TIRE_COLD_BASE_SQL = `(
+  lower(coalesce(leads.lead_type, '')) = 'tire_cold_base'
+  OR lower(coalesce(leads.source, '')) = 'tire_cold_base'
+)`;
 const TIRES_LEAD_SQL = `(
   lower(coalesce(leads.lead_type, '')) IN ('tire_inquiry', 'tires')
   OR (
+    NOT ${TIRE_COLD_BASE_SQL}
+    AND
     leads.source = 'facebook'
     AND lower(concat_ws(' ', coalesce(leads.fb_campaign_name, ''), coalesce(leads.fb_ad_name, ''), coalesce(leads.interest_products, '')))
       ~ '(tiers|tires|tyres|tire|шины|гуми)'
@@ -445,6 +452,82 @@ const DAILY_CALLS_WHERE_SQL = `status NOT IN ('won', 'lost')
     OR priority IN ('hot', 'high')
   )
   AND NOT ${TOUCHED_TODAY_SQL}`;
+
+let tireColdBaseSeedLoaded = false;
+let tireColdBaseSeedPromise = null;
+
+async function ensureTireColdBaseSeed() {
+  if (tireColdBaseSeedLoaded) return;
+  if (tireColdBaseSeedPromise) return tireColdBaseSeedPromise;
+
+  tireColdBaseSeedPromise = (async () => {
+    await ensureLeadSheetColumns();
+    const existing = await db.get(`
+      SELECT COUNT(*)::int AS count
+      FROM leads
+      WHERE ${TIRE_COLD_BASE_SQL}
+    `);
+    if (Number(existing?.count || 0) > 0) {
+      tireColdBaseSeedLoaded = true;
+      return;
+    }
+
+    for (const row of tireColdBaseSeed) {
+      const contactRaw = String(row.contact_raw || '').trim();
+      const notes = [
+        row.region ? `Region: ${row.region}` : '',
+        row.fleet ? `Fleet: ${row.fleet}` : '',
+        contactRaw && !/^\+?[\d\s()./-]+$/.test(contactRaw) ? `Website / source: ${contactRaw}` : '',
+      ].filter(Boolean).join('\n');
+
+      await db.query(`
+        INSERT INTO leads (
+          company_name,
+          contact_name,
+          email,
+          phone,
+          city,
+          lead_type,
+          source,
+          status,
+          priority,
+          company_type,
+          interest_products,
+          notes,
+          assigned_to,
+          crm_segment,
+          qualification_data
+        )
+        SELECT ?, '', NULL, ?, ?, 'tire_cold_base', 'tire_cold_base', 'new', 'medium', 'company', ?, ?, 'manager', 'objects', ?::jsonb
+        WHERE NOT EXISTS (
+          SELECT 1 FROM leads
+          WHERE lower(coalesce(company_name, '')) = lower(?)
+            AND ${TIRE_COLD_BASE_SQL}
+        )
+      `, [
+        row.company_name,
+        contactRaw,
+        row.city || '',
+        row.fleet || '',
+        notes,
+        JSON.stringify({
+          client_type: 'tire_customer',
+          cold_base: true,
+          region: row.region || '',
+          fleet_size: row.fleet || '',
+          source_contact: contactRaw,
+        }),
+        row.company_name,
+      ]);
+    }
+
+    tireColdBaseSeedLoaded = true;
+  })().finally(() => {
+    tireColdBaseSeedPromise = null;
+  });
+
+  return tireColdBaseSeedPromise;
+}
 
 async function findSheetMatchForLead(lead) {
   const phone = normalizePhone(lead.phone);
@@ -605,10 +688,14 @@ async function syncFacebookLeadsWithSheets() {
 ensureLeadSheetColumns().catch(err => {
   console.error('❌ ensureLeadSheetColumns error:', err.message);
 });
+ensureTireColdBaseSeed().catch(err => {
+  console.error('❌ ensureTireColdBaseSeed error:', err.message);
+});
 
 // GET all leads
 router.get('/', async (req, res) => {
   try {
+    await ensureTireColdBaseSeed();
     const {
       status,
       source,
@@ -672,8 +759,13 @@ router.get('/', async (req, res) => {
       where.push(TIRES_LEAD_SQL);
     }
 
+    if (view === 'tire_base') {
+      where.push(TIRE_COLD_BASE_SQL);
+    }
+
     if (view === 'all') {
       where.push(`NOT ${TIRES_LEAD_SQL}`);
+      where.push(`NOT ${TIRE_COLD_BASE_SQL}`);
     }
 
     if (search) {
@@ -839,7 +931,8 @@ router.get('/', async (req, res) => {
 // GET lead summary
 router.get('/summary', async (req, res) => {
   try {
-    const totalRes = await db.query(`SELECT COUNT(*)::int as count FROM leads WHERE NOT ${TIRES_LEAD_SQL}`);
+    await ensureTireColdBaseSeed();
+    const totalRes = await db.query(`SELECT COUNT(*)::int as count FROM leads WHERE NOT ${TIRES_LEAD_SQL} AND NOT ${TIRE_COLD_BASE_SQL}`);
     const byStatusRes = await db.query(`
       SELECT ${NORMALIZED_STATUS_SQL} as status, COUNT(*)::int as count
       FROM leads
@@ -870,6 +963,7 @@ router.get('/summary', async (req, res) => {
       FROM leads
       WHERE DATE(created_at) = CURRENT_DATE
         AND NOT ${TIRES_LEAD_SQL}
+        AND NOT ${TIRE_COLD_BASE_SQL}
     `);
 
     const weekRes = await db.query(`
@@ -877,6 +971,7 @@ router.get('/summary', async (req, res) => {
       FROM leads
       WHERE created_at >= NOW() - INTERVAL '7 days'
         AND NOT ${TIRES_LEAD_SQL}
+        AND NOT ${TIRE_COLD_BASE_SQL}
     `);
 
     const materialsRes = await db.query(`
@@ -903,6 +998,10 @@ router.get('/summary', async (req, res) => {
       SELECT COUNT(*)::int as count FROM leads
       WHERE ${TIRES_LEAD_SQL}
     `);
+    const tireBaseRes = await db.query(`
+      SELECT COUNT(*)::int as count FROM leads
+      WHERE ${TIRE_COLD_BASE_SQL}
+    `);
 
     const bySource = bySourceRes.rows;
     const byStatus = byStatusRes.rows;
@@ -916,6 +1015,7 @@ router.get('/summary', async (req, res) => {
       distributors: distributorsRes.rows[0]?.count || 0,
       objects: objectsRes.rows[0]?.count || 0,
       tires: tiresRes.rows[0]?.count || 0,
+      tire_base: tireBaseRes.rows[0]?.count || 0,
       today: todayRes.rows[0]?.count || 0,
       week: weekRes.rows[0]?.count || 0,
       followups_due: (await db.query(`
@@ -923,6 +1023,7 @@ router.get('/summary', async (req, res) => {
         FROM leads
         WHERE ${DAILY_CALLS_WHERE_SQL}
           AND NOT ${TIRES_LEAD_SQL}
+          AND NOT ${TIRE_COLD_BASE_SQL}
       `)).rows[0]?.count || 0,
       statuses: byStatus,
       sources: bySource,

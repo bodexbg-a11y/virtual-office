@@ -2,6 +2,8 @@
 .env.local
 node_modules/
 data/
+!server/data/
+!server/data/tire_cold_base_seed.json
 *.db
 *.db-shm
 *.db-wal

@@ -1,0 +1,22 @@
+[
+  { "company_name": "Garbe Transport GmbH", "city": "Hamburg", "contact_raw": "+49 40 736 063-0", "fleet": "200+ LKW", "region": "HAMBURG" },
+  { "company_name": "Hamburger Spedition", "city": "Hamburg", "contact_raw": "+49 40 736 063-0", "fleet": "—", "region": "HAMBURG" },
+  { "company_name": "Übersee-Spedition Paul Weidlich", "city": "Hamburg", "contact_raw": "+49 40 781106-0", "fleet": "—", "region": "HAMBURG" },
+  { "company_name": "Heinrich Zoder Spedition", "city": "Hamburg", "contact_raw": "zoder-spedition.de", "fleet": "30 LKW", "region": "HAMBURG" },
+  { "company_name": "FLS Fuhrparklogistik & Spedition", "city": "Oststeinbek / Hamburg", "contact_raw": "gelbeseiten.de → FLS", "fleet": "Флот-менеджмент", "region": "HAMBURG" },
+  { "company_name": "Hahnen Logistik GmbH", "city": "Köln", "contact_raw": "+49 173 6898499", "fleet": "Собственный парк", "region": "KÖLN / NRW" },
+  { "company_name": "DACHSER GmbH & Co. KG", "city": "Schönefeld / NRW", "contact_raw": "+49 30 750 12-0", "fleet": "Крупный парк", "region": "KÖLN / NRW" },
+  { "company_name": "Spedition Reuter GmbH", "city": "Köln / Düsseldorf", "contact_raw": "wlw.de → Spedition Reuter", "fleet": "Собственный LKW", "region": "KÖLN / NRW" },
+  { "company_name": "NP Transport & Logistik GmbH", "city": "Frankfurt", "contact_raw": "nptransport-logistik.de", "fleet": "50 LKW", "region": "FRANKFURT / HESSEN" },
+  { "company_name": "EHRHART Spedition GmbH", "city": "Frankfurt / Hessen", "contact_raw": "ehrhart-spedition.de", "fleet": "С 1983", "region": "FRANKFURT / HESSEN" },
+  { "company_name": "NFG Transportlogistik", "city": "Frankfurt", "contact_raw": "nfg-transport.de", "fleet": "—", "region": "FRANKFURT / HESSEN" },
+  { "company_name": "Gebrüder Weiss Deutschland", "city": "München / Stuttgart", "contact_raw": "gw-world.com/de", "fleet": "25+ точек DE", "region": "MÜNCHEN / SÜDDEUTSCHLAND" },
+  { "company_name": "DSV Deutschland (München)", "city": "München", "contact_raw": "dsv.com/de-de", "fleet": "Крупный парк", "region": "MÜNCHEN / SÜDDEUTSCHLAND" },
+  { "company_name": "Spedition Probst", "city": "Esslingen (Stuttgart)", "contact_raw": "spedition-probst.de", "fleet": "Нац. LKW", "region": "MÜNCHEN / SÜDDEUTSCHLAND" },
+  { "company_name": "Logisticoo GmbH", "city": "Berlin", "contact_raw": "logisticoo.com", "fleet": "LKW 3.5–40t", "region": "BERLIN / OST" },
+  { "company_name": "G-LOG GmbH Transporte", "city": "Bremen / Stuhr", "contact_raw": "g-log-transporte.de", "fleet": "20 Sattelzug", "region": "BERLIN / OST" },
+  { "company_name": "Logistik Kontor GmbH (LKT)", "city": "Thüringen", "contact_raw": "lkt-thiele.com", "fleet": "Собственный парк", "region": "BERLIN / OST" },
+  { "company_name": "Emons Spedition GmbH", "city": "Deutschlandweit", "contact_raw": "emons.de", "fleet": "120+ точек", "region": "ÜBERREGIONAL / DEUTSCHLAND" },
+  { "company_name": "SCHERBAUER SPEDITION GmbH", "city": "Deutschlandweit", "contact_raw": "wlw.de → Scherbauer", "fleet": "—", "region": "ÜBERREGIONAL / DEUTSCHLAND" },
+  { "company_name": "MARTIN Internationale Spedition", "city": "Deutschlandweit", "contact_raw": "wlw.de → Martin Spedition", "fleet": "—", "region": "ÜBERREGIONAL / DEUTSCHLAND" }
+]

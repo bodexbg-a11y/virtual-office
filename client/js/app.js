@@ -1,7 +1,7 @@
 // ===== BODEX Virtual Office — Frontend App =====
 
 const API = 'https://virtual-office-f48m.onrender.com';
-const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers', 'logistics', 'payments', 'tires']);
+const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers', 'logistics', 'payments', 'tires', 'tire-base']);
 let currentPage = 'leads';
 let currentRole = 'worker';
 let adminToken = localStorage.getItem('bodex_admin_token') || '';
@@ -96,6 +96,7 @@ async function renderPage(page) {
       case 'agent-reports': await renderAgentReports(main); break;
       case 'leads': await renderLeads(main); break;
       case 'tires': await renderLeads(main, { view: 'tires' }); break;
+      case 'tire-base': await renderLeads(main, { view: 'tire_base' }); break;
       case 'clients': await renderClients(main); break;
       case 'deals': await renderDeals(main); break;
       case 'projects': await renderProjects(main); break;
@@ -1788,7 +1789,8 @@ async function pullDealsSheets() {
 // ===== LEADS =====
 async function renderLeads(el, filters = {}) {
   if (!Object.keys(filters).length) filters = { view: 'objects' };
-  const tireMode = filters.view === 'tires';
+  const tireMode = filters.view === 'tires' || filters.view === 'tire_base';
+  const coldBaseMode = filters.view === 'tire_base';
   const dailyBriefScope = tireMode ? 'tires' : 'materials';
   currentLeadFilters = filters;
   const params = new URLSearchParams(filters);
@@ -1814,6 +1816,8 @@ async function renderLeads(el, filters = {}) {
   currentLeadRowsForExport = rows;
   const tireBadge = document.getElementById('nav-badge-tires');
   if (tireBadge && currentRole === 'admin') tireBadge.textContent = summary.tires || 0;
+  const tireBaseBadge = document.getElementById('nav-badge-tire-base');
+  if (tireBaseBadge && currentRole === 'admin') tireBaseBadge.textContent = summary.tire_base || 0;
   const visibleStages = leadStagesForView(filters);
   const statusCountRows = applyLeadQuickFilters(statusCountData.leads || [], statusCountFilters);
   const statusCounts = statusCountRows.reduce((counts, row) => {
@@ -1826,7 +1830,7 @@ async function renderLeads(el, filters = {}) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>${tireMode ? '🛞 Tires' : '👥 Клиенты'} <span style="color:#666;font-size:14px;">(${rows.length})</span></h2>
+      <h2>${coldBaseMode ? '📇 База клиентов' : tireMode ? '🛞 Tires' : '👥 Клиенты'} <span style="color:#666;font-size:14px;">(${rows.length})</span></h2>
       <div class="page-header-actions">
         <label style="display:flex;align-items:center;gap:7px;font-size:11px;color:#999;">
           ${tireMode ? 'Sender' : 'Отправитель'}
@@ -1840,8 +1844,8 @@ async function renderLeads(el, filters = {}) {
         </label>
         ${tireMode ? '' : '<button class="btn btn-secondary" onclick="openBulkPingModal()">Пинг всем</button>'}
         <button class="btn btn-secondary" onclick="downloadLeadAnalysisCsv()">${tireMode ? '⬇ Analysis CSV' : '⬇ CSV для анализа'}</button>
-        <button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 ${tireMode ? 'Sync Facebook leads' : 'Синхронизирай FB лиды'}</button>
-        <button class="btn btn-primary" onclick="openNewLeadModal('${tireMode ? 'tires' : 'materials'}')">+ ${tireMode ? 'New lead' : 'Нов лид'}</button>
+        ${coldBaseMode ? '' : `<button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 ${tireMode ? 'Sync Facebook leads' : 'Синхронизирай FB лиды'}</button>`}
+        <button class="btn btn-primary" onclick="openNewLeadModal('${coldBaseMode ? 'tires_base' : tireMode ? 'tires' : 'materials'}')">+ ${tireMode ? 'New lead' : 'Нов лид'}</button>
       </div>
     </div>
 
@@ -1849,12 +1853,12 @@ async function renderLeads(el, filters = {}) {
 
     <div class="qualification-intro fade-in" style="margin-top:0;display:flex;justify-content:space-between;align-items:flex-start;gap:14px;">
       <div style="min-width:0;">
-        <div style="font-weight:700;color:#f3f4f6;">Задача от админа на сегодня</div>
+        <div style="font-weight:700;color:#f3f4f6;">${coldBaseMode ? 'Холодная база клиентов' : 'Задача от админа на сегодня'}</div>
         <div style="font-size:13px;line-height:1.45;color:${dailyBrief.content ? '#d6dcf5' : '#8b97b7'};margin-top:4px;word-break:break-word;">
-          ${escapeHtml(dailyBrief.content || 'Пока задача не указана.')}
+          ${escapeHtml(coldBaseMode ? 'Отдельная база для холодного обзвона по шинам. Эти компании не относятся к тёплым Facebook-лидам.' : (dailyBrief.content || 'Пока задача не указана.'))}
         </div>
       </div>
-      ${currentRole === 'admin' ? `
+      ${currentRole === 'admin' && !coldBaseMode ? `
         <button
           class="btn btn-secondary"
           onclick="openDailyBriefModal('${dailyBriefScope}')"
@@ -1891,7 +1895,7 @@ async function renderLeads(el, filters = {}) {
 
     <div class="qualification-intro fade-in" style="margin-top:12px;padding:12px 14px;">
       <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
-        <div><strong>Средний 1-й ответ</strong>: ${responseMetrics.avgMinutes === null ? 'пока нет данных' : formatBusinessResponseShort(responseMetrics.avgMinutes, tireMode)}</div>
+        <div><strong>${coldBaseMode ? 'Холодная база' : 'Средний 1-й ответ'}</strong>: ${coldBaseMode ? 'обзвон и квалификация' : (responseMetrics.avgMinutes === null ? 'пока нет данных' : formatBusinessResponseShort(responseMetrics.avgMinutes, tireMode))}</div>
         <div style="color:#8b97b7;">Замерено лидов: ${responseMetrics.measured}</div>
         <div style="color:#8b97b7;">Часовой пояс: ${tireMode ? 'Europe/Berlin' : 'Europe/Sofia'} · 09:00–18:00 · пн–пт</div>
       </div>
@@ -1981,7 +1985,7 @@ async function renderLeads(el, filters = {}) {
                   </div>
                 </td>
                 <td onclick="event.stopPropagation();" style="min-width:96px;width:96px;">${renderLeadTableContactActions(l)}</td>
-                <td style="max-width:150px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};line-height:1.2;word-break:break-word;">${l.area_label || '—'}</td>
+                <td style="max-width:150px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};line-height:1.2;word-break:break-word;">${l.area_label || l.interest_products || '—'}</td>
                 <td style="width:118px;">${renderLeadTimingCell(l, tireMode)}</td>
                 <td style="width:180px;max-width:180px;" onclick="event.stopPropagation();">
                   <button class="btn btn-sm btn-secondary ${l.has_fresh_comment ? 'fresh-comment-btn' : ''}" title="${escapeAttr(l.latest_comment || (tireMode ? 'Add comment' : 'Добавить комментарий'))}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="width:100%;display:inline-flex;gap:6px;align-items:center;justify-content:flex-start;">
@@ -2064,6 +2068,12 @@ function tireStatusLabel(status) {
     won: 'Won',
     lost: 'Lost / inactive',
   }[status] || statusLabel(status);
+}
+
+function isTireColdBaseLead(lead = {}) {
+  const leadType = String(lead.lead_type || '').toLowerCase();
+  const source = String(lead.source || '').toLowerCase();
+  return leadType === 'tire_cold_base' || source === 'tire_cold_base';
 }
 
 function applyLeadQuickFilters(rows, filters = {}) {
@@ -2299,7 +2309,7 @@ function vladislavSignatureLines() {
 
 async function syncFacebookLeadsFromLeadsPage() {
   const el = document.getElementById('leads-sync-result');
-  const tireMode = currentPage === 'tires';
+  const tireMode = currentPage === 'tires' || currentPage === 'tire-base';
   el.className = 'sync-result show';
   el.textContent = tireMode ? 'Syncing Facebook Lead Forms...' : 'Синхронизирую Facebook Lead Forms...';
   try {
@@ -2320,7 +2330,7 @@ async function syncFacebookLeadsFromLeadsPage() {
 
 async function openQuickCommentModal(id, encodedLatest = '') {
   const latest = decodeURIComponent(encodedLatest || '');
-  const tireMode = currentPage === 'tires';
+  const tireMode = currentPage === 'tires' || currentPage === 'tire-base';
   openModal(tireMode ? 'Lead comment' : 'Комментарий к лиду', `
     ${latest ? `<div style="font-size:12px;color:#8dd3ff;margin-bottom:10px;">${tireMode ? 'Latest' : 'Последний'}: ${escapeHtml(latest)}</div>` : ''}
     <div class="form-group full">
@@ -2343,7 +2353,7 @@ async function openQuickCommentModal(id, encodedLatest = '') {
 
 async function loadQuickCommentHistory(id) {
   const wrap = document.getElementById('quick-comment-history');
-  const tireMode = currentPage === 'tires';
+  const tireMode = currentPage === 'tires' || currentPage === 'tire-base';
   if (!wrap) return;
   try {
     const data = await api(`/api/leads/${id}`);
@@ -2365,7 +2375,7 @@ async function loadQuickCommentHistory(id) {
 }
 
 async function saveQuickLeadComment(id) {
-  const tireMode = currentPage === 'tires';
+  const tireMode = currentPage === 'tires' || currentPage === 'tire-base';
   const input = document.getElementById('quick-lead-comment');
   const result = document.getElementById('quick-comment-result');
   const comment = input?.value.trim();
@@ -2596,7 +2606,7 @@ async function openLeadQualificationModal(id) {
       </form>
     `);
   } catch (err) {
-    alert((currentPage === 'tires' ? 'Ошибка: ' : 'Грешка: ') + err.message);
+    alert(((currentPage === 'tires' || currentPage === 'tire-base') ? 'Ошибка: ' : 'Грешка: ') + err.message);
   }
 }
 
@@ -3612,11 +3622,12 @@ async function saveDailyBrief(scope = 'materials') {
 }
 
 function openNewLeadModal(section = 'materials') {
-  const tireMode = section === 'tires';
-  openModal(tireMode ? 'New tire lead' : 'Нов лид', `
-    <form onsubmit="createLead(event, '${tireMode ? 'tires' : 'materials'}')" novalidate>
+  const tireMode = section === 'tires' || section === 'tires_base';
+  const coldBaseMode = section === 'tires_base';
+  openModal(tireMode ? (coldBaseMode ? 'Новый клиент в холодную базу' : 'New tire lead') : 'Нов лид', `
+    <form onsubmit="createLead(event, '${coldBaseMode ? 'tires_base' : tireMode ? 'tires' : 'materials'}')" novalidate>
       ${tireMode ? `
-        <input type="hidden" name="lead_type" value="tire_inquiry">
+        <input type="hidden" name="lead_type" value="${coldBaseMode ? 'tire_cold_base' : 'tire_inquiry'}">
         <input type="hidden" name="crm_segment" value="objects">
       ` : ''}
       <div class="form-grid">
@@ -3651,7 +3662,8 @@ function openNewLeadModal(section = 'materials') {
         <div class="form-group">
           <label>${tireMode ? 'Source' : 'Източник'}</label>
           <select name="source">
-            <option value="facebook" ${tireMode ? 'selected' : ''}>Facebook</option>
+            ${coldBaseMode ? '' : `<option value="facebook" ${tireMode ? 'selected' : ''}>Facebook</option>`}
+            ${coldBaseMode ? '<option value="tire_cold_base" selected>Cold base</option>' : ''}
             <option value="website" ${tireMode ? '' : 'selected'}>${tireMode ? 'Website' : 'Сайт'}</option>
             <option value="phone">${tireMode ? 'Phone' : 'Телефон'}</option>
             <option value="email">Email</option>
@@ -3667,9 +3679,9 @@ function openNewLeadModal(section = 'materials') {
             <option value="low">${tireMode ? 'Low' : 'Нисък'}</option>
           </select>
         </div>
-        <div class="form-group"><label>${tireMode ? 'Tires / wheels of interest' : 'Продукти (интерес)'}</label><input name="interest_products" value="${tireMode ? 'Tires' : ''}" placeholder="${tireMode ? 'Michelin, Dunlop, Goodyear, wheels...' : 'HB-PU500, PAK-01...'}"></div>
+        <div class="form-group"><label>${coldBaseMode ? 'Fleet / short note' : tireMode ? 'Tires / wheels of interest' : 'Продукти (интерес)'}</label><input name="interest_products" value="${coldBaseMode ? '' : tireMode ? 'Tires' : ''}" placeholder="${coldBaseMode ? 'Например: 50 LKW / fleet / transport' : tireMode ? 'Michelin, Dunlop, Goodyear, wheels...' : 'HB-PU500, PAK-01...'}"></div>
         <div class="form-group"><label>${tireMode ? 'Estimated value (BGN)' : 'Стойност (лв)'}</label><input name="estimated_value" type="number"></div>
-        <div class="form-group full"><label>${tireMode ? 'Notes' : 'Бележки'}</label><textarea name="notes" rows="2" placeholder="${tireMode ? 'Vehicle, tire size, season, quantity, wheels required...' : ''}"></textarea></div>
+        <div class="form-group full"><label>${tireMode ? 'Notes' : 'Бележки'}</label><textarea name="notes" rows="2" placeholder="${coldBaseMode ? 'Website, company profile, cold call notes...' : tireMode ? 'Vehicle, tire size, season, quantity, wheels required...' : ''}"></textarea></div>
       </div>
       <div id="new-lead-result" class="sync-result"></div>
       <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:12px;">
@@ -3695,29 +3707,29 @@ async function createLead(e, section = 'materials') {
   data.estimated_value = data.estimated_value ? parseFloat(data.estimated_value) : null;
   if (!data.company_name) {
     result.className = 'sync-result show err';
-    result.textContent = section === 'tires' ? 'Company or customer name is required.' : 'Компанията е задължителна.';
+    result.textContent = section === 'tires' || section === 'tires_base' ? 'Company or customer name is required.' : 'Компанията е задължителна.';
     return;
   }
   if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
     result.className = 'sync-result show err';
-    result.textContent = section === 'tires' ? 'Enter a valid email address.' : 'Въведете валиден email.';
+    result.textContent = section === 'tires' || section === 'tires_base' ? 'Enter a valid email address.' : 'Въведете валиден email.';
     return;
   }
   submit.disabled = true;
-  submit.textContent = section === 'tires' ? 'Creating...' : 'Създаване...';
+  submit.textContent = section === 'tires' || section === 'tires_base' ? 'Creating...' : 'Създаване...';
   result.className = 'sync-result show';
-  result.textContent = section === 'tires' ? 'Saving lead...' : 'Запазване...';
+  result.textContent = section === 'tires' || section === 'tires_base' ? 'Saving lead...' : 'Запазване...';
   try {
     await api('/api/leads', { method: 'POST', body: data });
     result.className = 'sync-result show ok';
-    result.textContent = section === 'tires' ? 'Lead created successfully.' : 'Лидът е създаден.';
+    result.textContent = section === 'tires' || section === 'tires_base' ? 'Lead created successfully.' : 'Лидът е създаден.';
     closeModal();
-    navigate(section === 'tires' ? 'tires' : 'leads');
+    navigate(section === 'tires' ? 'tires' : section === 'tires_base' ? 'tire-base' : 'leads');
   } catch (err) {
     result.className = 'sync-result show err';
-    result.textContent = (section === 'tires' ? 'Could not create lead: ' : 'Грешка: ') + err.message;
+    result.textContent = ((section === 'tires' || section === 'tires_base') ? 'Could not create lead: ' : 'Грешка: ') + err.message;
     submit.disabled = false;
-    submit.textContent = section === 'tires' ? 'Create lead' : '💾 Създай';
+    submit.textContent = section === 'tires' || section === 'tires_base' ? 'Create lead' : '💾 Създай';
   }
 }
 
