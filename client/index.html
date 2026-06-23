@@ -8,6 +8,19 @@
   <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
+  <div class="mobile-topbar">
+    <button class="mobile-menu-btn" type="button" onclick="toggleMobileSidebar(true)" aria-label="Open navigation">☰</button>
+    <div class="mobile-topbar-brand">
+      <div class="logo-icon">B</div>
+      <div>
+        <div class="logo-text">BODEX</div>
+        <div class="logo-sub">Virtual Office</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleMobileSidebar(false)"></div>
+
   <!-- SIDEBAR -->
   <nav class="sidebar" id="sidebar">
     <div class="sidebar-logo">

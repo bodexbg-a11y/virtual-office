@@ -70,10 +70,23 @@ function navigate(page) {
     page = 'leads';
   }
   currentPage = page;
+  toggleMobileSidebar(false);
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
   renderPage(page);
+}
+
+function toggleMobileSidebar(forceState) {
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  if (!sidebar || !backdrop) return;
+  const nextOpen = typeof forceState === 'boolean'
+    ? forceState
+    : !sidebar.classList.contains('mobile-open');
+  sidebar.classList.toggle('mobile-open', nextOpen);
+  backdrop.classList.toggle('show', nextOpen);
+  document.body.classList.toggle('mobile-nav-open', nextOpen);
 }
 
 async function renderPage(page) {
@@ -1827,6 +1840,9 @@ async function renderLeads(el, filters = {}) {
   }, {});
   const responseMetrics = buildLeadResponseMetrics(statusCountRows, tireMode);
   const cityOptions = summary.cities || [];
+  const mobileLeadCards = rows.length
+    ? rows.map(l => renderLeadMobileCard(l, tireMode)).join('')
+    : `<div class="lead-mobile-empty">${tireMode ? 'No leads match this filter.' : 'Нет лидов по этому фильтру.'}</div>`;
 
   el.innerHTML = `
     <div class="page-header fade-in">
@@ -1937,7 +1953,10 @@ async function renderLeads(el, filters = {}) {
       </select>
     </div>
 
-    <div class="card fade-in">
+    <div class="card fade-in lead-list-card">
+      <div class="lead-mobile-list">
+        ${mobileLeadCards}
+      </div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -2021,6 +2040,71 @@ function toggleLeadQuickFilter(key, value) {
     nextFilters[key] = value;
   }
   renderLeads(document.getElementById('main'), nextFilters);
+}
+
+function renderLeadMobileCard(l, tireMode = false) {
+  const status = leadDisplayStatus(l);
+  const titleColor = l.is_gold_lead ? '#f6d365' : '#f3f4f6';
+  const interest = l.area_label || l.interest_products || '—';
+  const commentText = l.latest_comment ? escapeHtml(l.latest_comment) : (tireMode ? 'Add comment' : 'Добавить комментарий');
+  const commentTitle = escapeAttr(l.latest_comment || (tireMode ? 'Add comment' : 'Добавить комментарий'));
+
+  return `
+    <article class="lead-mobile-card ${status === 'new' || status === 'partner_new' ? 'lead-mobile-card-new' : ''}" onclick="openLeadDetail(${l.id})">
+      <div class="lead-mobile-card-head">
+        <div class="lead-mobile-card-company" style="color:${titleColor};">${escapeHtml(l.company_name || '—')}</div>
+        <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadDetail(${l.id})">👁</button>
+      </div>
+
+      <div class="lead-mobile-card-meta">
+        <div><span>${tireMode ? 'Contact' : 'Контакт'}</span><strong>${escapeHtml(l.contact_name || '—')}</strong></div>
+        <div><span>${tireMode ? 'Phone / Email' : 'Телефон / Email'}</span><strong>${escapeHtml(l.phone || l.email || '—')}</strong></div>
+        <div><span>${tireMode ? 'City' : 'Город'}</span><strong>${escapeHtml(l.city || '—')}</strong></div>
+        <div><span>${tireMode ? 'Interest' : 'Интерес'}</span><strong style="color:${l.is_gold_lead ? '#f6d365' : '#d1d5db'};">${escapeHtml(interest)}</strong></div>
+      </div>
+
+      <div class="lead-mobile-card-row" onclick="event.stopPropagation();">
+        <div class="lead-mobile-card-label">${tireMode ? 'Status' : 'Статус'}</div>
+        <div class="lead-status-cell">
+          <select
+            class="lead-inline-status-select lead-inline-status-${status}"
+            data-previous-value="${status}"
+            onclick="event.stopPropagation();"
+            onchange="inlineUpdateLeadStatus(${l.id}, this.value, event)"
+          >
+            ${leadStagesForLead(l).map(stage => `<option value="${stage}" ${status === stage ? 'selected' : ''}>${tireMode ? tireStatusLabel(stage) : statusLabel(stage)}</option>`).join('')}
+          </select>
+          <button
+            class="lead-qualification-btn ${leadQualificationProgress(l) === 100 ? 'complete' : ''}"
+            style="--qualification-progress:${leadQualificationProgress(l)}%"
+            title="${tireMode ? 'Details completed' : 'Бриф заполнен на'} ${leadQualificationProgress(l)}%"
+            onclick="event.stopPropagation();openLeadQualificationModal(${l.id})"
+          ><span>📝</span></button>
+        </div>
+      </div>
+
+      <div class="lead-mobile-card-row" onclick="event.stopPropagation();">
+        <div class="lead-mobile-card-label">${tireMode ? 'Channels' : 'Контакты'}</div>
+        <div class="lead-mobile-card-actions">
+          ${renderLeadTableContactActions(l)}
+          ${needsCatalogPing(l) ? `<button class="lead-ping-bell" title="Запросить обратную связь по КП" onclick="event.stopPropagation();openCatalogPingModal(${l.id})">🔔</button>` : ''}
+        </div>
+      </div>
+
+      <div class="lead-mobile-card-row">
+        <div class="lead-mobile-card-label">CRM</div>
+        <div class="lead-mobile-card-time">${renderLeadTimingCell(l, tireMode)}</div>
+      </div>
+
+      <div class="lead-mobile-card-row" onclick="event.stopPropagation();">
+        <div class="lead-mobile-card-label">${tireMode ? 'Comment' : 'Комментарий'}</div>
+        <button class="btn btn-sm btn-secondary ${l.has_fresh_comment ? 'fresh-comment-btn' : ''}" title="${commentTitle}" onclick="openQuickCommentModal(${l.id}, '${encodeURIComponent(l.latest_comment || '')}')" style="width:100%;display:inline-flex;gap:6px;align-items:center;justify-content:flex-start;">
+          <span class="fresh-comment-icon-wrap">💬${l.has_fresh_comment ? '<span class="fresh-comment-dot"></span>' : ''}</span>
+          <span class="lead-mobile-comment-text">${commentText}</span>
+        </button>
+      </div>
+    </article>
+  `;
 }
 
 function clearLeadStatusFilter() {
