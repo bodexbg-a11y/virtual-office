@@ -284,7 +284,7 @@ class FacebookAdsService {
                   fb_ad_name = COALESCE(fb_ad_name, ?),
                   fb_form_id = COALESCE(fb_form_id, ?),
                   created_at = CASE
-                    WHEN fb_created_time_raw IS NULL AND ? IS NOT NULL THEN ?::timestamp
+                    WHEN fb_created_time_raw IS NULL THEN COALESCE(?::timestamp, created_at)
                     ELSE created_at
                   END,
                   fb_created_time_raw = COALESCE(fb_created_time_raw, ?)
@@ -296,7 +296,6 @@ class FacebookAdsService {
                 mapped.fb_ad_id,
                 mapped.fb_ad_name,
                 mapped.fb_form_id,
-                mapped.created_at,
                 mapped.created_at,
                 mapped.fb_created_time_raw,
                 existing.id,
