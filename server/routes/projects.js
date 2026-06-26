@@ -27,6 +27,21 @@ const upload = multer({ storage });
 
 async function ensureProjectsTable() {
   await db.exec(`
+    CREATE TABLE IF NOT EXISTS contractors (
+      id SERIAL PRIMARY KEY,
+      company_name TEXT NOT NULL,
+      contact_name TEXT,
+      phone TEXT,
+      email TEXT,
+      city TEXT,
+      regions TEXT,
+      specialties TEXT,
+      notes TEXT,
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS projects (
       id SERIAL PRIMARY KEY,
       title TEXT NOT NULL,
@@ -45,6 +60,10 @@ async function ensureProjectsTable() {
       materials_needed TEXT,
       photos_info TEXT,
       project_photos JSONB DEFAULT '[]'::jsonb,
+      contractor_required BOOLEAN DEFAULT FALSE,
+      contractor_id INTEGER REFERENCES contractors(id) ON DELETE SET NULL,
+      contractor_company TEXT,
+      contractor_notes TEXT,
       estimated_value NUMERIC(12,2) DEFAULT 0,
       currency TEXT DEFAULT 'EUR',
       status TEXT DEFAULT 'new',
@@ -62,6 +81,10 @@ async function ensureProjectsTable() {
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS approximate_area_m2 TEXT;
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_answers TEXT;
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_photos JSONB DEFAULT '[]'::jsonb;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS contractor_required BOOLEAN DEFAULT FALSE;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS contractor_id INTEGER REFERENCES contractors(id) ON DELETE SET NULL;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS contractor_company TEXT;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS contractor_notes TEXT;
   `);
 }
 
@@ -87,6 +110,10 @@ function payloadFromBody(body = {}) {
     client_answers: String(body.client_answers || '').trim(),
     materials_needed: String(body.materials_needed || '').trim(),
     photos_info: String(body.photos_info || '').trim(),
+    contractor_required: body.contractor_required === true || String(body.contractor_required || '') === '1',
+    contractor_id: body.contractor_id ? Number(body.contractor_id) : null,
+    contractor_company: String(body.contractor_company || '').trim(),
+    contractor_notes: String(body.contractor_notes || '').trim(),
     estimated_value: 0,
     currency: 'EUR',
     status: normalizeStatus(body.status),
@@ -126,6 +153,8 @@ function buildProjectLeadNotes(payload = {}) {
     payload.repair_scope ? `Объём работ: ${payload.repair_scope}` : '',
     payload.client_answers ? `Ответы клиента: ${payload.client_answers}` : '',
     payload.materials_needed ? `Материалы: ${payload.materials_needed}` : '',
+    payload.contractor_required ? `Нужен подрядчик: ${payload.contractor_company || 'Да'}` : '',
+    payload.contractor_notes ? `Комментарий по подрядчику: ${payload.contractor_notes}` : '',
   ].filter(Boolean);
   return lines.join('\n');
 }
@@ -278,7 +307,8 @@ async function ensureLinkedLead(payload = {}, currentLeadId = null, performedBy 
 router.get('/meta', async (req, res) => {
   try {
     await ensureProjectsTable();
-    const { rows: leads } = await db.query(`
+    const [{ rows: leads }, { rows: contractors }] = await Promise.all([
+      db.query(`
       SELECT
         id,
         company_name,
@@ -295,8 +325,15 @@ router.get('/meta', async (req, res) => {
         AND COALESCE(crm_segment, 'objects') = 'objects'
       ORDER BY updated_at DESC NULLS LAST, created_at DESC
       LIMIT 300
-    `);
-    res.json({ leads });
+    `),
+      db.query(`
+        SELECT id, company_name, contact_name, phone, email, city, specialties, is_active
+        FROM contractors
+        WHERE is_active = TRUE
+        ORDER BY company_name ASC
+      `),
+    ]);
+    res.json({ leads, contractors });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -332,9 +369,14 @@ router.get('/', async (req, res) => {
     const { rows } = await db.query(`
       SELECT
         p.*,
+        c.company_name AS contractor_name,
+        c.contact_name AS contractor_contact_name,
+        c.phone AS contractor_phone,
+        c.email AS contractor_email,
         l.company_name AS lead_company_name,
         l.contact_name AS lead_contact_name
       FROM projects p
+      LEFT JOIN contractors c ON c.id = p.contractor_id
       LEFT JOIN leads l ON l.id = p.lead_id
       ${whereSql}
       ORDER BY p.updated_at DESC, p.created_at DESC
@@ -365,6 +407,23 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.get('/:id', async (req, res) => {
+  try {
+    await ensureProjectsTable();
+    const { rows } = await db.query(`
+      SELECT *
+      FROM projects
+      WHERE id = ?
+      LIMIT 1
+    `, [req.params.id]);
+    const project = rows[0];
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    res.json(project);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/', async (req, res) => {
   try {
     await ensureProjectsTable();
@@ -377,9 +436,10 @@ router.post('/', async (req, res) => {
       INSERT INTO projects (
         title, lead_id, client_name, contact_name, phone, email, city, site_address,
         object_type, approximate_area_m2, problem_description, repair_scope, client_answers, materials_needed, photos_info,
+        contractor_required, contractor_id, contractor_company, contractor_notes,
         estimated_value, currency, status, next_step, notes, created_by
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *
     `, [
       payload.title,
@@ -397,6 +457,10 @@ router.post('/', async (req, res) => {
       payload.client_answers,
       payload.materials_needed,
       payload.photos_info,
+      payload.contractor_required,
+      payload.contractor_id,
+      payload.contractor_company,
+      payload.contractor_notes,
       payload.estimated_value,
       payload.currency,
       payload.status,
@@ -439,6 +503,10 @@ router.put('/:id', async (req, res) => {
           client_answers = ?,
           materials_needed = ?,
           photos_info = ?,
+          contractor_required = ?,
+          contractor_id = ?,
+          contractor_company = ?,
+          contractor_notes = ?,
           estimated_value = ?,
           currency = ?,
           status = ?,
@@ -463,6 +531,10 @@ router.put('/:id', async (req, res) => {
       payload.client_answers,
       payload.materials_needed,
       payload.photos_info,
+      payload.contractor_required,
+      payload.contractor_id,
+      payload.contractor_company,
+      payload.contractor_notes,
       payload.estimated_value,
       payload.currency,
       payload.status,

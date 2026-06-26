@@ -30,6 +30,7 @@ app.use('/api/agents', require('./routes/agents'));
 app.use('/api/offers', require('./routes/offers'));
 app.use('/api/gmail', require('./routes/gmail'));
 app.use('/api/projects', require('./routes/projects'));
+app.use('/api/contractors', require('./routes/contractors'));
 
 // Health check
 app.get('/api/health', (req, res) => {

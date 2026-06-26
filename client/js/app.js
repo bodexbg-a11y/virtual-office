@@ -8,6 +8,7 @@ let adminToken = localStorage.getItem('bodex_admin_token') || '';
 let markAgentPoll = null;
 let currentLeadFilters = {};
 let currentProjectFilters = { q: '', status: '' };
+let currentContractorFilters = { q: '', active: '1' };
 let agentReportsFilters = { agent: 'all', date_from: '', date_to: '', limit: 100 };
 let agentReportsCache = [];
 let currentOfferDraft = null;
@@ -113,6 +114,7 @@ async function renderPage(page) {
       case 'clients': await renderClients(main); break;
       case 'deals': await renderDeals(main); break;
       case 'projects': await renderProjects(main); break;
+      case 'contractors': await renderContractors(main); break;
       case 'pipeline': await renderPipeline(main); break;
       case 'facebook': await renderFacebook(main); break;
       case 'sheets': await renderSheets(main); break;
@@ -5129,12 +5131,13 @@ async function renderProjects(el) {
   const rows = data.rows || [];
   const summary = data.summary || {};
   const leads = meta.leads || [];
+  const contractors = meta.contractors || [];
 
   el.innerHTML = `
     <div class="page-header fade-in">
       <h2>🏗️ Проекты</h2>
       <div class="page-header-actions">
-        <button class="btn btn-primary" onclick='openProjectModal(${JSON.stringify(leads).replace(/'/g, "&apos;")})'>+ Новый проект</button>
+        <button class="btn btn-primary" onclick='openProjectModal(${JSON.stringify(leads).replace(/'/g, "&apos;")}, ${JSON.stringify(contractors).replace(/'/g, "&apos;")})'>+ Новый проект</button>
       </div>
     </div>
 
@@ -5170,6 +5173,7 @@ async function renderProjects(el) {
               <th>Объект / город</th>
               <th>Проблема</th>
               <th>Материалы</th>
+              <th>Подрядчик</th>
               <th>Статус</th>
               <th>След. шаг</th>
               <th></th>
@@ -5196,11 +5200,16 @@ async function renderProjects(el) {
                 <td style="max-width:220px;">
                   <div style="color:#cbd5e1;">${escapeHtml((r.materials_needed || '—').slice(0, 120))}${(r.materials_needed || '').length > 120 ? '…' : ''}</div>
                 </td>
+                <td style="min-width:180px;">
+                  <button class="btn btn-secondary btn-sm" onclick='openProjectContractorModal(${JSON.stringify(contractors).replace(/'/g, "&apos;")}, ${JSON.stringify(r).replace(/'/g, "&apos;")})'>
+                    ${r.contractor_required ? `🦺 ${escapeHtml(r.contractor_name || r.contractor_company || 'Нужен подрядчик')}` : '🦺 Подрядчик'}
+                  </button>
+                </td>
                 <td><span class="badge ${projectStatusBadge(r.status)}">${projectStatusLabel(r.status)}</span></td>
                 <td style="max-width:180px;">${escapeHtml(r.next_step || '—')}</td>
-                <td><button class="btn btn-secondary btn-sm" onclick='openProjectModal(${JSON.stringify(leads).replace(/'/g, "&apos;")}, ${JSON.stringify(r).replace(/'/g, "&apos;")})'>Редактировать</button></td>
+                <td><button class="btn btn-secondary btn-sm" onclick='openProjectModal(${JSON.stringify(leads).replace(/'/g, "&apos;")}, ${JSON.stringify(contractors).replace(/'/g, "&apos;")}, ${JSON.stringify(r).replace(/'/g, "&apos;")})'>Редактировать</button></td>
               </tr>
-            `).join('') : '<tr><td colspan="8" style="text-align:center;color:#777;padding:24px;">Пока нет проектов. Создайте первый объект.</td></tr>'}
+            `).join('') : '<tr><td colspan="9" style="text-align:center;color:#777;padding:24px;">Пока нет проектов. Создайте первый объект.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -5208,7 +5217,7 @@ async function renderProjects(el) {
   `;
 }
 
-function openProjectModal(leads = [], record = null) {
+function openProjectModal(leads = [], contractors = [], record = null) {
   const r = record || {};
   const photos = Array.isArray(r.project_photos) ? r.project_photos : [];
   openModal(record ? 'Редактировать проект' : 'Новый проект', `
@@ -5234,6 +5243,31 @@ function openProjectModal(leads = [], record = null) {
         </select>
       </div>
       <div class="form-group"><label>Валюта</label><input value="EUR" disabled></div>
+      <div class="form-group full" style="padding:12px 14px;border:1px solid var(--border);border-radius:14px;background:rgba(255,255,255,0.02);">
+        <label style="display:flex;align-items:center;gap:10px;margin:0 0 10px;">
+          <input id="pr-contractor-required" type="checkbox" ${r.contractor_required ? 'checked' : ''} onchange="toggleProjectContractorFields()">
+          <span><strong>Нужен подрядчик</strong></span>
+        </label>
+        <div id="pr-contractor-fields" ${r.contractor_required ? '' : 'style="display:none;"'}>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Подрядчик из базы</label>
+              <select id="pr-contractor-id" onchange='fillProjectContractorData(${JSON.stringify(contractors).replace(/'/g, "&apos;")})'>
+                <option value="">Выбрать подрядчика</option>
+                ${contractors.map(c => `<option value="${c.id}" ${Number(r.contractor_id) === Number(c.id) ? 'selected' : ''}>${escapeHtml(c.company_name || '')}${c.city ? ` · ${escapeHtml(c.city)}` : ''}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Компания подрядчика</label>
+              <input id="pr-contractor-company" value="${escapeAttr(r.contractor_company || r.contractor_name || '')}" placeholder="Если не из базы, впишите вручную">
+            </div>
+            <div class="form-group full">
+              <label>Комментарий по подрядчику</label>
+              <textarea id="pr-contractor-notes" rows="2" placeholder="Кто выполняет работу, договоренности, комментарии...">${escapeHtml(r.contractor_notes || '')}</textarea>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="form-group full"><label>Проблема / дефект</label><textarea id="pr-problem-description" rows="3" placeholder="Течове, пукнатини, влага, вода през шевове, нужда от инжектиране...">${escapeHtml(r.problem_description || '')}</textarea></div>
       <div class="form-group full"><label>Объём работ / оценка ремонта</label><textarea id="pr-repair-scope" rows="3" placeholder="м², линейные метры, количество проходов, ориентировочный объём...">${escapeHtml(r.repair_scope || '')}</textarea></div>
       <div class="form-group full"><label>Ответы на вопросы клиента</label><textarea id="pr-client-answers" rows="4" placeholder="Сюда можно заносить ответы клиента: тип объекта, сроки, кто выполняет работы, что именно болит, какие фото прислал...">${escapeHtml(r.client_answers || '')}</textarea></div>
@@ -5281,6 +5315,105 @@ function fillProjectLeadData(leads = []) {
   if (city && !city.value) city.value = lead.city || '';
 }
 
+function toggleProjectContractorFields() {
+  const checked = document.getElementById('pr-contractor-required')?.checked;
+  const wrap = document.getElementById('pr-contractor-fields');
+  if (wrap) wrap.style.display = checked ? '' : 'none';
+}
+
+function fillProjectContractorData(contractors = []) {
+  const contractorId = Number(document.getElementById('pr-contractor-id')?.value || 0);
+  const contractor = (contractors || []).find(item => Number(item.id) === contractorId);
+  if (!contractor) return;
+  const company = document.getElementById('pr-contractor-company');
+  const notes = document.getElementById('pr-contractor-notes');
+  if (company && !company.value) company.value = contractor.company_name || '';
+  if (notes && !notes.value) {
+    notes.value = [
+      contractor.contact_name ? `Контакт: ${contractor.contact_name}` : '',
+      contractor.phone ? `Телефон: ${contractor.phone}` : '',
+      contractor.email ? `Email: ${contractor.email}` : '',
+      contractor.specialties ? `Специализация: ${contractor.specialties}` : '',
+    ].filter(Boolean).join('\n');
+  }
+}
+
+function openProjectContractorModal(contractors = [], record = {}) {
+  openModal(`Подрядчик · ${record.title || record.client_name || 'Проект'}`, `
+    <div class="form-group full">
+      <label style="display:flex;align-items:center;gap:10px;">
+        <input id="quick-project-contractor-required" type="checkbox" ${record.contractor_required ? 'checked' : ''} onchange="document.getElementById('quick-project-contractor-fields').style.display = this.checked ? '' : 'none'">
+        <span>Нужен подрядчик на выполнение работ</span>
+      </label>
+    </div>
+    <div id="quick-project-contractor-fields" ${record.contractor_required ? '' : 'style="display:none;"'}>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Подрядчик из базы</label>
+          <select id="quick-project-contractor-id" onchange='fillQuickProjectContractorData(${JSON.stringify(contractors).replace(/'/g, "&apos;")})'>
+            <option value="">Выбрать подрядчика</option>
+            ${contractors.map(c => `<option value="${c.id}" ${Number(record.contractor_id) === Number(c.id) ? 'selected' : ''}>${escapeHtml(c.company_name || '')}${c.city ? ` · ${escapeHtml(c.city)}` : ''}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Компания подрядчика</label>
+          <input id="quick-project-contractor-company" value="${escapeAttr(record.contractor_company || record.contractor_name || '')}" placeholder="Название компании">
+        </div>
+        <div class="form-group full">
+          <label>Комментарий</label>
+          <textarea id="quick-project-contractor-notes" rows="3" placeholder="Что делает подрядчик, этап, договоренности...">${escapeHtml(record.contractor_notes || '')}</textarea>
+        </div>
+      </div>
+    </div>
+    <div id="quick-project-contractor-result" class="sync-result"></div>
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="saveQuickProjectContractor(${record.id || 'null'})">Сохранить</button>
+    </div>
+  `);
+}
+
+function fillQuickProjectContractorData(contractors = []) {
+  const contractorId = Number(document.getElementById('quick-project-contractor-id')?.value || 0);
+  const contractor = (contractors || []).find(item => Number(item.id) === contractorId);
+  if (!contractor) return;
+  const company = document.getElementById('quick-project-contractor-company');
+  const notes = document.getElementById('quick-project-contractor-notes');
+  if (company && !company.value) company.value = contractor.company_name || '';
+  if (notes && !notes.value) {
+    notes.value = [
+      contractor.contact_name ? `Контакт: ${contractor.contact_name}` : '',
+      contractor.phone ? `Телефон: ${contractor.phone}` : '',
+      contractor.email ? `Email: ${contractor.email}` : '',
+      contractor.specialties ? `Специализация: ${contractor.specialties}` : '',
+    ].filter(Boolean).join('\n');
+  }
+}
+
+async function saveQuickProjectContractor(projectId) {
+  const result = document.getElementById('quick-project-contractor-result');
+  result.className = 'sync-result show';
+  result.textContent = 'Сохраняю подрядчика...';
+  try {
+    const project = await api(`/api/projects/${projectId}`);
+    await api(`/api/projects/${projectId}`, {
+      method: 'PUT',
+      body: {
+        ...project,
+        contractor_required: document.getElementById('quick-project-contractor-required')?.checked || false,
+        contractor_id: document.getElementById('quick-project-contractor-id')?.value || null,
+        contractor_company: document.getElementById('quick-project-contractor-company')?.value || '',
+        contractor_notes: document.getElementById('quick-project-contractor-notes')?.value || '',
+      },
+    });
+    closeModal();
+    navigate('projects');
+  } catch (err) {
+    result.className = 'sync-result show err';
+    result.textContent = `❌ ${err.message}`;
+  }
+}
+
 async function saveProjectRecord(id = null) {
   const payload = {
     title: document.getElementById('pr-title')?.value || '',
@@ -5298,6 +5431,10 @@ async function saveProjectRecord(id = null) {
     client_answers: document.getElementById('pr-client-answers')?.value || '',
     materials_needed: document.getElementById('pr-materials-needed')?.value || '',
     photos_info: document.getElementById('pr-photos-info')?.value || '',
+    contractor_required: document.getElementById('pr-contractor-required')?.checked || false,
+    contractor_id: document.getElementById('pr-contractor-id')?.value || null,
+    contractor_company: document.getElementById('pr-contractor-company')?.value || '',
+    contractor_notes: document.getElementById('pr-contractor-notes')?.value || '',
     estimated_value: 0,
     currency: 'EUR',
     status: document.getElementById('pr-status')?.value || 'new',
@@ -5334,6 +5471,130 @@ async function uploadProjectPhotos(projectId) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
+}
+
+async function renderContractors(el) {
+  const query = currentContractorFilters?.q || '';
+  const active = currentContractorFilters?.active || '1';
+  const qs = new URLSearchParams();
+  if (query) qs.set('q', query);
+  if (active !== '') qs.set('active', active);
+  const data = await api(`/api/contractors${qs.toString() ? `?${qs.toString()}` : ''}`);
+  const rows = data.rows || [];
+  const summary = data.summary || {};
+
+  el.innerHTML = `
+    <div class="page-header fade-in">
+      <h2>🦺 Подрядчики</h2>
+      <div class="page-header-actions">
+        <button class="btn btn-primary" onclick="openContractorModal()">+ Новый подрядчик</button>
+      </div>
+    </div>
+
+    <div class="stats-grid fade-in">
+      <div class="stat-card"><div class="stat-label">Всего</div><div class="stat-value">${summary.total || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">Активные</div><div class="stat-value green">${summary.active || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">Неактивные</div><div class="stat-value">${summary.inactive || 0}</div></div>
+    </div>
+
+    <div class="card fade-in" style="margin-top:18px;">
+      <div class="card-title">База подрядчиков</div>
+      <div class="search-bar" style="margin-bottom:14px;">
+        <input
+          placeholder="Поиск по компании, городу, специализации, контакту..."
+          value="${escapeAttr(query)}"
+          oninput="currentContractorFilters = {...currentContractorFilters, q: this.value}"
+          onkeydown="if(event.key==='Enter'){renderContractors(document.getElementById('main'))}"
+        >
+        <select onchange="currentContractorFilters = {...currentContractorFilters, active: this.value}; renderContractors(document.getElementById('main'))">
+          <option value="1" ${active === '1' ? 'selected' : ''}>Только активные</option>
+          <option value="" ${active === '' ? 'selected' : ''}>Все</option>
+          <option value="0" ${active === '0' ? 'selected' : ''}>Только неактивные</option>
+        </select>
+        <button class="btn btn-secondary" onclick="renderContractors(document.getElementById('main'))">Поиск</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Компания</th>
+              <th>Контакт</th>
+              <th>Город / регионы</th>
+              <th>Специализация</th>
+              <th>Статус</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map(r => `
+              <tr>
+                <td><div style="font-weight:700;color:#e5e7eb;">${escapeHtml(r.company_name || '—')}</div><div style="font-size:11px;color:#777;">${escapeHtml(r.email || '')}</div></td>
+                <td><div>${escapeHtml(r.contact_name || '—')}</div><div style="font-size:11px;color:#777;">${escapeHtml(r.phone || '')}</div></td>
+                <td><div>${escapeHtml(r.city || '—')}</div><div style="font-size:11px;color:#777;">${escapeHtml(r.regions || '')}</div></td>
+                <td style="max-width:240px;">${escapeHtml(r.specialties || '—')}</td>
+                <td><span class="badge ${r.is_active ? 'badge-won' : 'badge-low'}">${r.is_active ? 'Активный' : 'Неактивный'}</span></td>
+                <td><button class="btn btn-secondary btn-sm" onclick='openContractorModal(${JSON.stringify(r).replace(/'/g, "&apos;")})'>Редактировать</button></td>
+              </tr>
+            `).join('') : '<tr><td colspan="6" style="text-align:center;color:#777;padding:24px;">Пока нет подрядчиков.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function openContractorModal(record = null) {
+  const r = record || {};
+  openModal(record ? 'Редактировать подрядчика' : 'Новый подрядчик', `
+    <div class="form-grid">
+      <div class="form-group"><label>Компания</label><input id="ct-company-name" value="${escapeAttr(r.company_name || '')}" placeholder="Название компании"></div>
+      <div class="form-group"><label>Контакт</label><input id="ct-contact-name" value="${escapeAttr(r.contact_name || '')}" placeholder="Имя контакта"></div>
+      <div class="form-group"><label>Телефон</label><input id="ct-phone" value="${escapeAttr(r.phone || '')}"></div>
+      <div class="form-group"><label>Email</label><input id="ct-email" value="${escapeAttr(r.email || '')}"></div>
+      <div class="form-group"><label>Город</label><input id="ct-city" value="${escapeAttr(r.city || '')}"></div>
+      <div class="form-group"><label>Регионы</label><input id="ct-regions" value="${escapeAttr(r.regions || '')}" placeholder="София, Пловдив, Варна..."></div>
+      <div class="form-group full"><label>Специализация</label><textarea id="ct-specialties" rows="3" placeholder="Инъектирование, гидроизоляция, ремонт бетона...">${escapeHtml(r.specialties || '')}</textarea></div>
+      <div class="form-group full"><label>Заметки</label><textarea id="ct-notes" rows="3" placeholder="Комментарии, сильные стороны, условия...">${escapeHtml(r.notes || '')}</textarea></div>
+      <div class="form-group full">
+        <label style="display:flex;align-items:center;gap:10px;">
+          <input id="ct-is-active" type="checkbox" ${r.is_active === false ? '' : 'checked'}>
+          <span>Активный подрядчик</span>
+        </label>
+      </div>
+    </div>
+    <div id="ct-result" class="sync-result"></div>
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="saveContractorRecord(${r.id || 'null'})">Сохранить</button>
+    </div>
+  `);
+}
+
+async function saveContractorRecord(id = null) {
+  const payload = {
+    company_name: document.getElementById('ct-company-name')?.value || '',
+    contact_name: document.getElementById('ct-contact-name')?.value || '',
+    phone: document.getElementById('ct-phone')?.value || '',
+    email: document.getElementById('ct-email')?.value || '',
+    city: document.getElementById('ct-city')?.value || '',
+    regions: document.getElementById('ct-regions')?.value || '',
+    specialties: document.getElementById('ct-specialties')?.value || '',
+    notes: document.getElementById('ct-notes')?.value || '',
+    is_active: document.getElementById('ct-is-active')?.checked || false,
+  };
+  const result = document.getElementById('ct-result');
+  result.className = 'sync-result show';
+  result.textContent = 'Сохраняю подрядчика...';
+  try {
+    const path = id ? `/api/contractors/${id}` : '/api/contractors';
+    const method = id ? 'PUT' : 'POST';
+    await api(path, { method, body: payload });
+    closeModal();
+    navigate('contractors');
+  } catch (err) {
+    result.className = 'sync-result show err';
+    result.textContent = `❌ ${err.message}`;
+  }
 }
 
 async function renderLogistics(el) {
