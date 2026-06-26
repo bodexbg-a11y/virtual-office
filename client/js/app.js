@@ -2684,7 +2684,7 @@ async function openLeadQualificationModal(id) {
         </label>
         <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
           <button type="button" class="btn btn-secondary" onclick="closeModal()">${tireMode ? 'Отмена' : 'Отказ'}</button>
-          ${tireMode ? `<button type="button" class="btn btn-secondary" onclick="downloadLeadQualificationTxt(${id})">Загрузить ответы</button>` : ''}
+          <button type="button" class="btn btn-secondary" onclick="downloadLeadQualificationTxt(${id})">${tireMode ? 'Загрузить ответы' : 'Скачать ответы'}</button>
           <button type="submit" class="btn btn-primary">${tireMode ? 'Сохранить ответы' : 'Запази отговорите'}</button>
         </div>
       </form>
@@ -2806,6 +2806,7 @@ function collectLeadQualificationFormData() {
 }
 
 function formatLeadQualificationTxt(lead, qualificationData) {
+  const clientType = qualificationData.client_type || leadQualificationType(lead, qualificationData);
   const lines = [
     `Лид: ${lead.company_name || lead.contact_name || `#${lead.id}`}`,
     `Контакт: ${lead.contact_name || '-'}`,
@@ -2817,7 +2818,7 @@ function formatLeadQualificationTxt(lead, qualificationData) {
     ''
   ];
 
-  if (qualificationData.client_type === 'tire_customer') {
+  if (clientType === 'tire_customer') {
     lines.push(
       `1. Для какого автомобиля нужны шины: ${qualificationData.vehicle || '-'}`,
       `2. Какой размер шин нужен: ${qualificationData.tire_size || '-'}`,
@@ -2827,8 +2828,48 @@ function formatLeadQualificationTxt(lead, qualificationData) {
       `Дополнительные детали: ${qualificationData.notes || '-'}`,
       `Информации достаточно для предложения: ${qualificationData.manual_complete ? 'Да' : 'Нет'}`
     );
+  } else if (clientType === 'concrete_object') {
+    const problems = Array.isArray(qualificationData.problems) && qualificationData.problems.length
+      ? qualificationData.problems.join(', ')
+      : '-';
+    const volumes = qualificationData.volumes || {};
+    lines.push(
+      `1. Какая проблема на объекте: ${problems}`,
+      `Доп. проблема: ${qualificationData.other_problem || '-'}`,
+      `2. Какой тип объекта: ${qualificationData.object_type || '-'}`,
+      `Доп. тип объекта: ${qualificationData.other_object_type || '-'}`,
+      `3. Объёмы / зона работ:`,
+      `   - Длина трещин: ${volumes.crack_length || '-'}`,
+      `   - Площадь поверхности: ${volumes.surface_area || '-'}`,
+      `   - Количество проходов / вводов: ${volumes.utility_entries || '-'}`,
+      `   - Общий объём работ: ${volumes.total_work || '-'}`,
+      `4. Когда нужен ремонт / материал: ${qualificationData.timing || '-'}`,
+      `5. Кто выполняет работы: ${qualificationData.executor || '-'}`,
+      `Дополнительные детали: ${qualificationData.notes || '-'}`,
+      `Информации достаточно для предложения: ${qualificationData.manual_complete ? 'Да' : 'Нет'}`
+    );
+  } else if (clientType === 'construction_company') {
+    lines.push(
+      `1. Какие материалы интересуют: ${qualificationData.materials_interest || '-'}`,
+      `2. Для какого объекта / применения: ${qualificationData.application_type || '-'}`,
+      `3. Ориентировочные количества: ${qualificationData.quantities || '-'}`,
+      `4. Когда нужна доставка: ${qualificationData.delivery_timing || '-'}`,
+      `5. Есть ли спецификация / смета: ${qualificationData.has_specification || '-'}`,
+      `Дополнительные детали: ${qualificationData.notes || '-'}`,
+      `Информации достаточно для предложения: ${qualificationData.manual_complete ? 'Да' : 'Нет'}`
+    );
+  } else if (clientType === 'distributor') {
+    lines.push(
+      `1. Регион / город: ${qualificationData.region || '-'}`,
+      `2. Какие продукты / бренды уже продают: ${qualificationData.current_products || '-'}`,
+      `3. Склад и торговая команда: ${qualificationData.warehouse_team || '-'}`,
+      `4. Месячные / годовые объёмы: ${qualificationData.sales_volume || '-'}`,
+      `5. Интерес к партнёрству: ${qualificationData.partnership_interest || '-'}`,
+      `Дополнительные детали: ${qualificationData.notes || '-'}`,
+      `Информации достаточно для предложения: ${qualificationData.manual_complete ? 'Да' : 'Нет'}`
+    );
   } else {
-    lines.push(`Данные формы относятся к типу: ${qualificationData.client_type || '-'}`);
+    lines.push(`Данные формы относятся к типу: ${clientType || '-'}`);
     lines.push(JSON.stringify(qualificationData, null, 2));
   }
 
@@ -2840,13 +2881,19 @@ async function downloadLeadQualificationTxt(id) {
   try {
     const data = await api(`/api/leads/${id}`);
     const lead = data.lead || {};
-    const qualificationData = collectLeadQualificationFormData();
+    let qualificationData = {};
+    const form = document.getElementById('lead-qualification-form');
+    if (form) {
+      qualificationData = collectLeadQualificationFormData();
+    } else {
+      qualificationData = leadQualificationData(lead);
+    }
     const content = formatLeadQualificationTxt(lead, qualificationData);
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `tire-lead-${id}-answers.txt`;
+    a.download = `lead-${id}-answers.txt`;
     document.body.appendChild(a);
     a.click();
     a.remove();
