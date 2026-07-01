@@ -14,6 +14,7 @@ let agentReportsCache = [];
 let currentOfferDraft = null;
 let currentLeadFormResponses = [];
 let currentLeadDetail = null;
+let currentLeadQualificationActivities = [];
 let bulkPingRecipients = [];
 let bulkPingQueue = [];
 let bulkPingQueueIndex = 0;
@@ -2696,6 +2697,74 @@ function objectQualificationDisplayValue(fieldId, value) {
   return value;
 }
 
+function formatQualificationHistoryEntry(activity = {}) {
+  let payload = {};
+  try {
+    payload = activity.new_value ? JSON.parse(activity.new_value) : {};
+  } catch {
+    payload = {};
+  }
+  const type = payload.client_type || '-';
+  const typeLabelMap = {
+    concrete_object: 'Объект',
+    construction_company: 'Строительная фирма',
+    distributor: 'Дистрибьютор / партнёр',
+    tire_customer: 'Шины / диски',
+  };
+  const lines = [];
+
+  if (type === 'concrete_object') {
+    const problemType = payload.problem_type || payload.problems?.[0] || '';
+    const problemDetails = payload.problem_details || {};
+    const commonDetails = payload.common_details || {};
+    lines.push(`Проблема: ${objectQualificationLabel(problemType) || '-'}`);
+    const problemConfig = OBJECT_QUALIFICATION_PROBLEM_FIELDS[problemType];
+    if (problemConfig?.fields?.length) {
+      problemConfig.fields.forEach(field => {
+        if (problemDetails[field.id]) {
+          lines.push(`${field.label}: ${objectQualificationDisplayValue(field.id, problemDetails[field.id])}`);
+        }
+      });
+    }
+    OBJECT_QUALIFICATION_COMMON_FIELDS.forEach(field => {
+      if (commonDetails[field.id]) {
+        lines.push(`${field.label}: ${objectQualificationDisplayValue(field.id, commonDetails[field.id])}`);
+      }
+    });
+  } else if (type === 'construction_company') {
+    if (payload.materials_interest) lines.push(`Материалы: ${payload.materials_interest}`);
+    if (payload.application_type) lines.push(`Объект / применение: ${payload.application_type}`);
+    if (payload.quantities) lines.push(`Количество: ${payload.quantities}`);
+    if (payload.delivery_timing) lines.push(`Срок доставки: ${payload.delivery_timing}`);
+    if (payload.has_specification) lines.push(`Спецификация: ${payload.has_specification}`);
+  } else if (type === 'distributor') {
+    if (payload.region) lines.push(`Регион: ${payload.region}`);
+    if (payload.current_products) lines.push(`Текущие продукты: ${payload.current_products}`);
+    if (payload.warehouse_team) lines.push(`Склад / команда: ${payload.warehouse_team}`);
+    if (payload.sales_volume) lines.push(`Объёмы: ${payload.sales_volume}`);
+    if (payload.partnership_interest) lines.push(`Интерес к партнёрству: ${payload.partnership_interest}`);
+  } else if (type === 'tire_customer') {
+    if (payload.vehicle) lines.push(`Автомобиль: ${payload.vehicle}`);
+    if (payload.tire_size) lines.push(`Размер шин: ${payload.tire_size}`);
+    if (payload.tire_type) lines.push(`Тип шин: ${payload.tire_type}`);
+    if (payload.preferred_brand) lines.push(`Бренд: ${payload.preferred_brand}`);
+    if (payload.quantity_and_rims) lines.push(`Количество / диски: ${payload.quantity_and_rims}`);
+  }
+
+  if (payload.notes) {
+    lines.push(`Доп. заметки: ${payload.notes}`);
+  }
+  if (payload.manual_complete === true) {
+    lines.push('Отмечено: данных достаточно для подготовки предложения');
+  }
+
+  return {
+    type,
+    typeLabel: typeLabelMap[type] || type,
+    lines: lines.length ? lines : ['Нет деталей в сохранённой версии'],
+  };
+}
+
 function renderObjectQualificationField(field, value, scope) {
   const attr = scope === 'common' ? 'data-object-common-field' : 'data-object-problem-field';
   const escapedValue = escapeAttr(value || '');
@@ -4513,9 +4582,11 @@ async function openLeadDetail(id) {
     const offers = offerData.offers || [];
     const formResponses = data.form_responses || [];
     const historyActivities = (data.activities || []).filter(a => a.action !== 'comment');
+    const qualificationActivities = (data.activities || []).filter(a => a.action === 'qualification');
     const leadNotes = formatLeadNotesForEditor(l.notes);
     currentLeadFormResponses = formResponses;
     currentLeadDetail = l;
+    currentLeadQualificationActivities = qualificationActivities;
 
     openModal(`${l.company_name || 'Лид #' + l.id}`, `
       <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px;">
@@ -4625,6 +4696,16 @@ async function openLeadDetail(id) {
           <button class="btn btn-secondary btn-sm" onclick="saveLeadComment(${l.id})">Добавить комментарий</button>
         </div>
         <div id="ld-comment-result" class="sync-result"></div>
+      </div>
+
+      <div style="margin-top:16px;padding:12px 14px;border:1px solid rgba(250,204,21,0.22);border-radius:10px;background:rgba(250,204,21,0.06);display:flex;justify-content:space-between;gap:12px;align-items:center;">
+        <div>
+          <div style="font-size:12px;font-weight:800;color:#ddd;">📋 История опросника</div>
+          <div style="font-size:11px;color:#b9bcc7;margin-top:3px;">
+            ${qualificationActivities.length ? `Сохранённых версий: ${qualificationActivities.length}` : 'Сохранённых версий опросника пока нет'}
+          </div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="openQualificationHistoryModal()">Посмотреть</button>
       </div>
 
       <div style="margin-top:16px;">
@@ -5398,6 +5479,38 @@ async function deleteLeadComment(leadId, commentId) {
   } catch (err) {
     alert('Грешка: ' + err.message);
   }
+}
+
+function openQualificationHistoryModal() {
+  const activities = currentLeadQualificationActivities || [];
+  openModal('История опросника', `
+    <div style="font-size:12px;color:#aeb4c2;margin-bottom:14px;">
+      Здесь показаны все сохранённые версии опросника из БД. Это помогает увидеть, что менеджер заполнял раньше, даже если текущая форма уже изменилась.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      ${activities.length ? activities.map(activity => {
+        const entry = formatQualificationHistoryEntry(activity);
+        return `
+          <div style="padding:14px;border:1px solid rgba(255,255,255,0.08);border-radius:12px;background:rgba(255,255,255,0.03);">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px;">
+              <div>
+                <div style="font-size:12px;font-weight:800;color:#e5e7eb;">${leadActivityLabel('qualification')} · ${entry.typeLabel}</div>
+                <div style="font-size:11px;color:#9ca3af;margin-top:4px;">${new Date(activity.created_at).toLocaleString('bg-BG')}${activity.performed_by ? ` · ${activity.performed_by}` : ''}</div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:#d6dae3;line-height:1.5;">
+              ${entry.lines.map(line => `<div>${escapeHtml(line)}</div>`).join('')}
+            </div>
+          </div>
+        `;
+      }).join('') : `
+        <div class="worker-activity-empty">Сохранённых версий опросника пока нет.</div>
+      `}
+    </div>
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal()">Закрыть</button>
+    </div>
+  `);
 }
 
 async function updateLead(id) {
