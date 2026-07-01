@@ -1840,6 +1840,14 @@ async function renderLeads(el, filters = {}) {
     counts[status] = (counts[status] || 0) + 1;
     return counts;
   }, {});
+  const sourceGroupCounts = statusCountRows.reduce((counts, row) => {
+    if (isFacebookLeadSource(row)) {
+      counts.facebook += 1;
+    } else {
+      counts.manual += 1;
+    }
+    return counts;
+  }, { facebook: 0, manual: 0 });
   const responseMetrics = buildLeadResponseMetrics(statusCountRows, tireMode);
   const cityOptions = summary.cities || [];
   const mobileLeadCards = rows.length
@@ -1920,6 +1928,27 @@ async function renderLeads(el, filters = {}) {
     </div>
 
     <div class="search-bar fade-in">
+      <button
+        class="btn ${!filters.source_group ? 'btn-primary' : 'btn-secondary'}"
+        onclick="toggleLeadSourceGroupFilter()"
+        title="${tireMode ? 'All leads' : 'Все лиды'}"
+      >
+        ${tireMode ? 'All sources' : 'Все источники'} ${statusCountRows.length}
+      </button>
+      <button
+        class="btn ${filters.source_group === 'facebook' ? 'btn-primary' : 'btn-secondary'}"
+        onclick="toggleLeadSourceGroupFilter('facebook')"
+        title="Facebook leads only"
+      >
+        Facebook ${sourceGroupCounts.facebook}
+      </button>
+      <button
+        class="btn ${filters.source_group === 'manual' ? 'btn-primary' : 'btn-secondary'}"
+        onclick="toggleLeadSourceGroupFilter('manual')"
+        title="${tireMode ? 'Website and manual leads' : 'Лиды с сайта и вручную'}"
+      >
+        ${tireMode ? 'Website / manual' : 'Сайт / вручную'} ${sourceGroupCounts.manual}
+      </button>
       ${tireMode ? '' : `<button
         class="btn ${filters.volume_sort === 'desc' ? 'btn-primary' : 'btn-secondary'}"
         onclick="toggleLeadQuickFilter('volume_sort', 'desc')"
@@ -2040,6 +2069,16 @@ function toggleLeadQuickFilter(key, value) {
     delete nextFilters[key];
   } else {
     nextFilters[key] = value;
+  }
+  renderLeads(document.getElementById('main'), nextFilters);
+}
+
+function toggleLeadSourceGroupFilter(value = '') {
+  const nextFilters = { ...currentLeadFilters };
+  if (!value || nextFilters.source_group === value) {
+    delete nextFilters.source_group;
+  } else {
+    nextFilters.source_group = value;
   }
   renderLeads(document.getElementById('main'), nextFilters);
 }
@@ -2185,6 +2224,14 @@ function applyLeadQuickFilters(rows, filters = {}) {
     result = result.filter(isSpecificObjectLead);
   }
 
+  if (filters.source_group === 'facebook') {
+    result = result.filter(isFacebookLeadSource);
+  }
+
+  if (filters.source_group === 'manual') {
+    result = result.filter(row => !isFacebookLeadSource(row));
+  }
+
   if (filters.volume_sort === 'desc') {
     result.sort((a, b) => {
       const volumeDiff = extractLeadAreaNumber(b.area_label) - extractLeadAreaNumber(a.area_label);
@@ -2201,6 +2248,10 @@ function extractLeadAreaNumber(areaLabel = '') {
   const matches = String(areaLabel || '').match(/\d+/g);
   if (!matches || !matches.length) return 0;
   return Math.max(...matches.map(Number));
+}
+
+function isFacebookLeadSource(lead = {}) {
+  return String(lead.source || '').trim().toLowerCase() === 'facebook';
 }
 
 function isDistributorLead(lead = {}) {
