@@ -1894,31 +1894,25 @@ async function renderLeads(el, filters = {}) {
       ${leadTab('Сегодня', { view: 'all', date_range: 'today' }, summary.today || 0, filters.date_range === 'today')}
       ${leadTab('7 дней', { view: 'all', date_range: 'week' }, summary.week || 0, filters.date_range === 'week')}
       ${leadTab('Звонки сегодня', { view: 'all', followup: 'due' }, summary.followups_due || 0, filters.followup === 'due')}
-    </div>`}
-
-    <div class="lead-status-tabs fade-in" style="margin-bottom:10px;">
       <button
-        class="lead-status-tab ${!filters.source_group ? 'active' : ''}"
-        style="${!filters.source_group ? 'background:#e5e7eb;color:#111827;border-color:#e5e7eb;' : ''}"
+        class="lead-tab ${!filters.source_group ? 'active' : ''}"
         onclick="toggleLeadSourceGroupFilter()"
       >
-        ${tireMode ? 'All sources' : 'Все источники'}
+        <span>Все источники</span>
       </button>
       <button
-        class="lead-status-tab ${filters.source_group === 'facebook' ? 'active' : ''}"
-        style="${filters.source_group === 'facebook' ? 'background:#7fb3ff;color:#111827;border-color:#7fb3ff;' : 'background:rgba(96,165,250,0.12);color:#7fb3ff;border-color:rgba(96,165,250,0.3);'}"
+        class="lead-tab ${filters.source_group === 'facebook' ? 'active' : ''}"
         onclick="toggleLeadSourceGroupFilter('facebook')"
       >
-        Facebook
+        <span>Facebook</span>
       </button>
       <button
-        class="lead-status-tab ${filters.source_group === 'manual' ? 'active' : ''}"
-        style="${filters.source_group === 'manual' ? 'background:#c4b5fd;color:#111827;border-color:#c4b5fd;' : 'background:rgba(167,139,250,0.12);color:#c4b5fd;border-color:rgba(167,139,250,0.3);'}"
+        class="lead-tab ${filters.source_group === 'manual' ? 'active' : ''}"
         onclick="toggleLeadSourceGroupFilter('manual')"
       >
-        ${tireMode ? 'Website / manual' : 'Сайт / вручную'}
+        <span>Сайт / вручную</span>
       </button>
-    </div>
+    </div>`}
 
     <div class="lead-status-tabs fade-in">
       <button
