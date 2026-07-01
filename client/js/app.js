@@ -2314,6 +2314,473 @@ function leadQualificationComplete(lead = {}) {
   return leadQualificationData(lead).completed === true;
 }
 
+const OBJECT_QUALIFICATION_PROBLEM_OPTIONS = [
+  ['active_leaks', 'Активные течи'],
+  ['wall_moisture', 'Влажность по стенам'],
+  ['cracks', 'Трещины'],
+  ['construction_joints', 'Вода через рабочие швы'],
+  ['utility_entries', 'Вода возле труб и кабелей'],
+  ['voids_behind_structure', 'Пустоты за конструкцией'],
+  ['structural_strengthening', 'Необходимость укрепления'],
+  ['other', 'Другая проблема'],
+];
+
+const OBJECT_QUALIFICATION_COMMON_FIELDS = [
+  {
+    id: 'construction_type',
+    label: 'Тип конструкции',
+    type: 'select',
+    options: [
+      ['', 'Выберите тип конструкции'],
+      ['foundation', 'Фундамент'],
+      ['basement', 'Подвал'],
+      ['parking', 'Паркинг'],
+      ['reservoir', 'Резервуар'],
+      ['tunnel', 'Тоннель'],
+      ['roof', 'Крыша'],
+      ['terrace', 'Терраса'],
+      ['balcony', 'Балкон'],
+      ['other', 'Другое'],
+    ],
+  },
+  {
+    id: 'construction_material',
+    label: 'Из чего выполнена конструкция',
+    type: 'select',
+    options: [
+      ['', 'Выберите материал'],
+      ['concrete', 'Бетон'],
+      ['reinforced_concrete', 'Железобетон'],
+      ['brick', 'Кирпич'],
+      ['stone', 'Камень'],
+      ['other', 'Другое'],
+    ],
+  },
+  { id: 'zone_length', label: 'Размер проблемной зоны: длина', placeholder: 'м' },
+  { id: 'zone_width', label: 'Размер проблемной зоны: ширина', placeholder: 'м' },
+  { id: 'zone_depth', label: 'Размер проблемной зоны: глубина', placeholder: 'м, если применимо' },
+  {
+    id: 'external_access',
+    label: 'Есть ли доступ снаружи',
+    type: 'select',
+    options: [
+      ['', 'Выберите ответ'],
+      ['yes', 'Да'],
+      ['no', 'Нет'],
+      ['limited', 'Частично / ограниченно'],
+    ],
+  },
+  {
+    id: 'internal_access',
+    label: 'Есть ли доступ изнутри',
+    type: 'select',
+    options: [
+      ['', 'Выберите ответ'],
+      ['yes', 'Да'],
+      ['no', 'Нет'],
+      ['limited', 'Частично / ограниченно'],
+    ],
+  },
+  {
+    id: 'repair_timing',
+    label: 'Когда нужно выполнить ремонт',
+    type: 'select',
+    options: [
+      ['', 'Выберите срок'],
+      ['urgent', 'Срочно'],
+      ['1_2_weeks', 'В течение 1–2 недель'],
+      ['within_month', 'В течение месяца'],
+      ['later', 'Позже'],
+    ],
+  },
+  {
+    id: 'has_photos',
+    label: 'Есть ли фотографии',
+    type: 'select',
+    options: [
+      ['', 'Выберите ответ'],
+      ['yes', 'Да'],
+      ['no', 'Нет'],
+      ['later', 'Отправят позже'],
+    ],
+  },
+  {
+    id: 'has_drawings',
+    label: 'Есть ли чертежи объекта',
+    type: 'select',
+    options: [
+      ['', 'Выберите ответ'],
+      ['yes', 'Да'],
+      ['no', 'Нет'],
+      ['later', 'Отправят позже'],
+    ],
+  },
+  {
+    id: 'has_video',
+    label: 'Есть ли видео',
+    type: 'select',
+    options: [
+      ['', 'Выберите ответ'],
+      ['yes', 'Да'],
+      ['no', 'Нет'],
+      ['later', 'Отправят позже'],
+    ],
+  },
+  {
+    id: 'executor',
+    label: 'Кто будет выполнять работы',
+    type: 'select',
+    options: [
+      ['', 'Выберите вариант'],
+      ['client', 'Сам клиент'],
+      ['construction_company', 'Строительная компания'],
+      ['need_contractor', 'Нужен подрядчик'],
+    ],
+  },
+];
+
+const OBJECT_QUALIFICATION_PROBLEM_FIELDS = {
+  active_leaks: {
+    title: 'Диагностика активных течей',
+    fields: [
+      {
+        id: 'leak_location',
+        label: 'Где именно течёт',
+        type: 'select',
+        options: [
+          ['', 'Выберите место'],
+          ['wall', 'Стена'],
+          ['ceiling', 'Потолок'],
+          ['floor', 'Пол'],
+          ['joint', 'Рабочий шов'],
+          ['crack', 'Трещина'],
+          ['entry', 'Ввод трубы / кабеля'],
+          ['other', 'Другое'],
+        ],
+      },
+      {
+        id: 'leak_when',
+        label: 'Когда появляется течь',
+        type: 'select',
+        options: [
+          ['', 'Выберите вариант'],
+          ['constant', 'Постоянно'],
+          ['during_rain', 'Только во время дождя'],
+          ['after_rain', 'После дождя'],
+          ['groundwater', 'При высоком уровне грунтовых вод'],
+        ],
+      },
+      {
+        id: 'water_behavior',
+        label: 'Вода течёт или просто влажно',
+        type: 'select',
+        options: [
+          ['', 'Выберите вариант'],
+          ['flowing', 'Течёт вода'],
+          ['damp', 'Просто влажно'],
+        ],
+      },
+      {
+        id: 'water_flow',
+        label: 'Какой приблизительно расход воды',
+        type: 'select',
+        options: [
+          ['', 'Выберите вариант'],
+          ['dripping', 'Капает'],
+          ['stream', 'Струйка'],
+          ['strong_flow', 'Сильный поток'],
+        ],
+      },
+      { id: 'leak_zone_length', label: 'Длина зоны течи', placeholder: 'м' },
+      {
+        id: 'photo_video',
+        label: 'Есть фото / видео',
+        type: 'select',
+        options: [
+          ['', 'Выберите ответ'],
+          ['yes', 'Да'],
+          ['no', 'Нет'],
+          ['later', 'Отправят позже'],
+        ],
+      },
+    ],
+  },
+  wall_moisture: {
+    title: 'Диагностика влажности по стенам',
+    fields: [
+      {
+        id: 'moisture_pattern',
+        label: 'Влага идёт снизу вверх или по всей стене',
+        type: 'select',
+        options: [
+          ['', 'Выберите вариант'],
+          ['bottom_up', 'Снизу вверх'],
+          ['whole_wall', 'По всей стене'],
+        ],
+      },
+      { id: 'wet_length', label: 'Площадь влажной зоны: длина', placeholder: 'м' },
+      { id: 'wet_height', label: 'Площадь влажной зоны: высота', placeholder: 'м' },
+      { id: 'white_salts', label: 'Есть белый налёт (соли)', type: 'select', options: [['', 'Выберите ответ'], ['yes', 'Да'], ['no', 'Нет']] },
+      { id: 'mold', label: 'Есть плесень', type: 'select', options: [['', 'Выберите ответ'], ['yes', 'Да'], ['no', 'Нет']] },
+      {
+        id: 'wall_material',
+        label: 'Стена бетонная, кирпичная или каменная',
+        type: 'select',
+        options: [
+          ['', 'Выберите материал'],
+          ['concrete', 'Бетонная'],
+          ['brick', 'Кирпичная'],
+          ['stone', 'Каменная'],
+        ],
+      },
+      {
+        id: 'inside_or_outside',
+        label: 'Проблема внутри или снаружи',
+        type: 'select',
+        options: [
+          ['', 'Выберите вариант'],
+          ['inside', 'Внутри'],
+          ['outside', 'Снаружи'],
+        ],
+      },
+    ],
+  },
+  cracks: {
+    title: 'Диагностика трещин',
+    fields: [
+      { id: 'crack_location', label: 'Где находятся трещины', type: 'textarea', placeholder: 'Стена, плита, угол, шов и т.д.' },
+      { id: 'crack_length', label: 'Длина трещины', placeholder: 'м' },
+      {
+        id: 'crack_width',
+        label: 'Ширина трещины',
+        type: 'select',
+        options: [
+          ['', 'Выберите диапазон'],
+          ['up_to_0_2', 'До 0.2 мм'],
+          ['0_2_0_5', '0.2–0.5 мм'],
+          ['0_5_2', '0.5–2 мм'],
+          ['over_2', 'Более 2 мм'],
+        ],
+      },
+      {
+        id: 'crack_water',
+        label: 'Трещины сухие или через них идёт вода',
+        type: 'select',
+        options: [
+          ['', 'Выберите вариант'],
+          ['dry', 'Сухие'],
+          ['water', 'Через них идёт вода'],
+        ],
+      },
+      { id: 'crack_growing', label: 'Трещины продолжают увеличиваться', type: 'select', options: [['', 'Выберите ответ'], ['yes', 'Да'], ['no', 'Нет'], ['unknown', 'Неизвестно']] },
+      { id: 'crack_count', label: 'Сколько трещин примерно', placeholder: 'Например: 3–5 шт.' },
+      { id: 'crack_photos', label: 'Есть фотографии', type: 'select', options: [['', 'Выберите ответ'], ['yes', 'Да'], ['no', 'Нет'], ['later', 'Отправят позже']] },
+    ],
+  },
+  construction_joints: {
+    title: 'Диагностика воды через рабочие швы',
+    fields: [
+      { id: 'joint_location', label: 'Где расположен шов', type: 'textarea', placeholder: 'Стена/пол, деформационный шов, стык плиты и т.д.' },
+      { id: 'joint_length', label: 'Какая длина шва', placeholder: 'м' },
+      {
+        id: 'joint_water_when',
+        label: 'Вода идёт постоянно или только при дожде',
+        type: 'select',
+        options: [
+          ['', 'Выберите вариант'],
+          ['constant', 'Постоянно'],
+          ['rain_only', 'Только при дожде'],
+        ],
+      },
+      { id: 'joint_pressure', label: 'Есть давление воды', type: 'select', options: [['', 'Выберите ответ'], ['yes', 'Да'], ['no', 'Нет'], ['unknown', 'Неизвестно']] },
+      { id: 'joint_repaired_before', label: 'Уже ремонтировали раньше', type: 'select', options: [['', 'Выберите ответ'], ['yes', 'Да'], ['no', 'Нет']] },
+    ],
+  },
+  utility_entries: {
+    title: 'Диагностика воды возле труб и кабелей',
+    fields: [
+      {
+        id: 'entry_type',
+        label: 'Это труба или кабель',
+        type: 'select',
+        options: [
+          ['', 'Выберите вариант'],
+          ['pipe', 'Труба'],
+          ['cable', 'Кабель'],
+          ['both', 'И труба, и кабель'],
+        ],
+      },
+      { id: 'entry_diameter', label: 'Диаметр прохода', placeholder: 'мм' },
+      {
+        id: 'entry_leak_path',
+        label: 'Вода идёт',
+        type: 'select',
+        options: [
+          ['', 'Выберите вариант'],
+          ['between_cables', 'Между кабелями'],
+          ['around_pipe', 'Вокруг трубы'],
+          ['around_sleeve', 'Вокруг гильзы'],
+        ],
+      },
+      { id: 'entry_count', label: 'Сколько проходов', placeholder: 'Количество' },
+      { id: 'entry_constant_leak', label: 'Есть постоянная течь', type: 'select', options: [['', 'Выберите ответ'], ['yes', 'Да'], ['no', 'Нет']] },
+    ],
+  },
+  voids_behind_structure: {
+    title: 'Диагностика пустот за конструкцией',
+    fields: [
+      { id: 'void_location', label: 'Где находятся пустоты', type: 'textarea', placeholder: 'Под плитой, за стеной, у фундамента и т.д.' },
+      { id: 'void_reason', label: 'Почему считаете, что они есть', type: 'textarea', placeholder: 'Просадка, гулкость, протечки, трещины...' },
+      { id: 'void_settlement', label: 'Есть просадка', type: 'select', options: [['', 'Выберите ответ'], ['yes', 'Да'], ['no', 'Нет']] },
+      { id: 'void_cracks', label: 'Есть трещины', type: 'select', options: [['', 'Выберите ответ'], ['yes', 'Да'], ['no', 'Нет']] },
+      { id: 'void_volume', label: 'Какой ориентировочный объём', placeholder: 'м³ или описание' },
+      { id: 'void_geology', label: 'Есть геология', type: 'select', options: [['', 'Выберите ответ'], ['yes', 'Да'], ['no', 'Нет'], ['unknown', 'Неизвестно']] },
+    ],
+  },
+  structural_strengthening: {
+    title: 'Диагностика необходимости укрепления',
+    fields: [
+      {
+        id: 'strengthening_target',
+        label: 'Что нужно укрепить',
+        type: 'select',
+        options: [
+          ['', 'Выберите вариант'],
+          ['foundation', 'Фундамент'],
+          ['slab', 'Плита'],
+          ['columns', 'Колонны'],
+          ['walls', 'Стены'],
+          ['soil', 'Грунт'],
+        ],
+      },
+      { id: 'strengthening_reason', label: 'Почему требуется укрепление', type: 'textarea', placeholder: 'Просадка, трещины, нагрузка, деформация...' },
+      { id: 'engineer_report', label: 'Есть заключение инженера', type: 'select', options: [['', 'Выберите ответ'], ['yes', 'Да'], ['no', 'Нет'], ['pending', 'Ожидается']] },
+      { id: 'strengthening_settlement', label: 'Есть просадка', type: 'select', options: [['', 'Выберите ответ'], ['yes', 'Да'], ['no', 'Нет']] },
+      { id: 'strengthening_area', label: 'Размер участка', placeholder: 'м² или описание' },
+    ],
+  },
+  other: {
+    title: 'Другая проблема',
+    fields: [
+      { id: 'other_problem_description', label: 'Опишите проблему', type: 'textarea', placeholder: 'Что происходит на объекте' },
+      { id: 'other_problem_location', label: 'Где находится проблема', type: 'textarea', placeholder: 'Помещение, зона, конструкция' },
+      { id: 'other_problem_dimensions', label: 'Размеры участка', placeholder: 'м / м² / м³' },
+      { id: 'other_problem_started', label: 'Когда появилась проблема', placeholder: 'Дата или период' },
+      { id: 'other_problem_now', label: 'Что происходит сейчас', type: 'textarea', placeholder: 'Текущее состояние' },
+      { id: 'other_problem_photos', label: 'Есть фотографии', type: 'select', options: [['', 'Выберите ответ'], ['yes', 'Да'], ['no', 'Нет'], ['later', 'Отправят позже']] },
+    ],
+  },
+};
+
+function objectQualificationLabel(id) {
+  const problemLabel = Object.fromEntries(OBJECT_QUALIFICATION_PROBLEM_OPTIONS)[id];
+  if (problemLabel) return problemLabel;
+  const commonField = OBJECT_QUALIFICATION_COMMON_FIELDS.find(field => field.id === id);
+  if (commonField) return commonField.label;
+  for (const config of Object.values(OBJECT_QUALIFICATION_PROBLEM_FIELDS)) {
+    const match = config.fields.find(field => field.id === id);
+    if (match) return match.label;
+  }
+  return id;
+}
+
+function objectQualificationDisplayValue(fieldId, value) {
+  if (!value) return '-';
+  const field =
+    OBJECT_QUALIFICATION_COMMON_FIELDS.find(item => item.id === fieldId) ||
+    Object.values(OBJECT_QUALIFICATION_PROBLEM_FIELDS).flatMap(config => config.fields).find(item => item.id === fieldId);
+  if (field?.type === 'select') {
+    const match = (field.options || []).find(([optionValue]) => String(optionValue) === String(value));
+    return match ? match[1] : value;
+  }
+  return value;
+}
+
+function renderObjectQualificationField(field, value, scope) {
+  const attr = scope === 'common' ? 'data-object-common-field' : 'data-object-problem-field';
+  const escapedValue = escapeAttr(value || '');
+  if (field.type === 'select') {
+    return `
+      <label>${field.label}
+        <select ${attr}="${field.id}">
+          ${(field.options || []).map(([optionValue, optionLabel]) => `
+            <option value="${optionValue}" ${String(value || '') === String(optionValue) ? 'selected' : ''}>${optionLabel}</option>
+          `).join('')}
+        </select>
+      </label>
+    `;
+  }
+  if (field.type === 'textarea') {
+    return `
+      <label>${field.label}
+        <textarea ${attr}="${field.id}" rows="2" placeholder="${escapeAttr(field.placeholder || '')}">${escapeHtml(value || '')}</textarea>
+      </label>
+    `;
+  }
+  return `
+    <label>${field.label}
+      <input ${attr}="${field.id}" value="${escapedValue}" placeholder="${escapeAttr(field.placeholder || '')}">
+    </label>
+  `;
+}
+
+function collectObjectQualificationDraftFromDom() {
+  const problemDetails = {};
+  const commonDetails = {};
+  document.querySelectorAll('[data-object-problem-field]').forEach(field => {
+    const key = field.dataset.objectProblemField;
+    const value = field.value?.trim?.() ?? String(field.value || '').trim();
+    if (key) problemDetails[key] = value;
+  });
+  document.querySelectorAll('[data-object-common-field]').forEach(field => {
+    const key = field.dataset.objectCommonField;
+    const value = field.value?.trim?.() ?? String(field.value || '').trim();
+    if (key) commonDetails[key] = value;
+  });
+  return { problemDetails, commonDetails };
+}
+
+function renderObjectQualificationDynamic(problemType, problemDetails = {}, commonDetails = {}) {
+  const config = OBJECT_QUALIFICATION_PROBLEM_FIELDS[problemType];
+  if (!config) {
+    return `
+      <section class="qualification-section">
+        <div class="qualification-title">Выберите проблему, чтобы CRM показала точные вопросы для диагностики.</div>
+      </section>
+      <section class="qualification-section">
+        <div class="qualification-title">Обязательные вопросы для каждого объекта</div>
+        <div class="qualification-volume-grid">
+          ${OBJECT_QUALIFICATION_COMMON_FIELDS.map(field => renderObjectQualificationField(field, commonDetails[field.id], 'common')).join('')}
+        </div>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="qualification-section">
+      <div class="qualification-title">${config.title}</div>
+      <div class="qualification-volume-grid">
+        ${config.fields.map(field => renderObjectQualificationField(field, problemDetails[field.id], 'problem')).join('')}
+      </div>
+    </section>
+
+    <section class="qualification-section">
+      <div class="qualification-title">Обязательные вопросы для каждого объекта</div>
+      <div class="qualification-volume-grid">
+        ${OBJECT_QUALIFICATION_COMMON_FIELDS.map(field => renderObjectQualificationField(field, commonDetails[field.id], 'common')).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function updateObjectQualificationQuestionnaire() {
+  const problemSelect = document.getElementById('qualification-problem-type');
+  const container = document.getElementById('qualification-object-dynamic-fields');
+  if (!problemSelect || !container) return;
+  const draft = collectObjectQualificationDraftFromDom();
+  container.innerHTML = renderObjectQualificationDynamic(problemSelect.value, draft.problemDetails, draft.commonDetails);
+}
+
 function leadQualificationProgress(lead = {}) {
   const qualification = leadQualificationData(lead);
   if (qualification.manual_complete === true) return 100;
@@ -2324,6 +2791,19 @@ function leadQualificationProgress(lead = {}) {
   const type = leadQualificationType(lead, qualification);
   let sections = [];
   if (type === 'concrete_object') {
+    const dynamicProblemFields = OBJECT_QUALIFICATION_PROBLEM_FIELDS[qualification.problem_type]?.fields || [];
+    const problemDetails = qualification.problem_details || {};
+    const commonDetails = qualification.common_details || {};
+    if (qualification.problem_type || Object.keys(problemDetails).length || Object.keys(commonDetails).length) {
+      sections = [
+        Boolean(qualification.problem_type || (Array.isArray(qualification.problems) && qualification.problems.length)),
+        dynamicProblemFields.some(field => Boolean(problemDetails[field.id])),
+        OBJECT_QUALIFICATION_COMMON_FIELDS.some(field => Boolean(commonDetails[field.id])),
+        Boolean(commonDetails.repair_timing || qualification.timing),
+        Boolean(commonDetails.executor || qualification.executor),
+      ];
+      return sections.filter(Boolean).length * 20;
+    }
     sections = [
       Array.isArray(qualification.problems) && qualification.problems.length > 0,
       Boolean(qualification.object_type),
@@ -2552,110 +3032,51 @@ async function openLeadQualificationModal(id) {
     const qualification = leadQualificationData(lead);
     const clientType = leadQualificationType(lead, qualification);
     const tireMode = isTireLead(lead);
-    const selectedProblems = new Set(qualification.problems || []);
-    const volumes = qualification.volumes || {};
-    const problemOptions = [
-      ['active_leaks', 'Активни течове'],
-      ['wall_moisture', 'Влажност по стените'],
-      ['cracks', 'Пукнатини'],
-      ['construction_joints', 'Вода през работни фуги'],
-      ['utility_entries', 'Вода около тръби или кабели'],
-      ['voids_behind_structure', 'Кухини зад конструкцията'],
-      ['structural_strengthening', 'Необходимост от укрепване'],
-      ['other', 'Друг проблем'],
-    ];
+    const selectedProblem = qualification.problem_type || qualification.problems?.[0] || '';
+    const problemDetails = qualification.problem_details || {};
+    const commonDetails = qualification.common_details || {};
 
-    openModal(`${tireMode ? 'Обязательные вопросы по шинам' : 'Задължителни въпроси'} · ${lead.company_name || lead.contact_name || ('Лид #' + id)}`, `
+    openModal(`${tireMode ? 'Обязательные вопросы по шинам' : 'Обязательные вопросы по объекту'} · ${lead.company_name || lead.contact_name || ('Лид #' + id)}`, `
       <div class="qualification-intro">
         ${tireMode
           ? 'Менеджер заполняет эту форму во время разговора с клиентом. Ответы используются для подбора шин и подготовки предложения.'
-          : 'Мениджърът попълва брифа по време на разговора. Данните се използват за подготовка на базова оферта.'}
+          : 'Менеджер заполняет диагностический бриф во время разговора. CRM покажет только те вопросы, которые нужны именно под выбранную проблему.'}
       </div>
-      ${renderFacebookLeadBrief(lead, tireMode ? 'ru' : 'bg')}
+      ${renderFacebookLeadBrief(lead, 'ru')}
       <form id="lead-qualification-form" onsubmit="saveLeadQualification(event, ${id})">
         <section class="qualification-section qualification-type-section">
-          <div class="qualification-title">${tireMode ? 'Тип клиента *' : 'Тип клиент *'}</div>
+          <div class="qualification-title">${tireMode ? 'Тип клиента *' : 'Тип клиента *'}</div>
           <select id="qualification-client-type" required onchange="toggleQualificationType(this.value)">
             ${tireMode ? `
             <option value="tire_customer" selected>Клиент по шинам и дискам</option>
             ` : `
-            <option value="concrete_object" ${clientType === 'concrete_object' ? 'selected' : ''}>Клиент с конкретен обект</option>
-            <option value="construction_company" ${clientType === 'construction_company' ? 'selected' : ''}>Строителна фирма</option>
-            <option value="distributor" ${clientType === 'distributor' ? 'selected' : ''}>Дистрибутор / партньор</option>
+            <option value="concrete_object" ${clientType === 'concrete_object' ? 'selected' : ''}>Клиент с конкретным объектом</option>
+            <option value="construction_company" ${clientType === 'construction_company' ? 'selected' : ''}>Строительная фирма</option>
+            <option value="distributor" ${clientType === 'distributor' ? 'selected' : ''}>Дистрибьютор / партнёр</option>
             `}
           </select>
         </section>
 
         <div class="qualification-flow" data-qualification-type="concrete_object" ${clientType === 'concrete_object' ? '' : 'hidden'}>
         <section class="qualification-section">
-          <div class="qualification-title"><span>1</span> Какъв е проблемът на обекта? *</div>
-          <div class="qualification-check-grid">
-            ${problemOptions.map(([value, label]) => `
-              <label class="qualification-check">
-                <input type="checkbox" name="qualification_problem" value="${value}" ${selectedProblems.has(value) ? 'checked' : ''}>
-                <span>${label}</span>
-              </label>
+          <div class="qualification-title"><span>1</span> Какая основная проблема на объекте? *</div>
+          <select id="qualification-problem-type" onchange="updateObjectQualificationQuestionnaire()">
+            <option value="">Выберите проблему</option>
+            ${OBJECT_QUALIFICATION_PROBLEM_OPTIONS.map(([value, label]) => `
+              <option value="${value}" ${selectedProblem === value ? 'selected' : ''}>${label}</option>
             `).join('')}
-          </div>
-          <input id="qualification-other-problem" value="${escapeAttr(qualification.other_problem || '')}" placeholder="Уточнение на друга проблема">
-        </section>
-
-        <section class="qualification-section">
-          <div class="qualification-title"><span>2</span> Какъв е типът на обекта? *</div>
-          <select id="qualification-object-type">
-            <option value="">Изберете тип обект</option>
-            ${[
-              ['residential', 'Жилищна сграда'],
-              ['underground_parking', 'Подземен паркинг'],
-              ['basement', 'Мазе'],
-              ['industrial', 'Индустриален обект'],
-              ['reservoir', 'Резервоар'],
-              ['tunnel', 'Тунел'],
-              ['other', 'Друго'],
-            ].map(([value, label]) => `<option value="${value}" ${qualification.object_type === value ? 'selected' : ''}>${label}</option>`).join('')}
           </select>
-          <input id="qualification-other-object" value="${escapeAttr(qualification.other_object_type || '')}" placeholder="Уточнение на друг тип обект">
         </section>
 
         <section class="qualification-section">
-          <div class="qualification-title"><span>3</span> Какъв е приблизителният размер на засегнатата зона? *</div>
-          <div class="qualification-volume-grid">
-            <label>Дължина на пукнатините<input id="qualification-crack-length" value="${escapeAttr(volumes.crack_length || '')}" placeholder="например 50 лин. м"></label>
-            <label>Площ на повърхността<input id="qualification-surface-area" value="${escapeAttr(volumes.surface_area || '')}" placeholder="например 400 м²"></label>
-            <label>Брой проходи<input id="qualification-utility-count" value="${escapeAttr(volumes.utility_entries || '')}" placeholder="например 12 бр."></label>
-            <label>Общ обем на работите<input id="qualification-total-work" value="${escapeAttr(volumes.total_work || '')}" placeholder="кратко описание"></label>
+          <div id="qualification-object-dynamic-fields">
+            ${renderObjectQualificationDynamic(selectedProblem, problemDetails, commonDetails)}
           </div>
         </section>
 
-        <div class="qualification-two-columns">
-          <section class="qualification-section">
-            <div class="qualification-title"><span>4</span> Кога планирате ремонта или закупуването? *</div>
-            <select id="qualification-timing">
-              <option value="">Изберете срок</option>
-              ${[
-                ['urgent', 'Спешно'],
-                ['1_2_weeks', 'До 1–2 седмици'],
-                ['within_month', 'До 1 месец'],
-                ['later', 'На по-късен етап'],
-              ].map(([value, label]) => `<option value="${value}" ${qualification.timing === value ? 'selected' : ''}>${label}</option>`).join('')}
-            </select>
-          </section>
-          <section class="qualification-section">
-            <div class="qualification-title"><span>5</span> Кой ще извършва ремонтните дейности? *</div>
-            <select id="qualification-executor">
-              <option value="">Изберете изпълнител</option>
-              ${[
-                ['own_team', 'Собствен екип'],
-                ['contractor', 'Външен изпълнител'],
-                ['recommendation_needed', 'Нужда от препоръка за изпълнител'],
-              ].map(([value, label]) => `<option value="${value}" ${qualification.executor === value ? 'selected' : ''}>${label}</option>`).join('')}
-            </select>
-          </section>
-        </div>
-
         <section class="qualification-section">
-          <div class="qualification-title">Снимки и допълнителни детайли</div>
-          <textarea id="qualification-object-notes" rows="3" placeholder="Адрес, технически детайли и дали клиентът ще изпрати снимки...">${escapeHtml(qualification.notes || '')}</textarea>
+          <div class="qualification-title">Дополнительные детали по объекту</div>
+          <textarea id="qualification-object-notes" rows="3" placeholder="Адрес объекта, короткое техническое резюме, что обещал прислать клиент, кто принимает решение...">${escapeHtml(qualification.notes || '')}</textarea>
         </section>
         </div>
 
@@ -2783,30 +3204,32 @@ function toggleQualificationType(type) {
   document.querySelectorAll('[data-qualification-type]').forEach(section => {
     section.hidden = section.dataset.qualificationType !== type;
   });
+  if (type === 'concrete_object') {
+    updateObjectQualificationQuestionnaire();
+  }
 }
 
 function collectLeadQualificationFormData() {
   const clientType = document.getElementById('qualification-client-type')?.value;
-  const problems = [...document.querySelectorAll('input[name="qualification_problem"]:checked')].map(input => input.value);
-  const volumes = {
-    crack_length: document.getElementById('qualification-crack-length')?.value.trim(),
-    surface_area: document.getElementById('qualification-surface-area')?.value.trim(),
-    utility_entries: document.getElementById('qualification-utility-count')?.value.trim(),
-    total_work: document.getElementById('qualification-total-work')?.value.trim(),
-  };
   let qualificationData;
 
   if (clientType === 'concrete_object') {
+    const selectedProblem = document.getElementById('qualification-problem-type')?.value || '';
+    const { problemDetails, commonDetails } = collectObjectQualificationDraftFromDom();
+    const dimensionValues = [commonDetails.zone_length, commonDetails.zone_width, commonDetails.zone_depth].filter(Boolean);
     qualificationData = {
       client_type: clientType,
       manual_complete: document.getElementById('qualification-manual-complete')?.checked || false,
-      problems,
-      other_problem: document.getElementById('qualification-other-problem')?.value.trim(),
-      object_type: document.getElementById('qualification-object-type')?.value,
-      other_object_type: document.getElementById('qualification-other-object')?.value.trim(),
-      volumes,
-      timing: document.getElementById('qualification-timing')?.value,
-      executor: document.getElementById('qualification-executor')?.value,
+      problems: selectedProblem ? [selectedProblem] : [],
+      problem_type: selectedProblem,
+      problem_details: problemDetails,
+      common_details: commonDetails,
+      object_type: commonDetails.construction_type || '',
+      volumes: {
+        surface_area: dimensionValues.join(' x '),
+      },
+      timing: commonDetails.repair_timing || '',
+      executor: commonDetails.executor || '',
       notes: document.getElementById('qualification-object-notes')?.value.trim(),
     };
   } else if (clientType === 'construction_company') {
@@ -2871,22 +3294,27 @@ function formatLeadQualificationTxt(lead, qualificationData) {
       `Информации достаточно для предложения: ${qualificationData.manual_complete ? 'Да' : 'Нет'}`
     );
   } else if (clientType === 'concrete_object') {
-    const problems = Array.isArray(qualificationData.problems) && qualificationData.problems.length
-      ? qualificationData.problems.join(', ')
-      : '-';
-    const volumes = qualificationData.volumes || {};
+    const problemType = qualificationData.problem_type || qualificationData.problems?.[0] || '';
+    const problemDetails = qualificationData.problem_details || {};
+    const commonDetails = qualificationData.common_details || {};
     lines.push(
-      `1. Какая проблема на объекте: ${problems}`,
-      `Доп. проблема: ${qualificationData.other_problem || '-'}`,
-      `2. Какой тип объекта: ${qualificationData.object_type || '-'}`,
-      `Доп. тип объекта: ${qualificationData.other_object_type || '-'}`,
-      `3. Объёмы / зона работ:`,
-      `   - Длина трещин: ${volumes.crack_length || '-'}`,
-      `   - Площадь поверхности: ${volumes.surface_area || '-'}`,
-      `   - Количество проходов / вводов: ${volumes.utility_entries || '-'}`,
-      `   - Общий объём работ: ${volumes.total_work || '-'}`,
-      `4. Когда нужен ремонт / материал: ${qualificationData.timing || '-'}`,
-      `5. Кто выполняет работы: ${qualificationData.executor || '-'}`,
+      `1. Проблема на объекте: ${objectQualificationLabel(problemType) || '-'}`,
+      ''
+    );
+    const problemConfig = OBJECT_QUALIFICATION_PROBLEM_FIELDS[problemType];
+    if (problemConfig?.fields?.length) {
+      lines.push('2. Ответы по выбранной проблеме:');
+      problemConfig.fields.forEach(field => {
+        lines.push(`   - ${field.label}: ${objectQualificationDisplayValue(field.id, problemDetails[field.id])}`);
+      });
+      lines.push('');
+    }
+    lines.push('3. Общие обязательные вопросы:');
+    OBJECT_QUALIFICATION_COMMON_FIELDS.forEach(field => {
+      lines.push(`   - ${field.label}: ${objectQualificationDisplayValue(field.id, commonDetails[field.id])}`);
+    });
+    lines.push(
+      '',
       `Дополнительные детали: ${qualificationData.notes || '-'}`,
       `Информации достаточно для предложения: ${qualificationData.manual_complete ? 'Да' : 'Нет'}`
     );

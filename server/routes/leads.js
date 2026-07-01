@@ -1290,6 +1290,30 @@ router.put('/:id/qualification', async (req, res) => {
     }
 
     const cleanText = value => String(value || '').trim();
+    const concreteProblemFieldMap = {
+      active_leaks: ['leak_location', 'leak_when', 'water_behavior', 'water_flow', 'leak_zone_length', 'photo_video'],
+      wall_moisture: ['moisture_pattern', 'wet_length', 'wet_height', 'white_salts', 'mold', 'wall_material', 'inside_or_outside'],
+      cracks: ['crack_location', 'crack_length', 'crack_width', 'crack_water', 'crack_growing', 'crack_count', 'crack_photos'],
+      construction_joints: ['joint_location', 'joint_length', 'joint_water_when', 'joint_pressure', 'joint_repaired_before'],
+      utility_entries: ['entry_type', 'entry_diameter', 'entry_leak_path', 'entry_count', 'entry_constant_leak'],
+      voids_behind_structure: ['void_location', 'void_reason', 'void_settlement', 'void_cracks', 'void_volume', 'void_geology'],
+      structural_strengthening: ['strengthening_target', 'strengthening_reason', 'engineer_report', 'strengthening_settlement', 'strengthening_area'],
+      other: ['other_problem_description', 'other_problem_location', 'other_problem_dimensions', 'other_problem_started', 'other_problem_now', 'other_problem_photos'],
+    };
+    const concreteCommonFieldIds = [
+      'construction_type',
+      'construction_material',
+      'zone_length',
+      'zone_width',
+      'zone_depth',
+      'external_access',
+      'internal_access',
+      'repair_timing',
+      'has_photos',
+      'has_drawings',
+      'has_video',
+      'executor',
+    ];
     const qualificationData = {
       client_type: clientType,
       manual_complete: data.manual_complete === true,
@@ -1297,21 +1321,34 @@ router.put('/:id/qualification', async (req, res) => {
     let completedSections = 0;
 
     if (clientType === 'concrete_object') {
+      qualificationData.problem_type = cleanText(data.problem_type);
       qualificationData.problems = Array.isArray(data.problems)
         ? data.problems.map(cleanText).filter(Boolean)
         : [];
+      if (!qualificationData.problem_type && qualificationData.problems.length) {
+        qualificationData.problem_type = qualificationData.problems[0];
+      }
+      qualificationData.problem_details = data.problem_details && typeof data.problem_details === 'object' && !Array.isArray(data.problem_details)
+        ? Object.fromEntries(Object.entries(data.problem_details).map(([key, value]) => [key, cleanText(value)]).filter(([, value]) => value))
+        : {};
+      qualificationData.common_details = data.common_details && typeof data.common_details === 'object' && !Array.isArray(data.common_details)
+        ? Object.fromEntries(Object.entries(data.common_details).map(([key, value]) => [key, cleanText(value)]).filter(([, value]) => value))
+        : {};
       qualificationData.volumes = data.volumes && typeof data.volumes === 'object' && !Array.isArray(data.volumes)
         ? Object.fromEntries(Object.entries(data.volumes).map(([key, value]) => [key, cleanText(value)]).filter(([, value]) => value))
         : {};
-      qualificationData.other_problem = cleanText(data.other_problem);
-      qualificationData.object_type = cleanText(data.object_type);
-      qualificationData.other_object_type = cleanText(data.other_object_type);
-      qualificationData.timing = cleanText(data.timing);
-      qualificationData.executor = cleanText(data.executor);
+      qualificationData.object_type = cleanText(data.object_type) || cleanText(qualificationData.common_details.construction_type);
+      qualificationData.timing = cleanText(data.timing) || cleanText(qualificationData.common_details.repair_timing);
+      qualificationData.executor = cleanText(data.executor) || cleanText(qualificationData.common_details.executor);
+      const dynamicFieldIds = concreteProblemFieldMap[qualificationData.problem_type] || [];
+      const filledDynamic = dynamicFieldIds.filter(fieldId => Boolean(qualificationData.problem_details[fieldId])).length;
+      const filledCommon = concreteCommonFieldIds.filter(fieldId => Boolean(qualificationData.common_details[fieldId])).length;
+      const totalDynamic = dynamicFieldIds.length || 1;
+      const totalCommon = concreteCommonFieldIds.length;
       completedSections = [
-        qualificationData.problems.length > 0,
-        Boolean(qualificationData.object_type),
-        Object.keys(qualificationData.volumes).length > 0,
+        Boolean(qualificationData.problem_type),
+        totalDynamic ? filledDynamic / totalDynamic >= 0.6 : false,
+        filledCommon / totalCommon >= 0.5,
         Boolean(qualificationData.timing),
         Boolean(qualificationData.executor),
       ].filter(Boolean).length;
