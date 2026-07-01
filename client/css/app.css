@@ -9,9 +9,11 @@
   --brand: #9aa4b3;
   --brand-light: #e0e7ef;
   --border: rgba(224,231,239,0.18);
+  --border-strong: rgba(236,242,248,0.28);
   --text: #f3f6fa;
   --text-dim: #c1c9d2;
   --text-muted: #97a0ab;
+  --text-shadow-soft: 0 1px 2px rgba(0,0,0,0.32);
   --sidebar-w: 240px;
   --green: #4ade80;
   --yellow: #fbbf24;
@@ -29,6 +31,7 @@ body {
     radial-gradient(circle at top right, rgba(255,255,255,0.08), transparent 18%),
     linear-gradient(135deg, #5b636e 0%, #3f464f 16%, #2f343a 38%, #59616b 58%, #343a42 76%, #23272d 100%);
   color: var(--text);
+  text-shadow: var(--text-shadow-soft);
   display: flex;
   min-height: 100vh;
 }
@@ -51,7 +54,7 @@ body.mobile-nav-open {
   background:
     linear-gradient(180deg, rgba(255,255,255,0.15), rgba(255,255,255,0) 16%),
     linear-gradient(180deg, #565e69 0%, #414850 18%, #2e343b 48%, #20252a 100%);
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--border-strong);
   box-shadow: inset -1px 0 0 rgba(255,255,255,0.06);
   position: fixed;
   top: 0;
@@ -68,7 +71,7 @@ body.mobile-nav-open {
   align-items: center;
   gap: 12px;
   padding: 20px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .logo-icon {
@@ -85,7 +88,7 @@ body.mobile-nav-open {
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.75), 0 6px 18px rgba(0,0,0,0.18);
 }
 
-.logo-text { font-size: 16px; font-weight: 700; }
+.logo-text { font-size: 16px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.35); }
 .logo-sub { font-size: 10px; color: var(--text-dim); }
 
 .nav-section { padding: 16px 12px 4px; }
@@ -103,6 +106,7 @@ body.mobile-nav-open {
   cursor: pointer;
   transition: all 0.2s;
   margin-bottom: 2px;
+  text-shadow: var(--text-shadow-soft);
 }
 
 .nav-item:hover {
@@ -125,13 +129,13 @@ body.mobile-nav-open {
   padding: 1px 6px;
   border-radius: 10px;
   font-weight: 600;
-  border: 1px solid rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.22);
 }
 
 .sidebar-footer {
   margin-top: auto;
   padding: 16px 20px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-strong);
 }
 
 .connection-status {
@@ -145,7 +149,7 @@ body.mobile-nav-open {
 .role-panel {
   padding-bottom: 14px;
   margin-bottom: 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .role-label {
@@ -189,7 +193,7 @@ body.mobile-nav-open {
   background:
     linear-gradient(180deg, rgba(255,255,255,0.15), rgba(255,255,255,0.03) 18%, rgba(255,255,255,0.01) 100%),
     linear-gradient(145deg, #4f5761 0%, #3b424a 18%, #2c3138 52%, #5d6672 100%);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 14px;
   padding: 20px;
   margin-bottom: 16px;
@@ -204,7 +208,8 @@ body.mobile-nav-open {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #ccc;
+  color: #eef2f6;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.38);
 }
 
 /* ===== STAT CARDS ===== */
@@ -219,7 +224,7 @@ body.mobile-nav-open {
   background:
     linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.03) 18%, rgba(255,255,255,0.01) 100%),
     linear-gradient(145deg, #59616b 0%, #444b54 24%, #30363d 62%, #68717d 100%);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 12px;
   padding: 16px 18px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 14px 34px rgba(0,0,0,0.16);
@@ -231,11 +236,13 @@ body.mobile-nav-open {
   letter-spacing: 1px;
   color: var(--text-muted);
   margin-bottom: 6px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.28);
 }
 
 .stat-card .stat-value {
   font-size: 26px;
   font-weight: 700;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.35);
 }
 
 .stat-card .stat-sub {
@@ -270,18 +277,20 @@ table {
 th {
   text-align: left;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
   color: var(--text-muted);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
 
 td {
   padding: 10px 12px;
   border-bottom: 1px solid rgba(255,255,255,0.02);
-  color: #bbb;
+  color: #e4e9ef;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.28);
 }
 
 tr:hover td { background: rgba(255,255,255,0.08); }
@@ -441,6 +450,7 @@ tr:hover td { background: rgba(255,255,255,0.08); }
   font-size: 12px;
   line-height: 1.45;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
 
 .facebook-lead-brief {
@@ -642,7 +652,7 @@ tr:hover td { background: rgba(255,255,255,0.08); }
 .btn-secondary {
   background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.05));
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
 }
 .btn-secondary:hover { background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.08)); }
@@ -667,6 +677,7 @@ tr:hover td { background: rgba(255,255,255,0.08); }
   margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.28);
 }
 
 .form-group input,
@@ -675,8 +686,8 @@ tr:hover td { background: rgba(255,255,255,0.08); }
   width: 100%;
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid var(--border);
-  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-strong);
+  background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.05));
   color: var(--text);
   font-family: inherit;
   font-size: 13px;
