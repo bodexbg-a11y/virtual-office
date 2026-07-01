@@ -2697,6 +2697,95 @@ function objectQualificationDisplayValue(fieldId, value) {
   return value;
 }
 
+const QUALIFICATION_HISTORY_FIELD_LABELS = {
+  client_type: 'Тип опросника',
+  problems: 'Проблемы',
+  problem_type: 'Проблема',
+  other_problem: 'Доп. проблема',
+  object_type: 'Тип объекта',
+  other_object_type: 'Другой тип объекта',
+  timing: 'Когда нужен ремонт / материал',
+  executor: 'Кто выполняет работы',
+  notes: 'Доп. заметки',
+  materials_interest: 'Материалы',
+  application_type: 'Объект / применение',
+  quantities: 'Количество',
+  delivery_timing: 'Срок доставки',
+  has_specification: 'Спецификация / смета',
+  region: 'Регион',
+  current_products: 'Текущие продукты / бренды',
+  warehouse_team: 'Склад / команда',
+  sales_volume: 'Объёмы продаж',
+  partnership_interest: 'Интерес к партнёрству',
+  vehicle: 'Автомобиль',
+  tire_size: 'Размер шин',
+  tire_type: 'Тип шин',
+  preferred_brand: 'Предпочтительный бренд',
+  quantity_and_rims: 'Количество / диски',
+  manual_complete: 'Данных достаточно для предложения',
+  completed: 'Опросник завершён',
+  completed_at: 'Дата завершения',
+  completed_by: 'Кем завершён',
+  completion_percent: 'Заполнено, %',
+  volumes: 'Размеры / объёмы',
+  problem_details: 'Ответы по проблеме',
+  common_details: 'Общие обязательные вопросы',
+  crack_length: 'Длина трещин',
+  surface_area: 'Площадь поверхности',
+  utility_entries: 'Количество проходов / вводов',
+  total_work: 'Общий объём работ',
+};
+
+function qualificationHistoryValue(key, value) {
+  if (value === true) return 'Да';
+  if (value === false) return 'Нет';
+  if (key === 'client_type') {
+    const typeLabelMap = {
+      concrete_object: 'Объект',
+      construction_company: 'Строительная фирма',
+      distributor: 'Дистрибьютор / партнёр',
+      tire_customer: 'Шины / диски',
+    };
+    return typeLabelMap[value] || value;
+  }
+  if (key === 'problem_type') {
+    return objectQualificationLabel(value) || value;
+  }
+  return objectQualificationDisplayValue(key, value);
+}
+
+function flattenQualificationHistoryPayload(value, parentKey = '', depth = 0) {
+  if (value === null || value === undefined || value === '') return [];
+  if (Array.isArray(value)) {
+    if (!value.length) return [];
+    return [{
+      depth,
+      label: QUALIFICATION_HISTORY_FIELD_LABELS[parentKey] || parentKey,
+      value: value.map(item => qualificationHistoryValue(parentKey, item)).join(', ')
+    }];
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value).filter(([, nestedValue]) => {
+      if (nestedValue === null || nestedValue === undefined || nestedValue === '') return false;
+      if (Array.isArray(nestedValue)) return nestedValue.length > 0;
+      if (typeof nestedValue === 'object') return Object.keys(nestedValue).length > 0;
+      return true;
+    });
+    if (!entries.length) return [];
+    const sectionLabel = parentKey ? (QUALIFICATION_HISTORY_FIELD_LABELS[parentKey] || parentKey) : '';
+    const lines = sectionLabel ? [{ depth, label: sectionLabel, value: '' }] : [];
+    entries.forEach(([key, nestedValue]) => {
+      lines.push(...flattenQualificationHistoryPayload(nestedValue, key, sectionLabel ? depth + 1 : depth));
+    });
+    return lines;
+  }
+  return [{
+    depth,
+    label: QUALIFICATION_HISTORY_FIELD_LABELS[parentKey] || parentKey,
+    value: qualificationHistoryValue(parentKey, value),
+  }];
+}
+
 function formatQualificationHistoryEntry(activity = {}) {
   let payload = {};
   try {
@@ -2711,57 +2800,12 @@ function formatQualificationHistoryEntry(activity = {}) {
     distributor: 'Дистрибьютор / партнёр',
     tire_customer: 'Шины / диски',
   };
-  const lines = [];
-
-  if (type === 'concrete_object') {
-    const problemType = payload.problem_type || payload.problems?.[0] || '';
-    const problemDetails = payload.problem_details || {};
-    const commonDetails = payload.common_details || {};
-    lines.push(`Проблема: ${objectQualificationLabel(problemType) || '-'}`);
-    const problemConfig = OBJECT_QUALIFICATION_PROBLEM_FIELDS[problemType];
-    if (problemConfig?.fields?.length) {
-      problemConfig.fields.forEach(field => {
-        if (problemDetails[field.id]) {
-          lines.push(`${field.label}: ${objectQualificationDisplayValue(field.id, problemDetails[field.id])}`);
-        }
-      });
-    }
-    OBJECT_QUALIFICATION_COMMON_FIELDS.forEach(field => {
-      if (commonDetails[field.id]) {
-        lines.push(`${field.label}: ${objectQualificationDisplayValue(field.id, commonDetails[field.id])}`);
-      }
-    });
-  } else if (type === 'construction_company') {
-    if (payload.materials_interest) lines.push(`Материалы: ${payload.materials_interest}`);
-    if (payload.application_type) lines.push(`Объект / применение: ${payload.application_type}`);
-    if (payload.quantities) lines.push(`Количество: ${payload.quantities}`);
-    if (payload.delivery_timing) lines.push(`Срок доставки: ${payload.delivery_timing}`);
-    if (payload.has_specification) lines.push(`Спецификация: ${payload.has_specification}`);
-  } else if (type === 'distributor') {
-    if (payload.region) lines.push(`Регион: ${payload.region}`);
-    if (payload.current_products) lines.push(`Текущие продукты: ${payload.current_products}`);
-    if (payload.warehouse_team) lines.push(`Склад / команда: ${payload.warehouse_team}`);
-    if (payload.sales_volume) lines.push(`Объёмы: ${payload.sales_volume}`);
-    if (payload.partnership_interest) lines.push(`Интерес к партнёрству: ${payload.partnership_interest}`);
-  } else if (type === 'tire_customer') {
-    if (payload.vehicle) lines.push(`Автомобиль: ${payload.vehicle}`);
-    if (payload.tire_size) lines.push(`Размер шин: ${payload.tire_size}`);
-    if (payload.tire_type) lines.push(`Тип шин: ${payload.tire_type}`);
-    if (payload.preferred_brand) lines.push(`Бренд: ${payload.preferred_brand}`);
-    if (payload.quantity_and_rims) lines.push(`Количество / диски: ${payload.quantity_and_rims}`);
-  }
-
-  if (payload.notes) {
-    lines.push(`Доп. заметки: ${payload.notes}`);
-  }
-  if (payload.manual_complete === true) {
-    lines.push('Отмечено: данных достаточно для подготовки предложения');
-  }
+  const lines = flattenQualificationHistoryPayload(payload).filter(line => line.label);
 
   return {
     type,
     typeLabel: typeLabelMap[type] || type,
-    lines: lines.length ? lines : ['Нет деталей в сохранённой версии'],
+    lines: lines.length ? lines : [{ depth: 0, label: 'Сохранённые данные', value: 'Нет деталей в сохранённой версии' }],
   };
 }
 
@@ -5499,7 +5543,13 @@ function openQualificationHistoryModal() {
               </div>
             </div>
             <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:#d6dae3;line-height:1.5;">
-              ${entry.lines.map(line => `<div>${escapeHtml(line)}</div>`).join('')}
+              ${entry.lines.map(line => `
+                <div style="padding-left:${line.depth * 14}px;">
+                  ${line.value === ''
+                    ? `<strong style="color:#f3f4f6;">${escapeHtml(line.label)}</strong>`
+                    : `<span style="color:#9ca3af;">${escapeHtml(line.label)}:</span> <span>${escapeHtml(line.value)}</span>`}
+                </div>
+              `).join('')}
             </div>
           </div>
         `;
