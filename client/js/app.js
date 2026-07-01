@@ -3147,6 +3147,7 @@ async function openLeadQualificationModal(id) {
         </label>
         <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
           <button type="button" class="btn btn-secondary" onclick="closeModal()">${tireMode ? 'Отмена' : 'Отказ'}</button>
+          <button type="button" class="btn btn-secondary" onclick="downloadLeadQualificationViberQuestions(${id})">Скачать вопросы для Viber</button>
           <button type="button" class="btn btn-secondary" onclick="downloadLeadQualificationTxt(${id})">${tireMode ? 'Загрузить ответы' : 'Скачать ответы'}</button>
           <button type="submit" class="btn btn-primary">${tireMode ? 'Сохранить ответы' : 'Запази отговорите'}</button>
         </div>
@@ -3346,6 +3347,83 @@ function formatLeadQualificationTxt(lead, qualificationData) {
   return lines.join('\n');
 }
 
+function formatLeadQualificationQuestionsForViber(lead, qualificationData) {
+  const clientType = qualificationData.client_type || leadQualificationType(lead, qualificationData);
+  const lines = [
+    'Здравствуйте!',
+    '',
+  ];
+
+  if (clientType === 'concrete_object') {
+    const problemType = qualificationData.problem_type || qualificationData.problems?.[0] || '';
+    const problemConfig = OBJECT_QUALIFICATION_PROBLEM_FIELDS[problemType];
+    if (!problemConfig) {
+      throw new Error('Сначала выберите проблему по объекту, чтобы скачать вопросы для Viber.');
+    }
+    lines.push(
+      'Чтобы мы могли подготовить точное решение и коммерческое предложение по вашему объекту, пожалуйста, ответьте на несколько вопросов:',
+      '',
+      `Проблема: ${objectQualificationLabel(problemType)}`,
+      ''
+    );
+    problemConfig.fields.forEach((field, index) => {
+      lines.push(`${index + 1}. ${field.label}`);
+    });
+    lines.push('');
+    lines.push('Также, пожалуйста, уточните общую информацию по объекту:');
+    OBJECT_QUALIFICATION_COMMON_FIELDS.forEach((field, index) => {
+      lines.push(`${index + 1}. ${field.label}`);
+    });
+    lines.push('');
+    lines.push('Если есть фотографии, видео или чертежи объекта, пожалуйста, тоже отправьте их.');
+  } else if (clientType === 'construction_company') {
+    lines.push(
+      'Чтобы мы подготовили точное коммерческое предложение по материалам, пожалуйста, ответьте на несколько вопросов:',
+      '',
+      '1. Какие материалы вас интересуют?',
+      '2. Для какого объекта или применения будут использоваться материалы?',
+      '3. Какие ориентировочные количества вам нужны?',
+      '4. Когда нужна доставка?',
+      '5. Есть ли у вас смета, спецификация или количественная ведомость?',
+      '',
+      'Если есть документы или фотографии, пожалуйста, также отправьте их.'
+    );
+  } else if (clientType === 'distributor') {
+    lines.push(
+      'Чтобы мы подготовили предложение по партнёрству, пожалуйста, ответьте на несколько вопросов:',
+      '',
+      '1. В каком регионе или городе вы работаете?',
+      '2. Какие продукты или бренды вы уже продаёте?',
+      '3. Есть ли у вас собственный склад и торговая команда?',
+      '4. Какие у вас ориентировочные объёмы продаж в этом сегменте?',
+      '5. Интересует ли вас долгосрочное партнёрство и дилерские условия с BODEX Bulgaria?'
+    );
+  } else if (clientType === 'tire_customer') {
+    lines.push(
+      'Чтобы мы подобрали для вас точное предложение по шинам и дискам, пожалуйста, ответьте на несколько вопросов:',
+      '',
+      '1. Для какого автомобиля нужны шины?',
+      '2. Какой размер шин нужен?',
+      '3. Какой тип шин нужен?',
+      '4. Какой бренд предпочитаете?',
+      '5. Сколько шин нужно и нужны ли диски?'
+    );
+  } else {
+    lines.push('Пожалуйста, ответьте на вопросы, чтобы мы могли подготовить предложение.');
+  }
+
+  lines.push(
+    '',
+    'После этого мы подготовим для вас предложение.',
+    '',
+    'С уважением,',
+    'BODEX Bulgaria',
+    BODEX_WEBSITE_URL
+  );
+
+  return lines.join('\n');
+}
+
 async function downloadLeadQualificationTxt(id) {
   const result = document.getElementById('qualification-result');
   try {
@@ -3376,6 +3454,27 @@ async function downloadLeadQualificationTxt(id) {
     if (result) {
       result.className = 'sync-result show err';
       result.textContent = 'Ошибка загрузки TXT: ' + err.message;
+    }
+  }
+}
+
+async function downloadLeadQualificationViberQuestions(id) {
+  const result = document.getElementById('qualification-result');
+  try {
+    const data = await api(`/api/leads/${id}`);
+    const lead = data.lead || {};
+    const form = document.getElementById('lead-qualification-form');
+    const qualificationData = form ? collectLeadQualificationFormData() : leadQualificationData(lead);
+    const content = formatLeadQualificationQuestionsForViber(lead, qualificationData);
+    downloadTextFile(`lead-${id}-viber-questions.txt`, content, 'text/plain;charset=utf-8');
+    if (result) {
+      result.className = 'sync-result show ok';
+      result.textContent = 'TXT с вопросами для Viber загружен.';
+    }
+  } catch (err) {
+    if (result) {
+      result.className = 'sync-result show err';
+      result.textContent = 'Ошибка загрузки вопросов: ' + err.message;
     }
   }
 }
