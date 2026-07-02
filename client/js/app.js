@@ -1865,6 +1865,25 @@ async function renderLeads(el, filters = {}) {
         <button class="btn btn-secondary" onclick="downloadLeadAnalysisCsv()">${tireMode ? '⬇ Analysis CSV' : '⬇ CSV для анализа'}</button>
         ${coldBaseMode ? '' : `<button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 ${tireMode ? 'Sync Facebook leads' : 'Синхронизирай FB лиды'}</button>`}
         <button class="btn btn-primary" onclick="openNewLeadModal('${coldBaseMode ? 'tires_base' : tireMode ? 'tires' : 'materials'}')">+ ${tireMode ? 'New lead' : 'Нов лид'}</button>
+        ${coldBaseMode ? '' : `
+          <div class="lead-source-icons" title="${tireMode ? 'Lead sources' : 'Источники лидов'}">
+            <button
+              class="lead-source-icon-btn ${!filters.source_group ? 'active' : ''}"
+              onclick="toggleLeadSourceGroupFilter()"
+              title="${tireMode ? 'All sources' : 'Все источники'}"
+            >◎</button>
+            <button
+              class="lead-source-icon-btn ${filters.source_group === 'facebook' ? 'active' : ''}"
+              onclick="toggleLeadSourceGroupFilter('facebook')"
+              title="Facebook"
+            >📘</button>
+            <button
+              class="lead-source-icon-btn ${filters.source_group === 'manual' ? 'active' : ''}"
+              onclick="toggleLeadSourceGroupFilter('manual')"
+              title="${tireMode ? 'Website / manual' : 'Сайт / вручную'}"
+            >🌐</button>
+          </div>
+        `}
       </div>
     </div>
 
@@ -1895,24 +1914,6 @@ async function renderLeads(el, filters = {}) {
       ${leadTab('Сегодня', { view: 'all', date_range: 'today' }, summary.today || 0, filters.date_range === 'today')}
       ${leadTab('7 дней', { view: 'all', date_range: 'week' }, summary.week || 0, filters.date_range === 'week')}
       ${leadTab('Звонки сегодня', { view: 'all', followup: 'due' }, summary.followups_due || 0, filters.followup === 'due')}
-      <button
-        class="lead-tab ${!filters.source_group ? 'active' : ''}"
-        onclick="toggleLeadSourceGroupFilter()"
-      >
-        <span>Все источники</span>
-      </button>
-      <button
-        class="lead-tab ${filters.source_group === 'facebook' ? 'active' : ''}"
-        onclick="toggleLeadSourceGroupFilter('facebook')"
-      >
-        <span>Facebook</span>
-      </button>
-      <button
-        class="lead-tab ${filters.source_group === 'manual' ? 'active' : ''}"
-        onclick="toggleLeadSourceGroupFilter('manual')"
-      >
-        <span>Сайт / вручную</span>
-      </button>
     </div>`}
 
     <div class="lead-status-tabs fade-in">
