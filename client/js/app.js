@@ -3362,7 +3362,7 @@ async function openLeadQualificationModal(id) {
         <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
           <button type="button" class="btn btn-secondary" onclick="closeModal()">${tireMode ? 'Отмена' : 'Отказ'}</button>
           <button type="button" class="btn btn-secondary" onclick="downloadLeadQualificationViberQuestions(${id})">Скачать вопросы для Viber</button>
-          <button type="button" class="btn btn-secondary" onclick="downloadLeadQualificationTxt(${id})">${tireMode ? 'Загрузить ответы' : 'Скачать ответы'}</button>
+          <button type="button" class="btn btn-secondary" onclick="downloadLeadQualificationTxt(${id})">${tireMode ? 'Download e-mail draft' : 'Скачать e-mail draft'}</button>
           <button type="submit" class="btn btn-primary">${tireMode ? 'Сохранить ответы' : 'Запази отговорите'}</button>
         </div>
       </form>
@@ -3487,76 +3487,191 @@ function collectLeadQualificationFormData() {
 
 function formatLeadQualificationTxt(lead, qualificationData) {
   const clientType = qualificationData.client_type || leadQualificationType(lead, qualificationData);
+  const valueOrDash = (value) => (value === undefined || value === null || value === '' ? '-' : String(value));
+  const yesNo = (value) => (value ? 'Yes' : 'No');
+  const clientTypeLabels = {
+    tire_customer: 'Tires / wheels customer',
+    concrete_object: 'Concrete object / project',
+    construction_company: 'Construction company',
+    distributor: 'Distributor / partner',
+  };
+  const problemLabels = {
+    active_leaks: 'Active leaks',
+    wall_moisture: 'Wall moisture',
+    cracks: 'Cracks',
+    construction_joints: 'Water through construction joints',
+    utility_entries: 'Water around pipes or cables',
+    voids_behind_structure: 'Voids behind the structure',
+    structural_strengthening: 'Structural strengthening required',
+    other: 'Other problem',
+  };
+  const selectValueLabels = {
+    urgent: 'Urgent',
+    '1_2_weeks': 'Within 1-2 weeks',
+    within_month: 'Within 1 month',
+    later: 'Later',
+    yes: 'Yes',
+    no: 'No',
+    preparing: 'In preparation',
+    discuss: 'Need to discuss terms',
+    pending: 'Pending',
+    foundation: 'Foundation',
+    slab: 'Slab',
+    columns: 'Columns',
+    walls: 'Walls',
+    soil: 'Soil',
+  };
+  const englishFieldLabels = {
+    leak_location: 'Where exactly is the leak located',
+    leak_when: 'When does the leak appear',
+    water_behavior: 'Is water flowing or is it only damp',
+    water_flow: 'Approximate water flow',
+    leak_zone_length: 'Length of leaking zone',
+    photo_video: 'Photos / video available',
+    moisture_pattern: 'Does moisture rise from the bottom or cover the whole wall',
+    wet_length: 'Length of wet area',
+    wet_height: 'Height of wet area',
+    white_salts: 'White salts / efflorescence visible',
+    mold: 'Mold present',
+    wall_material: 'Wall material',
+    inside_or_outside: 'Inside or outside',
+    crack_location: 'Crack location',
+    crack_length: 'Crack length',
+    crack_width: 'Crack width',
+    crack_water: 'Dry crack or water passing through',
+    crack_growing: 'Are the cracks still growing',
+    crack_count: 'Approximate number of cracks',
+    crack_photos: 'Photos available',
+    joint_location: 'Joint location',
+    joint_length: 'Joint length',
+    joint_water_when: 'Does water come constantly or only during rain',
+    joint_pressure: 'Water pressure present',
+    joint_repaired_before: 'Previously repaired',
+    entry_type: 'Pipe or cable',
+    entry_diameter: 'Entry diameter',
+    entry_leak_path: 'Where exactly does water pass',
+    entry_count: 'Number of entries',
+    entry_constant_leak: 'Constant leak present',
+    void_location: 'Void location',
+    void_reason: 'Why do you believe there are voids',
+    void_settlement: 'Settlement present',
+    void_cracks: 'Cracks present',
+    void_volume: 'Approximate void volume',
+    void_geology: 'Geology report available',
+    strengthening_target: 'What needs strengthening',
+    strengthening_reason: 'Why strengthening is required',
+    engineer_report: 'Engineer report available',
+    strengthening_settlement: 'Settlement present',
+    strengthening_area: 'Area / section size',
+    other_problem_description: 'Problem description',
+    other_problem_location: 'Problem location',
+    other_problem_dimensions: 'Dimensions of affected area',
+    other_problem_started: 'When the problem started',
+    other_problem_now: 'Current condition',
+    other_problem_photos: 'Photos available',
+    construction_type: 'Construction type',
+    construction_material: 'Construction material',
+    zone_length: 'Problem zone length',
+    zone_width: 'Problem zone width',
+    zone_depth: 'Problem zone depth',
+    external_access: 'Access from outside',
+    internal_access: 'Access from inside',
+    repair_timing: 'When repair / delivery is needed',
+    has_photos: 'Photos available',
+    has_drawings: 'Drawings available',
+    has_video: 'Video available',
+    executor: 'Who will execute the works',
+  };
+  const englishFieldValue = (fieldId, value) => {
+    if (value === undefined || value === null || value === '') return '-';
+    return selectValueLabels[String(value)] || String(value);
+  };
+  const subject = `BODEX lead brief: ${lead.company_name || lead.contact_name || `Lead #${lead.id}`}`;
   const lines = [
-    `Лид: ${lead.company_name || lead.contact_name || `#${lead.id}`}`,
-    `Контакт: ${lead.contact_name || '-'}`,
-    `Телефон: ${lead.phone || '-'}`,
-    `Email: ${lead.email || '-'}`,
-    `Город: ${lead.city || '-'}`,
-    `Тип клиента: ${lead.company_type || '-'}`,
-    `Кампания: ${lead.fb_campaign_name || '-'}`,
+    `Subject: ${subject}`,
+    '',
+    'Hello,',
+    '',
+    'Below is the lead qualification summary prepared by the manager.',
+    '',
+    `Lead: ${valueOrDash(lead.company_name || lead.contact_name || `#${lead.id}`)}`,
+    `Contact person: ${valueOrDash(lead.contact_name)}`,
+    `Phone: ${valueOrDash(lead.phone)}`,
+    `Email: ${valueOrDash(lead.email)}`,
+    `City: ${valueOrDash(lead.city)}`,
+    `Client type: ${valueOrDash(clientTypeLabels[clientType] || lead.company_type || clientType)}`,
+    `Campaign: ${valueOrDash(lead.fb_campaign_name)}`,
     ''
   ];
 
   if (clientType === 'tire_customer') {
     lines.push(
-      `1. Для какого автомобиля нужны шины: ${qualificationData.vehicle || '-'}`,
-      `2. Какой размер шин нужен: ${qualificationData.tire_size || '-'}`,
-      `3. Какой тип шин нужен: ${qualificationData.tire_type || '-'}`,
-      `4. Какой бренд предпочитает клиент: ${qualificationData.preferred_brand || '-'}`,
-      `5. Сколько шин нужно и нужны ли диски: ${qualificationData.quantity_and_rims || '-'}`,
-      `Дополнительные детали: ${qualificationData.notes || '-'}`,
-      `Информации достаточно для предложения: ${qualificationData.manual_complete ? 'Да' : 'Нет'}`
+      'Qualification details:',
+      `1. Vehicle: ${valueOrDash(qualificationData.vehicle)}`,
+      `2. Tire size: ${valueOrDash(qualificationData.tire_size)}`,
+      `3. Tire type: ${valueOrDash(qualificationData.tire_type)}`,
+      `4. Preferred brand: ${valueOrDash(qualificationData.preferred_brand)}`,
+      `5. Quantity / rims: ${valueOrDash(qualificationData.quantity_and_rims)}`,
+      `Additional details: ${valueOrDash(qualificationData.notes)}`,
+      `Enough information for an offer: ${yesNo(qualificationData.manual_complete)}`
     );
   } else if (clientType === 'concrete_object') {
     const problemType = qualificationData.problem_type || qualificationData.problems?.[0] || '';
     const problemDetails = qualificationData.problem_details || {};
     const commonDetails = qualificationData.common_details || {};
     lines.push(
-      `1. Проблема на объекте: ${objectQualificationLabel(problemType) || '-'}`,
+      `Main problem: ${valueOrDash(problemLabels[problemType] || objectQualificationLabel(problemType) || problemType)}`,
       ''
     );
     const problemConfig = OBJECT_QUALIFICATION_PROBLEM_FIELDS[problemType];
     if (problemConfig?.fields?.length) {
-      lines.push('2. Ответы по выбранной проблеме:');
+      lines.push('Problem-specific answers:');
       problemConfig.fields.forEach(field => {
-        lines.push(`   - ${field.label}: ${objectQualificationDisplayValue(field.id, problemDetails[field.id])}`);
+        lines.push(`- ${englishFieldLabels[field.id] || field.label}: ${englishFieldValue(field.id, problemDetails[field.id])}`);
       });
       lines.push('');
     }
-    lines.push('3. Общие обязательные вопросы:');
+    lines.push('Common required answers:');
     OBJECT_QUALIFICATION_COMMON_FIELDS.forEach(field => {
-      lines.push(`   - ${field.label}: ${objectQualificationDisplayValue(field.id, commonDetails[field.id])}`);
+      lines.push(`- ${englishFieldLabels[field.id] || field.label}: ${englishFieldValue(field.id, commonDetails[field.id])}`);
     });
     lines.push(
       '',
-      `Дополнительные детали: ${qualificationData.notes || '-'}`,
-      `Информации достаточно для предложения: ${qualificationData.manual_complete ? 'Да' : 'Нет'}`
+      `Additional details: ${valueOrDash(qualificationData.notes)}`,
+      `Enough information for an offer: ${yesNo(qualificationData.manual_complete)}`
     );
   } else if (clientType === 'construction_company') {
     lines.push(
-      `1. Какие материалы интересуют: ${qualificationData.materials_interest || '-'}`,
-      `2. Для какого объекта / применения: ${qualificationData.application_type || '-'}`,
-      `3. Ориентировочные количества: ${qualificationData.quantities || '-'}`,
-      `4. Когда нужна доставка: ${qualificationData.delivery_timing || '-'}`,
-      `5. Есть ли спецификация / смета: ${qualificationData.has_specification || '-'}`,
-      `Дополнительные детали: ${qualificationData.notes || '-'}`,
-      `Информации достаточно для предложения: ${qualificationData.manual_complete ? 'Да' : 'Нет'}`
+      'Qualification details:',
+      `1. Materials of interest: ${valueOrDash(qualificationData.materials_interest)}`,
+      `2. Object / application: ${valueOrDash(qualificationData.application_type)}`,
+      `3. Estimated quantities: ${valueOrDash(qualificationData.quantities)}`,
+      `4. Delivery timing: ${englishFieldValue('delivery_timing', qualificationData.delivery_timing)}`,
+      `5. Specification / BoQ available: ${englishFieldValue('has_specification', qualificationData.has_specification)}`,
+      `Additional details: ${valueOrDash(qualificationData.notes)}`,
+      `Enough information for an offer: ${yesNo(qualificationData.manual_complete)}`
     );
   } else if (clientType === 'distributor') {
     lines.push(
-      `1. Регион / город: ${qualificationData.region || '-'}`,
-      `2. Какие продукты / бренды уже продают: ${qualificationData.current_products || '-'}`,
-      `3. Склад и торговая команда: ${qualificationData.warehouse_team || '-'}`,
-      `4. Месячные / годовые объёмы: ${qualificationData.sales_volume || '-'}`,
-      `5. Интерес к партнёрству: ${qualificationData.partnership_interest || '-'}`,
-      `Дополнительные детали: ${qualificationData.notes || '-'}`,
-      `Информации достаточно для предложения: ${qualificationData.manual_complete ? 'Да' : 'Нет'}`
+      'Qualification details:',
+      `1. Region / city: ${valueOrDash(qualificationData.region)}`,
+      `2. Current products / brands: ${valueOrDash(qualificationData.current_products)}`,
+      `3. Warehouse / sales team: ${valueOrDash(qualificationData.warehouse_team)}`,
+      `4. Sales volume: ${valueOrDash(qualificationData.sales_volume)}`,
+      `5. Partnership interest: ${englishFieldValue('partnership_interest', qualificationData.partnership_interest)}`,
+      `Additional details: ${valueOrDash(qualificationData.notes)}`,
+      `Enough information for an offer: ${yesNo(qualificationData.manual_complete)}`
     );
   } else {
-    lines.push(`Данные формы относятся к типу: ${clientType || '-'}`);
+    lines.push(`Questionnaire type: ${valueOrDash(clientType)}`);
     lines.push(JSON.stringify(qualificationData, null, 2));
   }
+
+  lines.push(
+    '',
+    'Best regards,',
+    'BODEX Virtual Office'
+  );
 
   return lines.join('\n');
 }
@@ -3726,19 +3841,19 @@ async function downloadLeadQualificationTxt(id) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `lead-${id}-answers.txt`;
+    a.download = `lead-${id}-email-draft.txt`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
     if (result) {
       result.className = 'sync-result show ok';
-      result.textContent = 'TXT с ответами загружен.';
+      result.textContent = 'English e-mail draft downloaded.';
     }
   } catch (err) {
     if (result) {
       result.className = 'sync-result show err';
-      result.textContent = 'Ошибка загрузки TXT: ' + err.message;
+      result.textContent = 'Ошибка загрузки e-mail draft: ' + err.message;
     }
   }
 }
