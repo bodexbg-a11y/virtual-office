@@ -37,6 +37,14 @@ async function ensureContractorsTable() {
     ALTER TABLE contractors ADD COLUMN IF NOT EXISTS call_result TEXT;
     ALTER TABLE contractors ADD COLUMN IF NOT EXISTS contact_date TEXT;
     ALTER TABLE contractors ADD COLUMN IF NOT EXISTS owner_name TEXT;
+    CREATE TABLE IF NOT EXISTS contractor_comments (
+      id SERIAL PRIMARY KEY,
+      contractor_id INTEGER NOT NULL,
+      comment TEXT NOT NULL,
+      performed_by TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_contractor_comments_contractor_id ON contractor_comments(contractor_id);
   `);
 }
 
@@ -127,6 +135,23 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.get('/:id', async (req, res) => {
+  try {
+    await ensureContractorsTable();
+    const contractor = await db.get('SELECT * FROM contractors WHERE id = ?', [req.params.id]);
+    if (!contractor) return res.status(404).json({ error: 'Contractor not found' });
+    const { rows: comments } = await db.query(`
+      SELECT id, contractor_id, comment, performed_by, created_at
+      FROM contractor_comments
+      WHERE contractor_id = ?
+      ORDER BY created_at DESC, id DESC
+    `, [req.params.id]);
+    res.json({ ...contractor, comments });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/', async (req, res) => {
   try {
     await ensureContractorsTable();
@@ -160,6 +185,35 @@ router.post('/', async (req, res) => {
       payload.notes,
       payload.is_active,
     ]);
+
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:id/comments', async (req, res) => {
+  try {
+    await ensureContractorsTable();
+    const existing = await db.get('SELECT id FROM contractors WHERE id = ?', [req.params.id]);
+    if (!existing) return res.status(404).json({ error: 'Contractor not found' });
+
+    const comment = String(req.body?.comment || '').trim();
+    const performed_by = String(req.body?.performed_by || 'manager').trim();
+    if (!comment) return res.status(400).json({ error: 'Comment is required' });
+
+    const { rows } = await db.query(`
+      INSERT INTO contractor_comments (contractor_id, comment, performed_by)
+      VALUES (?, ?, ?)
+      RETURNING *
+    `, [req.params.id, comment, performed_by]);
+
+    await db.query(`
+      UPDATE contractors
+      SET manager_comment = ?,
+          updated_at = NOW()
+      WHERE id = ?
+    `, [comment, req.params.id]);
 
     res.status(201).json(rows[0]);
   } catch (err) {

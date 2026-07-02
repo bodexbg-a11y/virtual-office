@@ -2391,6 +2391,14 @@ tr:hover td { background: rgba(255,255,255,0.08); }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.contractor-comment-pill:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.36);
+  background: rgba(56, 189, 248, 0.15);
 }
 
 .contractor-inline-status {

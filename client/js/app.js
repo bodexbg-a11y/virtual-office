@@ -3153,6 +3153,92 @@ async function saveQuickLeadComment(id) {
   }
 }
 
+async function openQuickContractorCommentModal(id, encodedLatest = '') {
+  const latest = decodeURIComponent(encodedLatest || '');
+  openModal('Комментарий по подрядчику', `
+    ${latest ? `<div style="font-size:12px;color:#8dd3ff;margin-bottom:10px;">Последний: ${escapeHtml(latest)}</div>` : ''}
+    <div class="form-group full">
+      <label>Комментарий после контакта</label>
+      <textarea id="quick-contractor-comment" rows="4" placeholder="Напишите короткий результат разговора..."></textarea>
+    </div>
+    <div class="card-title" style="font-size:12px;margin:12px 0 8px;">🕘 История комментариев</div>
+    <div id="quick-contractor-comment-history" class="quick-comment-history">
+      <div class="worker-activity-empty">Загружаю историю комментариев...</div>
+    </div>
+    <div id="quick-contractor-comment-result" class="sync-result"></div>
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="saveQuickContractorComment(${id})">Сохранить</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('quick-contractor-comment')?.focus(), 50);
+  await loadQuickContractorCommentHistory(id);
+}
+
+async function loadQuickContractorCommentHistory(id) {
+  const wrap = document.getElementById('quick-contractor-comment-history');
+  if (!wrap) return;
+  try {
+    const data = await api(`/api/contractors/${id}`);
+    const comments = data.comments || [];
+    wrap.innerHTML = comments.length
+      ? comments.map(item => `
+        <div class="quick-comment-item">
+          <div class="quick-comment-item-head">
+            <span class="fresh-comment-pill">${escapeHtml(item.performed_by || 'manager')}</span>
+            <span>${new Date(item.created_at).toLocaleString('bg-BG')}</span>
+          </div>
+          <div class="quick-comment-item-body">${escapeHtml(item.comment || '')}</div>
+        </div>
+      `).join('')
+      : '<div class="worker-activity-empty">Комментариев пока нет.</div>';
+  } catch (err) {
+    wrap.innerHTML = `<div class="worker-activity-empty">Не удалось загрузить историю: ${escapeHtml(err.message || 'unknown error')}</div>`;
+  }
+}
+
+async function saveQuickContractorComment(id) {
+  const input = document.getElementById('quick-contractor-comment');
+  const result = document.getElementById('quick-contractor-comment-result');
+  const comment = input?.value.trim();
+  if (!comment) {
+    if (result) {
+      result.className = 'sync-result show err';
+      result.textContent = '❌ Напишите комментарий.';
+    } else {
+      input?.focus();
+    }
+    return;
+  }
+
+  if (result) {
+    result.className = 'sync-result show';
+    result.textContent = 'Сохраняю...';
+  }
+
+  try {
+    await api(`/api/contractors/${id}/comments`, {
+      method: 'POST',
+      body: {
+        comment,
+        performed_by: currentRole === 'admin' ? 'admin' : 'manager',
+      },
+    });
+    input.value = '';
+    await loadQuickContractorCommentHistory(id);
+    await renderContractors(document.getElementById('main'));
+    if (result) {
+      result.className = 'sync-result show ok';
+      result.textContent = '✅ Комментарий сохранён.';
+    }
+  } catch (err) {
+    if (result) {
+      result.className = 'sync-result show err';
+      result.textContent = '❌ ' + err.message;
+    }
+  }
+}
+
 async function openLeadQualificationModal(id) {
   try {
     const data = await api(`/api/leads/${id}`);
@@ -6373,7 +6459,11 @@ async function renderContractors(el) {
                 </td>
                 <td class="contractor-specialties-cell" title="${escapeAttr(r.specialties || '')}">${escapeHtml(r.specialties || '—')}</td>
                 <td>
-                  <div class="contractor-comment-pill" title="${escapeAttr((r.manager_comment || r.call_result || ''))}">
+                  <div
+                    class="contractor-comment-pill"
+                    title="${escapeAttr((r.manager_comment || r.call_result || ''))}"
+                    onclick="event.stopPropagation();openQuickContractorCommentModal(${r.id}, '${encodeURIComponent(r.manager_comment || r.call_result || '')}')"
+                  >
                     ${escapeHtml(r.manager_comment || r.call_result || 'Добавить')}
                   </div>
                 </td>
