@@ -6354,10 +6354,15 @@ async function renderContractors(el) {
                 </td>
                 <td>
                   <div class="contractor-contact-primary">${escapeHtml(r.public_contact || r.contact_name || '—')}</div>
-                  <div class="contractor-contact-secondary">${escapeHtml(r.website || r.regions || '')}</div>
+                  <div class="contractor-contact-secondary">${escapeHtml(r.regions || '')}</div>
                 </td>
-                <td class="contractor-phone-cell">${escapeHtml(r.phone || '—')}</td>
-                <td>${escapeHtml(r.city || '—')}</td>
+                <td class="contractor-phone-cell">
+                  <div class="contractor-phone-row">
+                    <span>${escapeHtml(r.phone || '—')}</span>
+                    ${r.website ? `<a class="contractor-site-link" href="${escapeAttr(r.website)}" target="_blank" rel="noreferrer" title="Открыть сайт">🌐</a>` : ''}
+                  </div>
+                </td>
+                <td class="contractor-city-cell">${escapeHtml(r.city || '—')}</td>
                 <td onclick="event.stopPropagation();">
                   <select
                     class="lead-inline-status-select contractor-inline-status contractor-inline-status-${escapeAttr(r.contact_status || 'new')}"
@@ -6373,7 +6378,7 @@ async function renderContractors(el) {
                   </div>
                 </td>
                 <td><span class="badge ${r.is_active ? 'badge-won' : 'badge-low'}">${r.is_active ? 'Активный' : 'Неактивный'}</span></td>
-                <td><button class="btn btn-secondary btn-sm" onclick='openContractorModal(${JSON.stringify(r).replace(/'/g, "&apos;")})'>Редактировать</button></td>
+                <td><button class="btn btn-secondary btn-sm" style="padding:6px 10px;min-width:40px;" onclick='openContractorModal(${JSON.stringify(r).replace(/'/g, "&apos;")})' title="Редактировать">✏️</button></td>
               </tr>
             `).join('') : '<tr><td colspan="9" style="text-align:center;color:#777;padding:24px;">Пока нет подрядчиков.</td></tr>'}
           </tbody>
