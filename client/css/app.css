@@ -2297,6 +2297,64 @@ tr:hover td { background: rgba(255,255,255,0.08); }
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 16px rgba(44,52,61,0.12);
 }
 
+.contractor-table td,
+.contractor-table th {
+  vertical-align: middle;
+}
+
+.contractor-contact-primary {
+  font-weight: 600;
+  color: #eef2f6;
+  line-height: 1.3;
+}
+
+.contractor-contact-secondary {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #aeb8c5;
+  line-height: 1.3;
+}
+
+.contractor-phone-cell {
+  font-weight: 700;
+  color: #f8fafc;
+  white-space: nowrap;
+}
+
+.contractor-specialties-cell {
+  max-width: 240px;
+  color: #dde4eb;
+  line-height: 1.35;
+}
+
+.contractor-comment-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 240px;
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  background: rgba(56, 189, 248, 0.10);
+  color: #eaf7ff;
+  box-shadow: inset 0 0 0 1px rgba(56,189,248,0.08);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contractor-inline-status {
+  min-width: 160px;
+}
+
+.contractor-inline-status-new { background-color: rgba(99,102,241,0.15); color: var(--brand-light); }
+.contractor-inline-status-interested { background-color: rgba(251,191,36,0.15); color: var(--yellow); }
+.contractor-inline-status-callback { background-color: rgba(66,165,245,0.15); color: var(--blue); }
+.contractor-inline-status-negotiating { background-color: rgba(244,114,182,0.15); color: var(--pink); }
+.contractor-inline-status-agreed { background-color: rgba(74,222,128,0.16); color: var(--green); }
+.contractor-inline-status-declined { background-color: rgba(248,113,113,0.15); color: var(--red); }
+.contractor-inline-status-inactive { background-color: rgba(148,163,184,0.16); color: #cbd5e1; }
+
 tr.lead-row-new {
   background: rgba(125, 211, 252, 0.10);
 }

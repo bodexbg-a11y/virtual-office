@@ -9,6 +9,7 @@ let markAgentPoll = null;
 let currentLeadFilters = {};
 let currentProjectFilters = { q: '', status: '' };
 let currentContractorFilters = { q: '', active: '1' };
+let currentContractorRows = [];
 let agentReportsFilters = { agent: 'all', date_from: '', date_to: '', limit: 100 };
 let agentReportsCache = [];
 let currentOfferDraft = null;
@@ -35,6 +36,15 @@ const SERVICES_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSeOqHotu23Ed
 const MATERIALS_OBJECT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLScqNRc5f2X_RQ92q4WaWhXjaWoc5FS5CbDF1l3BECXdHwywgA/viewform?usp=header';
 const DISTRIBUTOR_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSePY55DYlgh7BMb94fjB0G-IRIWyqmK9rlIc2d3S4CbjjuVUA/viewform?usp=header';
 const BODEX_WEBSITE_URL = 'https://bodexbg.com/';
+const CONTRACTOR_CONTACT_STATUSES = [
+  ['new', 'Новый'],
+  ['interested', 'Интересует'],
+  ['callback', 'Перезвонить'],
+  ['negotiating', 'Переговоры'],
+  ['agreed', 'Согласный'],
+  ['declined', 'Несогласный'],
+  ['inactive', 'Неактивный'],
+];
 
 function selectedGmailSender() {
   return GMAIL_SENDERS.find(sender => sender.key === selectedGmailSenderKey) || GMAIL_SENDERS[0];
@@ -56,6 +66,10 @@ function setGmailSender(key) {
 
 function gmailSenderConnected(email) {
   return gmailAccountsCache.some(account => account.email === email && account.connected);
+}
+
+function contractorStatusLabel(value = '') {
+  return CONTRACTOR_CONTACT_STATUSES.find(([key]) => key === value)?.[1] || value || 'Новый';
 }
 
 function ensureConnectedGmailSender() {
@@ -6283,6 +6297,7 @@ async function renderContractors(el) {
   if (active !== '') qs.set('active', active);
   const data = await api(`/api/contractors${qs.toString() ? `?${qs.toString()}` : ''}`);
   const rows = data.rows || [];
+  currentContractorRows = rows;
   const summary = data.summary || {};
 
   el.innerHTML = `
@@ -6316,23 +6331,17 @@ async function renderContractors(el) {
         <button class="btn btn-secondary" onclick="renderContractors(document.getElementById('main'))">Поиск</button>
       </div>
       <div class="table-wrap">
-        <table>
+        <table class="contractor-table">
           <thead>
             <tr>
               <th>Компания</th>
-              <th>Город (база)</th>
-              <th>География работы</th>
-              <th>Специализация</th>
-              <th>Сайт</th>
-              <th>Контакт (источники)</th>
+              <th>Контакт</th>
               <th>Телефон</th>
-              <th>Статус контакта</th>
-              <th>Приоритет</th>
-              <th>Комментарий для менеджера</th>
-              <th>Результат звонка</th>
-              <th>Дата контакта</th>
-              <th>Ответственный</th>
+              <th>Город</th>
               <th>Статус</th>
+              <th>Тип работ</th>
+              <th>Комментарий</th>
+              <th>Активность</th>
               <th></th>
             </tr>
           </thead>
@@ -6343,29 +6352,54 @@ async function renderContractors(el) {
                   <div style="font-weight:700;color:#e5e7eb;">${escapeHtml(r.company_name || '—')}</div>
                   <div style="font-size:11px;color:#aeb8c5;">${escapeHtml(r.email || '')}</div>
                 </td>
-                <td>${escapeHtml(r.city || '—')}</td>
-                <td style="min-width:150px;">${escapeHtml(r.regions || '—')}</td>
-                <td style="min-width:220px;max-width:260px;">${escapeHtml(r.specialties || '—')}</td>
-                <td style="min-width:170px;">
-                  ${r.website ? `<a href="${escapeAttr(r.website)}" target="_blank" rel="noreferrer" style="color:#dbeafe;text-decoration:none;">${escapeHtml(r.website)}</a>` : '—'}
+                <td>
+                  <div class="contractor-contact-primary">${escapeHtml(r.public_contact || r.contact_name || '—')}</div>
+                  <div class="contractor-contact-secondary">${escapeHtml(r.website || r.regions || '')}</div>
                 </td>
-                <td style="min-width:220px;">${escapeHtml(r.public_contact || r.contact_name || '—')}</td>
-                <td style="min-width:140px;font-weight:600;color:#f8fafc;">${escapeHtml(r.phone || '—')}</td>
-                <td style="min-width:170px;">${escapeHtml(r.contact_status || '—')}</td>
-                <td style="min-width:110px;">${escapeHtml(r.priority || '—')}</td>
-                <td style="min-width:240px;max-width:280px;">${escapeHtml(r.manager_comment || '—')}</td>
-                <td style="min-width:180px;">${escapeHtml(r.call_result || '—')}</td>
-                <td style="min-width:120px;">${escapeHtml(r.contact_date || '—')}</td>
-                <td style="min-width:120px;">${escapeHtml(r.owner_name || '—')}</td>
+                <td class="contractor-phone-cell">${escapeHtml(r.phone || '—')}</td>
+                <td>${escapeHtml(r.city || '—')}</td>
+                <td onclick="event.stopPropagation();">
+                  <select
+                    class="lead-inline-status-select contractor-inline-status contractor-inline-status-${escapeAttr(r.contact_status || 'new')}"
+                    onchange="inlineUpdateContractorStatus(${r.id}, this.value)"
+                  >
+                    ${CONTRACTOR_CONTACT_STATUSES.map(([value, label]) => `<option value="${value}" ${(r.contact_status || 'new') === value ? 'selected' : ''}>${label}</option>`).join('')}
+                  </select>
+                </td>
+                <td class="contractor-specialties-cell" title="${escapeAttr(r.specialties || '')}">${escapeHtml(r.specialties || '—')}</td>
+                <td>
+                  <div class="contractor-comment-pill" title="${escapeAttr((r.manager_comment || r.call_result || ''))}">
+                    ${escapeHtml(r.manager_comment || r.call_result || 'Добавить')}
+                  </div>
+                </td>
                 <td><span class="badge ${r.is_active ? 'badge-won' : 'badge-low'}">${r.is_active ? 'Активный' : 'Неактивный'}</span></td>
                 <td><button class="btn btn-secondary btn-sm" onclick='openContractorModal(${JSON.stringify(r).replace(/'/g, "&apos;")})'>Редактировать</button></td>
               </tr>
-            `).join('') : '<tr><td colspan="15" style="text-align:center;color:#777;padding:24px;">Пока нет подрядчиков.</td></tr>'}
+            `).join('') : '<tr><td colspan="9" style="text-align:center;color:#777;padding:24px;">Пока нет подрядчиков.</td></tr>'}
           </tbody>
         </table>
       </div>
     </div>
   `;
+}
+
+async function inlineUpdateContractorStatus(id, status) {
+  const row = (currentContractorRows || []).find(item => Number(item.id) === Number(id));
+  if (!row) return;
+  const nextActive = status === 'inactive' ? false : true;
+  try {
+    await api(`/api/contractors/${id}`, {
+      method: 'PUT',
+      body: {
+        ...row,
+        contact_status: status,
+        is_active: nextActive,
+      },
+    });
+    await renderContractors(document.getElementById('main'));
+  } catch (err) {
+    alert('Грешка: ' + err.message);
+  }
 }
 
 function openContractorModal(record = null) {
@@ -6380,7 +6414,11 @@ function openContractorModal(record = null) {
       <div class="form-group"><label>Сайт</label><input id="ct-website" value="${escapeAttr(r.website || '')}" placeholder="https://..."></div>
       <div class="form-group full"><label>Контакт (открытые источники)</label><textarea id="ct-public-contact" rows="2" placeholder="Телефоны, email, EIK, адрес из открытых источников...">${escapeHtml(r.public_contact || r.contact_name || '')}</textarea></div>
       <div class="form-group full"><label>Специализация</label><textarea id="ct-specialties" rows="3" placeholder="Инъектирование, гидроизоляция, ремонт бетона...">${escapeHtml(r.specialties || '')}</textarea></div>
-      <div class="form-group"><label>Статус контакта</label><input id="ct-contact-status" value="${escapeAttr(r.contact_status || '')}" placeholder="с сайта компании, проверить, взять с сайта..."></div>
+      <div class="form-group"><label>Статус контакта</label>
+        <select id="ct-contact-status">
+          ${CONTRACTOR_CONTACT_STATUSES.map(([value, label]) => `<option value="${value}" ${(r.contact_status || 'new') === value ? 'selected' : ''}>${label}</option>`).join('')}
+        </select>
+      </div>
       <div class="form-group"><label>Приоритет</label><input id="ct-priority" value="${escapeAttr(r.priority || '')}" placeholder="Высокий / Средний / Низкий"></div>
       <div class="form-group"><label>Дата контакта</label><input id="ct-contact-date" value="${escapeAttr(r.contact_date || '')}" placeholder="дд.мм.гггг"></div>
       <div class="form-group"><label>Ответственный</label><input id="ct-owner-name" value="${escapeAttr(r.owner_name || '')}" placeholder="Менеджер"></div>
