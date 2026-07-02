@@ -6,8 +6,6 @@ const cron = require('node-cron');
 
 const googleSheets = require('./services/googleSheets');
 const facebookAds = require('./services/facebookAds');
-const markAgent = require('./services/markAgent');
-const steveAgent = require('./services/steveAgent');
 const db = require('./db');
 
 const app = express();
@@ -111,26 +109,6 @@ async function initializeServices() {
       console.error('[STARTUP] FB sync error:', err.message);
     }
   }, 5000);
-
-  // Cron: Mark scans material market prices twice per working day.
-  cron.schedule('0 9,15 * * 1-5', async () => {
-    console.log('[CRON] Running Mark market agent...');
-    try {
-      await markAgent.run();
-    } catch (err) {
-      console.error('[CRON] Mark agent error:', err.message);
-    }
-  }, { timezone: 'Europe/Sofia' });
-
-  // Cron: Steve audits SEO and prepares linkbuilding recommendations twice per working day.
-  cron.schedule('30 9,15 * * 1-5', async () => {
-    console.log('[CRON] Running Steve SEO agent...');
-    try {
-      await steveAgent.run();
-    } catch (err) {
-      console.error('[CRON] Steve agent error:', err.message);
-    }
-  }, { timezone: 'Europe/Sofia' });
 
   console.log(`✅ Background services ready. Google Sheets: ${googleSheets.initialized ? 'connected' : 'demo'}, Facebook Ads: ${facebookAds.initialized ? 'connected' : 'demo'}`);
 }

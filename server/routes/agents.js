@@ -1,32 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const markAgent = require('../services/markAgent');
 const mariaAgent = require('../services/mariaAgent');
-const steveAgent = require('../services/steveAgent');
 const auth = require('../services/auth');
 const db = require('../db');
-
-router.get('/mark/status', async (req, res) => {
-  try {
-    res.json({
-      running: markAgent.isRunning(),
-      latest: await markAgent.latestRun(),
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/mark/run', async (req, res) => {
-  if (markAgent.isRunning()) {
-    return res.status(409).json({ error: 'Mark agent is already running' });
-  }
-
-  res.status(202).json({ success: true, message: 'Mark agent started' });
-
-  markAgent.run()
-    .catch(err => console.error('[Mark Agent] error:', err.message));
-});
 
 router.get('/maria/status', async (req, res) => {
   try {
@@ -69,27 +45,6 @@ router.post('/maria/run-active', async (req, res) => {
     .catch(err => console.error('[Maria Active Campaign Report] error:', err.message));
 });
 
-router.get('/steve/status', async (req, res) => {
-  try {
-    res.json({
-      running: steveAgent.isRunning(),
-      latest: await steveAgent.latestRun(),
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/steve/run', async (req, res) => {
-  if (steveAgent.isRunning()) {
-    return res.status(409).json({ error: 'Steve agent is already running' });
-  }
-
-  res.status(202).json({ success: true, message: 'Steve agent started' });
-
-  steveAgent.run()
-    .catch(err => console.error('[Steve Agent] error:', err.message));
-});
 
 router.get('/reports', auth.requireAdmin, async (req, res) => {
   try {
@@ -177,7 +132,7 @@ router.get('/reports', auth.requireAdmin, async (req, res) => {
     const summary = {
       total_reports: parsedReports.length,
       total_runs: runs.length,
-      by_agent: ['mark', 'maria', 'steve'].map((id) => ({
+      by_agent: ['maria'].map((id) => ({
         id,
         reports: parsedReports.filter((r) => r.agent_id === id).length,
         runs: runs.filter((r) => r.agent_id === id).length,

@@ -119,9 +119,7 @@ async function renderPage(page) {
       case 'goals': await renderGoals(main); break;
       case 'office': await renderOffice(main); break;
       case 'worker-rostislav': await renderWorker(main, 'rostislav'); break;
-      case 'worker-mark': await renderWorker(main, 'mark'); break;
       case 'worker-maria': await renderWorker(main, 'maria'); break;
-      case 'worker-steve': await renderWorker(main, 'steve'); break;
       case 'agent-reports': await renderAgentReports(main); break;
       case 'leads': await renderLeads(main); break;
       case 'tires': await renderLeads(main, { view: 'tires' }); break;
@@ -255,6 +253,7 @@ async function renderDashboard(el) {
   const followups = data.followups || { stats: {}, leads: [] };
   const waitingOffers = data.waiting_offers || { total: 0, leads: [] };
   const alerts = data.alerts || [];
+  const managerToday = data.manager_today || { summary: {}, recent: [] };
   const hasFbData = Number(fb.campaigns || 0) > 0;
 
   el.innerHTML = `
@@ -415,6 +414,8 @@ async function renderDashboard(el) {
         </div>
       </div>
     ` : ''}
+
+    ${currentRole === 'admin' ? renderManagerTodayDashboard(managerToday) : ''}
 
     <div class="grid-2 fade-in">
       <div class="card">
@@ -589,6 +590,46 @@ async function renderGoals(el) {
   `;
 }
 
+function renderManagerTodayDashboard(activity) {
+  const summary = activity?.summary || {};
+  const recent = activity?.recent || [];
+  const cards = [
+    { label: 'Всего действий', value: summary.actions_total || 0 },
+    { label: 'Клиентов тронул', value: summary.leads_touched || 0 },
+    { label: 'Комментариев', value: summary.comments_count || 0 },
+    { label: 'Статусов сменил', value: summary.statuses_changed || 0 },
+    { label: 'Перезвоны поставил', value: summary.followups_set || 0 },
+    { label: 'Звонков зафиксировал', value: summary.calls_logged || 0 },
+  ];
+
+  return `
+    <div class="card fade-in">
+      <div class="card-title">📞 Что Ростислав сделал сегодня</div>
+      <div class="worker-activity-grid">
+        ${cards.map(item => `
+          <div class="worker-activity-card">
+            <strong>${item.value}</strong>
+            <small>${item.label}</small>
+          </div>
+        `).join('')}
+      </div>
+      ${recent.length ? `
+        <div class="worker-activity-feed" style="margin-top:14px;">
+          ${recent.map(item => `
+            <div class="worker-activity-item">
+              <div>
+                <span class="worker-activity-badge">${workerActivityLabel(item.action)}</span>
+                <strong>${escapeHtml(item.lead_label || 'Лид')}</strong>
+              </div>
+              <div class="worker-activity-meta">${formatDateTime(item.created_at)}${item.description ? ` · ${escapeHtml(item.description)}` : ''}</div>
+            </div>
+          `).join('')}
+        </div>
+      ` : '<div class="worker-activity-empty" style="margin-top:12px;">Сегодня пока нет активности менеджера в CRM.</div>'}
+    </div>
+  `;
+}
+
 // ===== OFFICE VIEW =====
 async function renderOffice(el) {
   const workers = await api('/api/dashboard/workers');
@@ -640,7 +681,7 @@ async function renderOffice(el) {
 
 async function renderWorker(el, workerId) {
   const worker = await api(`/api/dashboard/workers/${workerId}`);
-  const agentStatus = ['mark', 'maria', 'steve'].includes(worker.id)
+  const agentStatus = worker.id === 'maria'
     ? await api(`/api/agents/${worker.id}/status`).catch(err => ({ error: err.message }))
     : null;
   const mariaAnalysis = worker.id === 'maria'
@@ -648,9 +689,7 @@ async function renderWorker(el, workerId) {
     : null;
   const relatedLink = {
     rostislav: `<button class="btn btn-secondary" onclick="navigate('leads')">👥 Клиенты</button><button class="btn btn-secondary" onclick="navigate('projects')">🏗️ Проекты</button>`,
-    mark: `<button class="btn btn-secondary" onclick="navigate('products')">📦 Продукты</button><button class="btn btn-secondary" onclick="navigate('leads')">👥 B2B база</button>`,
     maria: `<button class="btn btn-secondary" onclick="navigate('facebook')">📢 Facebook Ads</button><button class="btn btn-secondary" onclick="navigate('leads')">👥 Клиенты</button>`,
-    steve: `<button class="btn btn-secondary" onclick="window.open('https://bodexbg.com/', '_blank')">🌐 bodexbg.com</button>`,
   }[worker.id] || '';
 
   el.innerHTML = `
@@ -672,9 +711,7 @@ async function renderWorker(el, workerId) {
 
     ${renderWorkerDailyActivity(worker)}
     ${renderMonthlyGoals(worker)}
-    ${worker.id === 'mark' ? renderMarkAgentPanel(agentStatus) : ''}
     ${worker.id === 'maria' ? renderMariaAgentPanel(agentStatus, mariaAnalysis) : ''}
-    ${worker.id === 'steve' ? renderSteveAgentPanel(agentStatus) : ''}
 
     <div class="grid-2 fade-in">
       <div class="card">
@@ -6960,8 +6997,6 @@ async function renderAgentReports(el) {
           <select id="agent-reports-agent">
             <option value="all" ${agentReportsFilters.agent === 'all' ? 'selected' : ''}>Все</option>
             <option value="maria" ${agentReportsFilters.agent === 'maria' ? 'selected' : ''}>Maria</option>
-            <option value="mark" ${agentReportsFilters.agent === 'mark' ? 'selected' : ''}>Mark</option>
-            <option value="steve" ${agentReportsFilters.agent === 'steve' ? 'selected' : ''}>Steve</option>
           </select>
         </div>
         <div class="form-group">
@@ -6992,16 +7027,6 @@ async function renderAgentReports(el) {
         <div class="stat-label">Maria</div>
         <div class="stat-value pink">${byAgent.maria?.reports || 0}</div>
         <div class="stat-sub">запусков: ${byAgent.maria?.runs || 0}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Mark</div>
-        <div class="stat-value blue">${byAgent.mark?.reports || 0}</div>
-        <div class="stat-sub">запусков: ${byAgent.mark?.runs || 0}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Steve</div>
-        <div class="stat-value green">${byAgent.steve?.reports || 0}</div>
-        <div class="stat-sub">запусков: ${byAgent.steve?.runs || 0}</div>
       </div>
     </div>
 
@@ -7070,7 +7095,7 @@ function resetAgentReportsFilters() {
 }
 
 function agentName(id) {
-  const map = { maria: 'Maria', mark: 'Mark', steve: 'Steve' };
+  const map = { maria: 'Maria' };
   return map[id] || id || '—';
 }
 

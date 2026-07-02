@@ -56,15 +56,6 @@ const WORKERS = [
     mission: 'Звонить клиентам, писать в Viber, вести лиды и доводить их до следующего действия.',
   },
   {
-    id: 'mark',
-    name: 'Mark',
-    type: 'ai',
-    role: 'Research Manager',
-    avatar_emoji: '🔎',
-    color: '#42a5f5',
-    mission: 'Сканировать рынок, смотреть цены на материалы и готовить отчёт в таблице.',
-  },
-  {
     id: 'maria',
     name: 'Maria',
     type: 'ai',
@@ -72,15 +63,6 @@ const WORKERS = [
     avatar_emoji: '📢',
     color: '#ec4899',
     mission: 'Делать отчёты по рекламным кампаниям, анализировать результаты и давать рекомендации.',
-  },
-  {
-    id: 'steve',
-    name: 'Steve',
-    type: 'ai',
-    role: 'SEO анализатор',
-    avatar_emoji: '🌐',
-    color: '#10b981',
-    mission: 'Анализировать bodexbg.com, SEO позиции, контент и технические улучшения сайта.',
   },
 ];
 
@@ -133,9 +115,7 @@ async function ensureWorkers() {
 
   const currentTasks = {
     rostislav: 'Обработва топли клиенти и B2B контакти без статус',
-    mark: 'Сравнява пазарни цени и конкурентни оферти',
     maria: 'Анализира Facebook кампании, CPL и CTR',
-    steve: 'Проверява SEO задачи за bodexbg.com',
   };
   for (const w of WORKERS) {
     await db.run(`
@@ -150,6 +130,14 @@ async function ensureWorkers() {
         last_active_at = NOW()
     `, [w.id, w.name, w.role, w.avatar_emoji, w.color, 'online', currentTasks[w.id]]);
   }
+
+  await db.run(`
+    UPDATE agents
+    SET status = 'paused',
+        current_task = 'Приостановлено',
+        last_active_at = NOW()
+    WHERE worker_code IN ('mark', 'steve')
+  `).catch(() => {});
 }
 
 async function ensureDealOverrides() {
@@ -264,18 +252,6 @@ function monthlyGoalsFor(id) {
         'Кол-во закрытых заказов за месяц',
       ],
     },
-    mark: {
-      minimum: 'Дневной KPI: отчёт по ценам на материалы на болгарском рынке',
-      optimal: 'Ежедневный ценовой мониторинг + пополнение B2B базы новыми компаниями',
-      reward: 'Главная ценность: давать администратору и Ростиславу актуальную картину рынка',
-      daily: 'Сканировать болгарский рынок: цены на материалы, упаковки, условия поставки, минимальные заказы и конкурентов.',
-      measurement: [
-        'Новые цены/конкуренты, добавленные в отчёт',
-        'Новые B2B компании, добавленные или уточнённые в базе',
-        'Рекомендации по ценам и условиям для B2B клиентов',
-        'Обновление таблицы с источниками данных',
-      ],
-    },
     maria: {
       minimum: 'KPI: анализ рекламных кампаний, когда они запущены',
       optimal: 'Ежедневный анализ кампаний + рекомендации: усилить, остановить, изменить креатив/аудиторию',
@@ -286,18 +262,6 @@ function monthlyGoalsFor(id) {
         'Рекомендации по каждой активной кампании',
         'Какие лиды переданы Ростиславу',
         'Какие кампании улучшены или остановлены',
-      ],
-    },
-    steve: {
-      minimum: 'KPI: рекомендации по SEO для bodexbg.com',
-      optimal: 'Еженедельный SEO-план: страницы, статьи, кейсы, технические правки и приоритеты',
-      reward: 'Главная ценность: увеличивать органический B2B трафик и заявки с сайта',
-      daily: 'Смотреть сайт, SEO структуру, страницы услуг/материалов, контент и точки роста.',
-      measurement: [
-        'Список SEO рекомендаций по сайту',
-        'Новые темы статей/страниц под B2B запросы',
-        'Технические SEO правки: title, meta, H1, ссылки',
-        'Идеи кейс-стади и контента для доверия крупных клиентов',
       ],
     },
   };
@@ -441,23 +405,11 @@ function tasksFor(id, data) {
       { title: 'Отправить Viber/email тем, у кого действие: каталог, презентация или форма', source: 'УСЛУГИ / МАТЕРИАЛЫ', status: 'today' },
       { title: `Проверить ${l.new_leads || 0} новых CRM лидов`, source: 'CRM', status: 'today' },
     ],
-    mark: [
-      { title: 'Собрать цены конкурентов по PU смолам, епоксидным смолам, пакерам и помпам', source: 'Market research', status: 'today' },
-      { title: 'Сравнить ARCAN/BODEX с конкурентами по цене, упаковке, минимальному заказу', source: 'Products', status: 'today' },
-      { title: 'Обновить ценовой HTML-отчёт по категориям: BG рынок vs EU рынок', source: 'Market pricing / Reports', status: 'daily' },
-      { title: 'Найти 5 компаний-поставщиков/конкурентов для анализа цен', source: 'B2B база', status: 'today' },
-    ],
     maria: [
       { title: `Проверить ${fb.active_campaigns || 0} активных FB кампаний`, source: 'Facebook Ads', status: 'today' },
       { title: `Сделать отчёт: spend $${Number(fb.spend || 0).toFixed(2)}, leads ${fb.leads || 0}, CPL $${fb.avg_cpl || 0}`, source: 'Facebook Ads', status: 'today' },
       { title: 'Дать рекомендации: какие кампании усилить, какие остановить, где заменить креатив', source: 'Facebook Ads', status: 'today' },
       { title: 'Передать Ростиславу лиды из Lead Forms для звонков', source: 'CRM', status: 'daily' },
-    ],
-    steve: [
-      { title: 'Проверить SEO страницы: инжекционни смоли, хидроизолация, ремонт на бетон, укрепване на фундаменти', source: 'bodexbg.com', status: 'today' },
-      { title: 'Составить список новых статей и кейс-стади под B2B аудиторию', source: 'SEO content', status: 'weekly' },
-      { title: 'Проверить title/meta/H1 и внутренние ссылки ключевых страниц', source: 'Technical SEO', status: 'today' },
-      { title: 'Найти поисковые запросы, по которым конкуренты получают трафик', source: 'Research', status: 'weekly' },
     ],
   };
   return tasks[id] || [];
@@ -475,23 +427,11 @@ function resultsFor(id, data) {
       { label: 'Без статуса звонка', value: c.no_status || 0 },
       { label: 'CRM pipeline', value: `${Number(l.pipeline || 0).toLocaleString()} лв` },
     ],
-    mark: [
-      { label: 'Товаров в каталоге', value: p.total || 0 },
-      { label: 'B2B база для анализа', value: c.b2b || 0 },
-      { label: 'Ценовой отчёт', value: 'нужно обновить' },
-      { label: 'Фокус', value: 'PU / Epoxy / Packers' },
-    ],
     maria: [
       { label: 'FB кампании', value: fb.campaigns || 0 },
       { label: 'Активные', value: fb.active_campaigns || 0 },
       { label: 'Лиды из FB', value: fb.leads || 0 },
       { label: 'Средний CPL', value: `$${fb.avg_cpl || 0}` },
-    ],
-    steve: [
-      { label: 'Сайт', value: 'bodexbg.com' },
-      { label: 'SEO темы', value: 4 },
-      { label: 'Кейс-стади', value: 'нужно собрать' },
-      { label: 'Цель', value: 'B2B трафик' },
     ],
   };
   return results[id] || [];
@@ -978,6 +918,7 @@ router.get('/stats', async (req, res) => {
         leads: waitingOffers.rows,
       },
       alerts,
+      manager_today: await getWorkerDailyActivity('rostislav'),
       worker_summary: await getWorkerSummary(),
     });
   } catch (err) {
