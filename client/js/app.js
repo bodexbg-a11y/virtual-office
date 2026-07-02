@@ -3487,6 +3487,7 @@ function collectLeadQualificationFormData() {
 
 function formatLeadQualificationTxt(lead, qualificationData) {
   const clientType = qualificationData.client_type || leadQualificationType(lead, qualificationData);
+  const containsCyrillic = (value) => /[А-Яа-яЁёЀ-ӿ]/.test(String(value || ''));
   const valueOrDash = (value) => (value === undefined || value === null || value === '' ? '-' : String(value));
   const yesNo = (value) => (value ? 'Yes' : 'No');
   const clientTypeLabels = {
@@ -3584,9 +3585,12 @@ function formatLeadQualificationTxt(lead, qualificationData) {
   };
   const englishFieldValue = (fieldId, value) => {
     if (value === undefined || value === null || value === '') return '-';
+    if (containsCyrillic(value)) {
+      return 'Manager note stored in CRM. Please add an English summary before sending.';
+    }
     return selectValueLabels[String(value)] || String(value);
   };
-  const subject = `BODEX lead brief: ${lead.company_name || lead.contact_name || `Lead #${lead.id}`}`;
+  const subject = 'BODEX project request brief';
   const lines = [
     `Subject: ${subject}`,
     '',
