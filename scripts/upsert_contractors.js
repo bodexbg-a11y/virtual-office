@@ -54,18 +54,29 @@ async function main() {
     }
 
     const existing = await db.get(
-      'SELECT id, company_name, contact_name, phone, email, city, regions, specialties, notes, is_active FROM contractors WHERE lower(company_name) = lower(?) LIMIT 1',
+      `SELECT id, company_name, contact_name, public_contact, phone, email, city, regions, specialties,
+              website, contact_status, priority, manager_comment, call_result, contact_date, owner_name,
+              notes, is_active
+       FROM contractors WHERE lower(company_name) = lower(?) LIMIT 1`,
       [companyName]
     );
 
     const payload = {
       company_name: companyName,
       contact_name: normalizeText(item.contact_name),
+      public_contact: normalizeText(item.public_contact),
       phone: normalizeText(item.phone),
       email: normalizeText(item.email).toLowerCase(),
       city: normalizeText(item.city),
       regions: normalizeText(item.regions),
       specialties: normalizeText(item.specialties),
+      website: normalizeText(item.website),
+      contact_status: normalizeText(item.contact_status),
+      priority: normalizeText(item.priority),
+      manager_comment: normalizeText(item.manager_comment),
+      call_result: normalizeText(item.call_result),
+      contact_date: normalizeText(item.contact_date),
+      owner_name: normalizeText(item.owner_name),
       notes: normalizeText(item.notes),
       is_active: item.is_active === false ? false : true,
     };
@@ -74,11 +85,19 @@ async function main() {
       await db.query(
         `UPDATE contractors
          SET contact_name = CASE WHEN coalesce(contact_name, '') = '' THEN ? ELSE contact_name END,
+             public_contact = CASE WHEN coalesce(public_contact, '') = '' THEN ? ELSE public_contact END,
              phone = CASE WHEN coalesce(phone, '') = '' THEN ? ELSE phone END,
              email = CASE WHEN coalesce(email, '') = '' THEN ? ELSE email END,
              city = CASE WHEN coalesce(city, '') = '' THEN ? ELSE city END,
              regions = CASE WHEN coalesce(regions, '') = '' THEN ? ELSE regions END,
              specialties = CASE WHEN coalesce(specialties, '') = '' THEN ? ELSE specialties END,
+             website = CASE WHEN coalesce(website, '') = '' THEN ? ELSE website END,
+             contact_status = CASE WHEN coalesce(contact_status, '') = '' THEN ? ELSE contact_status END,
+             priority = CASE WHEN coalesce(priority, '') = '' THEN ? ELSE priority END,
+             manager_comment = CASE WHEN coalesce(manager_comment, '') = '' THEN ? ELSE manager_comment END,
+             call_result = CASE WHEN coalesce(call_result, '') = '' THEN ? ELSE call_result END,
+             contact_date = CASE WHEN coalesce(contact_date, '') = '' THEN ? ELSE contact_date END,
+             owner_name = CASE WHEN coalesce(owner_name, '') = '' THEN ? ELSE owner_name END,
              notes = CASE
                WHEN coalesce(notes, '') = '' THEN ?
                WHEN position(? in coalesce(notes, '')) > 0 OR ? = '' THEN notes
@@ -89,11 +108,19 @@ async function main() {
          WHERE id = ?`,
         [
           payload.contact_name,
+          payload.public_contact,
           payload.phone,
           payload.email,
           payload.city,
           payload.regions,
           payload.specialties,
+          payload.website,
+          payload.contact_status,
+          payload.priority,
+          payload.manager_comment,
+          payload.call_result,
+          payload.contact_date,
+          payload.owner_name,
           payload.notes,
           payload.notes,
           payload.notes,
@@ -106,16 +133,26 @@ async function main() {
     } else {
       await db.query(
         `INSERT INTO contractors (
-          company_name, contact_name, phone, email, city, regions, specialties, notes, is_active
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          company_name, contact_name, public_contact, phone, email, city, regions, specialties,
+          website, contact_status, priority, manager_comment, call_result, contact_date, owner_name,
+          notes, is_active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           payload.company_name,
           payload.contact_name,
+          payload.public_contact,
           payload.phone,
           payload.email,
           payload.city,
           payload.regions,
           payload.specialties,
+          payload.website,
+          payload.contact_status,
+          payload.priority,
+          payload.manager_comment,
+          payload.call_result,
+          payload.contact_date,
+          payload.owner_name,
           payload.notes,
           payload.is_active,
         ]

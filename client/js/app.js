@@ -6302,7 +6302,7 @@ async function renderContractors(el) {
       <div class="card-title">База подрядчиков</div>
       <div class="search-bar" style="margin-bottom:14px;">
         <input
-          placeholder="Поиск по компании, городу, специализации, контакту..."
+          placeholder="Поиск по компании, городу, географии, телефону, специализации..."
           value="${escapeAttr(query)}"
           oninput="currentContractorFilters = {...currentContractorFilters, q: this.value}"
           onkeydown="if(event.key==='Enter'){renderContractors(document.getElementById('main'))}"
@@ -6319,9 +6319,18 @@ async function renderContractors(el) {
           <thead>
             <tr>
               <th>Компания</th>
-              <th>Контакт</th>
-              <th>Город / регионы</th>
+              <th>Город (база)</th>
+              <th>География работы</th>
               <th>Специализация</th>
+              <th>Сайт</th>
+              <th>Контакт (источники)</th>
+              <th>Телефон</th>
+              <th>Статус контакта</th>
+              <th>Приоритет</th>
+              <th>Комментарий для менеджера</th>
+              <th>Результат звонка</th>
+              <th>Дата контакта</th>
+              <th>Ответственный</th>
               <th>Статус</th>
               <th></th>
             </tr>
@@ -6329,14 +6338,28 @@ async function renderContractors(el) {
           <tbody>
             ${rows.length ? rows.map(r => `
               <tr>
-                <td><div style="font-weight:700;color:#e5e7eb;">${escapeHtml(r.company_name || '—')}</div><div style="font-size:11px;color:#777;">${escapeHtml(r.email || '')}</div></td>
-                <td><div>${escapeHtml(r.contact_name || '—')}</div><div style="font-size:11px;color:#777;">${escapeHtml(r.phone || '')}</div></td>
-                <td><div>${escapeHtml(r.city || '—')}</div><div style="font-size:11px;color:#777;">${escapeHtml(r.regions || '')}</div></td>
-                <td style="max-width:240px;">${escapeHtml(r.specialties || '—')}</td>
+                <td>
+                  <div style="font-weight:700;color:#e5e7eb;">${escapeHtml(r.company_name || '—')}</div>
+                  <div style="font-size:11px;color:#aeb8c5;">${escapeHtml(r.email || '')}</div>
+                </td>
+                <td>${escapeHtml(r.city || '—')}</td>
+                <td style="min-width:150px;">${escapeHtml(r.regions || '—')}</td>
+                <td style="min-width:220px;max-width:260px;">${escapeHtml(r.specialties || '—')}</td>
+                <td style="min-width:170px;">
+                  ${r.website ? `<a href="${escapeAttr(r.website)}" target="_blank" rel="noreferrer" style="color:#dbeafe;text-decoration:none;">${escapeHtml(r.website)}</a>` : '—'}
+                </td>
+                <td style="min-width:220px;">${escapeHtml(r.public_contact || r.contact_name || '—')}</td>
+                <td style="min-width:140px;font-weight:600;color:#f8fafc;">${escapeHtml(r.phone || '—')}</td>
+                <td style="min-width:170px;">${escapeHtml(r.contact_status || '—')}</td>
+                <td style="min-width:110px;">${escapeHtml(r.priority || '—')}</td>
+                <td style="min-width:240px;max-width:280px;">${escapeHtml(r.manager_comment || '—')}</td>
+                <td style="min-width:180px;">${escapeHtml(r.call_result || '—')}</td>
+                <td style="min-width:120px;">${escapeHtml(r.contact_date || '—')}</td>
+                <td style="min-width:120px;">${escapeHtml(r.owner_name || '—')}</td>
                 <td><span class="badge ${r.is_active ? 'badge-won' : 'badge-low'}">${r.is_active ? 'Активный' : 'Неактивный'}</span></td>
                 <td><button class="btn btn-secondary btn-sm" onclick='openContractorModal(${JSON.stringify(r).replace(/'/g, "&apos;")})'>Редактировать</button></td>
               </tr>
-            `).join('') : '<tr><td colspan="6" style="text-align:center;color:#777;padding:24px;">Пока нет подрядчиков.</td></tr>'}
+            `).join('') : '<tr><td colspan="15" style="text-align:center;color:#777;padding:24px;">Пока нет подрядчиков.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -6349,13 +6372,20 @@ function openContractorModal(record = null) {
   openModal(record ? 'Редактировать подрядчика' : 'Новый подрядчик', `
     <div class="form-grid">
       <div class="form-group"><label>Компания</label><input id="ct-company-name" value="${escapeAttr(r.company_name || '')}" placeholder="Название компании"></div>
-      <div class="form-group"><label>Контакт</label><input id="ct-contact-name" value="${escapeAttr(r.contact_name || '')}" placeholder="Имя контакта"></div>
+      <div class="form-group"><label>Город (база)</label><input id="ct-city" value="${escapeAttr(r.city || '')}"></div>
+      <div class="form-group"><label>География работы</label><input id="ct-regions" value="${escapeAttr(r.regions || '')}" placeholder="София, Пловдив, Варна..."></div>
       <div class="form-group"><label>Телефон</label><input id="ct-phone" value="${escapeAttr(r.phone || '')}"></div>
       <div class="form-group"><label>Email</label><input id="ct-email" value="${escapeAttr(r.email || '')}"></div>
-      <div class="form-group"><label>Город</label><input id="ct-city" value="${escapeAttr(r.city || '')}"></div>
-      <div class="form-group"><label>Регионы</label><input id="ct-regions" value="${escapeAttr(r.regions || '')}" placeholder="София, Пловдив, Варна..."></div>
+      <div class="form-group"><label>Сайт</label><input id="ct-website" value="${escapeAttr(r.website || '')}" placeholder="https://..."></div>
+      <div class="form-group full"><label>Контакт (открытые источники)</label><textarea id="ct-public-contact" rows="2" placeholder="Телефоны, email, EIK, адрес из открытых источников...">${escapeHtml(r.public_contact || r.contact_name || '')}</textarea></div>
       <div class="form-group full"><label>Специализация</label><textarea id="ct-specialties" rows="3" placeholder="Инъектирование, гидроизоляция, ремонт бетона...">${escapeHtml(r.specialties || '')}</textarea></div>
-      <div class="form-group full"><label>Заметки</label><textarea id="ct-notes" rows="3" placeholder="Комментарии, сильные стороны, условия...">${escapeHtml(r.notes || '')}</textarea></div>
+      <div class="form-group"><label>Статус контакта</label><input id="ct-contact-status" value="${escapeAttr(r.contact_status || '')}" placeholder="с сайта компании, проверить, взять с сайта..."></div>
+      <div class="form-group"><label>Приоритет</label><input id="ct-priority" value="${escapeAttr(r.priority || '')}" placeholder="Высокий / Средний / Низкий"></div>
+      <div class="form-group"><label>Дата контакта</label><input id="ct-contact-date" value="${escapeAttr(r.contact_date || '')}" placeholder="дд.мм.гггг"></div>
+      <div class="form-group"><label>Ответственный</label><input id="ct-owner-name" value="${escapeAttr(r.owner_name || '')}" placeholder="Менеджер"></div>
+      <div class="form-group full"><label>Комментарий для менеджера</label><textarea id="ct-manager-comment" rows="3" placeholder="Что важно знать перед звонком...">${escapeHtml(r.manager_comment || '')}</textarea></div>
+      <div class="form-group full"><label>Результат звонка</label><textarea id="ct-call-result" rows="2" placeholder="Что ответил клиент, итоги разговора...">${escapeHtml(r.call_result || '')}</textarea></div>
+      <div class="form-group full"><label>Доп. заметки</label><textarea id="ct-notes" rows="3" placeholder="Комментарии, сильные стороны, условия...">${escapeHtml(r.notes || '')}</textarea></div>
       <div class="form-group full">
         <label style="display:flex;align-items:center;gap:10px;">
           <input id="ct-is-active" type="checkbox" ${r.is_active === false ? '' : 'checked'}>
@@ -6374,12 +6404,20 @@ function openContractorModal(record = null) {
 async function saveContractorRecord(id = null) {
   const payload = {
     company_name: document.getElementById('ct-company-name')?.value || '',
-    contact_name: document.getElementById('ct-contact-name')?.value || '',
+    contact_name: '',
+    public_contact: document.getElementById('ct-public-contact')?.value || '',
     phone: document.getElementById('ct-phone')?.value || '',
     email: document.getElementById('ct-email')?.value || '',
     city: document.getElementById('ct-city')?.value || '',
     regions: document.getElementById('ct-regions')?.value || '',
     specialties: document.getElementById('ct-specialties')?.value || '',
+    website: document.getElementById('ct-website')?.value || '',
+    contact_status: document.getElementById('ct-contact-status')?.value || '',
+    priority: document.getElementById('ct-priority')?.value || '',
+    manager_comment: document.getElementById('ct-manager-comment')?.value || '',
+    call_result: document.getElementById('ct-call-result')?.value || '',
+    contact_date: document.getElementById('ct-contact-date')?.value || '',
+    owner_name: document.getElementById('ct-owner-name')?.value || '',
     notes: document.getElementById('ct-notes')?.value || '',
     is_active: document.getElementById('ct-is-active')?.checked || false,
   };

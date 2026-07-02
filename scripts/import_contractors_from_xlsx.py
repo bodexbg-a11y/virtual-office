@@ -105,16 +105,25 @@ def split_contact(contact_raw: str) -> tuple[str, str]:
 
 
 def transform(item: dict[str, str]) -> dict[str, str]:
+    raw_contact = (item.get("Контакт (открытые источники)") or "").strip()
     phone, email = split_contact(item.get("Контакт (открытые источники)", ""))
     company_name = (item.get("Компания") or "").strip()
     return {
         "company_name": company_name,
         "contact_name": "",
+        "public_contact": raw_contact,
         "phone": phone,
         "email": email,
         "city": (item.get("Город (база)") or "").strip(),
         "regions": (item.get("География работы") or "").strip(),
         "specialties": (item.get("Специализация") or "").strip(),
+        "website": (item.get("Сайт") or "").strip(),
+        "contact_status": (item.get("Статус контакта") or "").strip(),
+        "priority": (item.get("Приоритет") or "").strip(),
+        "manager_comment": (item.get("Комментарий для менеджера") or "").strip(),
+        "call_result": (item.get("Результат звонка") or "").strip(),
+        "contact_date": (item.get("Дата контакта") or "").strip(),
+        "owner_name": (item.get("Ответственный") or "").strip(),
         "notes": build_notes(item),
         "is_active": True,
     }
