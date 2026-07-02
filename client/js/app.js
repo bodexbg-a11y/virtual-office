@@ -3592,15 +3592,10 @@ function formatLeadQualificationTxt(lead, qualificationData) {
     '',
     'Hello,',
     '',
-    'Below is the lead qualification summary prepared by the manager.',
+    'We have received a new project request.',
+    'Below is the technical brief collected by the manager.',
     '',
-    `Lead: ${valueOrDash(lead.company_name || lead.contact_name || `#${lead.id}`)}`,
-    `Contact person: ${valueOrDash(lead.contact_name)}`,
-    `Phone: ${valueOrDash(lead.phone)}`,
-    `Email: ${valueOrDash(lead.email)}`,
-    `City: ${valueOrDash(lead.city)}`,
     `Client type: ${valueOrDash(clientTypeLabels[clientType] || lead.company_type || clientType)}`,
-    `Campaign: ${valueOrDash(lead.fb_campaign_name)}`,
     ''
   ];
 
@@ -3612,7 +3607,6 @@ function formatLeadQualificationTxt(lead, qualificationData) {
       `3. Tire type: ${valueOrDash(qualificationData.tire_type)}`,
       `4. Preferred brand: ${valueOrDash(qualificationData.preferred_brand)}`,
       `5. Quantity / rims: ${valueOrDash(qualificationData.quantity_and_rims)}`,
-      `Additional details: ${valueOrDash(qualificationData.notes)}`,
       `Enough information for an offer: ${yesNo(qualificationData.manual_complete)}`
     );
   } else if (clientType === 'concrete_object') {
@@ -3637,7 +3631,6 @@ function formatLeadQualificationTxt(lead, qualificationData) {
     });
     lines.push(
       '',
-      `Additional details: ${valueOrDash(qualificationData.notes)}`,
       `Enough information for an offer: ${yesNo(qualificationData.manual_complete)}`
     );
   } else if (clientType === 'construction_company') {
@@ -3648,7 +3641,6 @@ function formatLeadQualificationTxt(lead, qualificationData) {
       `3. Estimated quantities: ${valueOrDash(qualificationData.quantities)}`,
       `4. Delivery timing: ${englishFieldValue('delivery_timing', qualificationData.delivery_timing)}`,
       `5. Specification / BoQ available: ${englishFieldValue('has_specification', qualificationData.has_specification)}`,
-      `Additional details: ${valueOrDash(qualificationData.notes)}`,
       `Enough information for an offer: ${yesNo(qualificationData.manual_complete)}`
     );
   } else if (clientType === 'distributor') {
@@ -3659,7 +3651,6 @@ function formatLeadQualificationTxt(lead, qualificationData) {
       `3. Warehouse / sales team: ${valueOrDash(qualificationData.warehouse_team)}`,
       `4. Sales volume: ${valueOrDash(qualificationData.sales_volume)}`,
       `5. Partnership interest: ${englishFieldValue('partnership_interest', qualificationData.partnership_interest)}`,
-      `Additional details: ${valueOrDash(qualificationData.notes)}`,
       `Enough information for an offer: ${yesNo(qualificationData.manual_complete)}`
     );
   } else {
