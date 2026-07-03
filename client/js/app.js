@@ -1983,7 +1983,7 @@ async function renderLeads(el, filters = {}) {
         style="${filters.status ? '' : 'background:#e5e7eb;color:#111827;border-color:#e5e7eb;'}"
         onclick="clearLeadStatusFilter()"
       >
-        Все клиенты <span>${statusCountRows.length}</span>
+        Все <span>${statusCountRows.length}</span>
       </button>
       ${visibleStages.map(status =>
         `<button class="lead-status-tab ${filters.status === status ? 'active' : ''}" style="${leadStatusTabStyle(status, filters.status === status)}" onclick="renderLeads(document.getElementById('main'), {...currentLeadFilters, status: '${status}'})">
@@ -7767,22 +7767,22 @@ function downloadTextFile(filename, content, type) {
 // ===== HELPERS =====
 function statusLabel(s) {
   const map = {
-    new: 'Новый лид',
+    new: 'Новый',
     contacted: 'Связались',
-    needs_discovery: 'Уточнение деталей',
-    details: 'Уточнение деталей',
-    interested: 'Уточнение деталей',
-    qualified: 'Уточнение деталей',
-    catalog_sent: 'Уточнение деталей',
-    thinking: 'Уточнение деталей',
+    needs_discovery: 'Сбор данных',
+    details: 'Сбор данных',
+    interested: 'Сбор данных',
+    qualified: 'Сбор данных',
+    catalog_sent: 'Сбор данных',
+    thinking: 'Сбор данных',
     offer_preparation: 'Подготовка КП',
     offer_sent: 'КП отправлено',
     negotiation: 'Переговоры',
-    office_meeting: 'Встреча в офисе',
-    contract: 'Согласование договора',
-    purchase: 'Закупка и доставка',
-    won: 'Закрыто успешно',
-    lost: 'Отказ / неактуально',
+    office_meeting: 'Встреча',
+    contract: 'Договор',
+    purchase: 'Закупка',
+    won: 'Успешно',
+    lost: 'Отказ',
     partner_new: 'Новый партнёр',
     partner_qualification: 'Квалификация',
     partner_negotiation: 'Переговоры',
