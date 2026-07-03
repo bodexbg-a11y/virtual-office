@@ -408,7 +408,7 @@ async function renderDashboard(el) {
           <div class="stat-card"><div class="stat-label">Premium</div><div class="stat-value yellow">${weeklyAdmin.summary?.premium_leads || 0}</div></div>
           <div class="stat-card"><div class="stat-label">Ждут КП</div><div class="stat-value pink">${weeklyAdmin.summary?.waiting_offer || 0}</div></div>
           <div class="stat-card"><div class="stat-label">КП за неделю</div><div class="stat-value purple">${weeklyAdmin.summary?.offers_sent || 0}</div></div>
-          <div class="stat-card"><div class="stat-label">Сделано Ростиславом</div><div class="stat-value green">${weeklyAdmin.summary?.manager_done || 0}</div></div>
+          <div class="stat-card"><div class="stat-label">Сделано Manager</div><div class="stat-value green">${weeklyAdmin.summary?.manager_done || 0}</div></div>
         </div>
         <div style="display:grid;grid-template-columns:1.2fr .8fr;gap:12px;margin-top:14px;">
           <div style="padding:12px;border:1px solid rgba(255,255,255,0.06);border-radius:10px;">
@@ -612,7 +612,7 @@ function renderManagerTodayDashboard(activity) {
 
   return `
     <div class="card fade-in">
-      <div class="card-title">📞 Что Ростислав сделал сегодня</div>
+      <div class="card-title">📞 Что Manager сделал сегодня</div>
       <div class="worker-activity-grid">
         ${cards.map(item => `
           <div class="worker-activity-card">
@@ -1009,7 +1009,7 @@ function renderMariaCampaignDeepDive(rows = []) {
           <div class="maria-detail-grid">
             <div>
               <strong>Качество лидов</strong>
-              <p>${row.quality_signal || 'Проверить качество лидов после звонков Ростислава.'}</p>
+              <p>${row.quality_signal || 'Проверить качество лидов после звонков Manager.'}</p>
             </div>
             <div>
               <strong>Аудитория</strong>
@@ -1260,7 +1260,7 @@ function renderWorkerDailyActivity(worker) {
               </div>
             `).join('')}
           </div>
-        ` : '<div class="worker-activity-empty">Сегодня Ростислав ещё не записал действий в CRM.</div>'}
+        ` : '<div class="worker-activity-empty">Сегодня Manager ещё не записал действий в CRM.</div>'}
       </div>
     `;
   }
@@ -1550,18 +1550,18 @@ function workerChecklist(id) {
   const map = {
     rostislav: [
       'Каждый контакт должен получить статус: не звонил, дозвонился, заинтересован, отправлен каталог, оферта, встреча, отказ.',
-      'После каждого звонка Ростислав обновляет Google таблицу и CRM.',
+      'После каждого звонка Manager обновляет Google таблицу и CRM.',
       'Главный результат дня: сколько клиентов продвинуты к встрече, оферте или сделке.',
     ],
     mark: [
       'Каждый отчёт должен содержать конкурент, товар, цена, упаковка, условия и ссылку/источник.',
       'Рекомендация Mark должна отвечать: где мы дороже/дешевле и какую цену можно дать B2B клиенту.',
-      'Обновления должны попадать в таблицу для админа и Ростислава.',
+      'Обновления должны попадать в таблицу для админа и Manager.',
     ],
     maria: [
       'Отчёт Maria должен показывать spend, CTR, CPL, лиды и качество лидов.',
       'Каждый день Maria предлагает: усилить, остановить или изменить кампании.',
-      'Лиды из FB должны передаваться Ростиславу для звонка.',
+      'Лиды из FB должны передаваться Manager для звонка.',
     ],
     steve: [
       'Steve ищет страницы и статьи, которые приведут B2B клиентов из Google.',

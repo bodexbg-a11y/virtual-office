@@ -48,7 +48,7 @@ const DASHBOARD_TOUCHED_TODAY_SQL = `EXISTS (
 const WORKERS = [
   {
     id: 'rostislav',
-    name: 'Ростислав',
+    name: 'Manager',
     type: 'human',
     role: 'Главный менеджер',
     avatar_emoji: '📞',
@@ -255,12 +255,12 @@ function monthlyGoalsFor(id) {
     maria: {
       minimum: 'KPI: анализ рекламных кампаний, когда они запущены',
       optimal: 'Ежедневный анализ кампаний + рекомендации: усилить, остановить, изменить креатив/аудиторию',
-      reward: 'Главная ценность: снижать CPL и давать Ростиславу качественные лиды',
+      reward: 'Главная ценность: снижать CPL и давать Manager качественные лиды',
       daily: 'Проверять spend, leads, CTR, CPL, качество лидов и передавать выводы по кампаниям.',
       measurement: [
         'Отчёт по spend / leads / CPL / CTR',
         'Рекомендации по каждой активной кампании',
-        'Какие лиды переданы Ростиславу',
+        'Какие лиды переданы Manager',
         'Какие кампании улучшены или остановлены',
       ],
     },
@@ -409,7 +409,7 @@ function tasksFor(id, data) {
       { title: `Проверить ${fb.active_campaigns || 0} активных FB кампаний`, source: 'Facebook Ads', status: 'today' },
       { title: `Сделать отчёт: spend $${Number(fb.spend || 0).toFixed(2)}, leads ${fb.leads || 0}, CPL $${fb.avg_cpl || 0}`, source: 'Facebook Ads', status: 'today' },
       { title: 'Дать рекомендации: какие кампании усилить, какие остановить, где заменить креатив', source: 'Facebook Ads', status: 'today' },
-      { title: 'Передать Ростиславу лиды из Lead Forms для звонков', source: 'CRM', status: 'daily' },
+      { title: 'Передать Manager лиды из Lead Forms для звонков', source: 'CRM', status: 'daily' },
     ],
   };
   return tasks[id] || [];
