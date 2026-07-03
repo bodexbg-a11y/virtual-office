@@ -21,6 +21,7 @@ let bulkPingQueue = [];
 let bulkPingQueueIndex = 0;
 let bulkPingQueueChannel = '';
 let currentLeadRowsForExport = [];
+let currentLeadContractors = [];
 const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
 const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
 const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
@@ -70,6 +71,13 @@ function gmailSenderConnected(email) {
 
 function contractorStatusLabel(value = '') {
   return CONTRACTOR_CONTACT_STATUSES.find(([key]) => key === value)?.[1] || value || 'Новый';
+}
+
+function leadContractorModeLabel(value = '') {
+  return {
+    own: 'Есть свой',
+    need: 'Нужен',
+  }[String(value || '').toLowerCase()] || 'Подрядчик';
 }
 
 function ensureConnectedGmailSender() {
@@ -1866,7 +1874,7 @@ async function renderLeads(el, filters = {}) {
   statusCountFilters.limit = '5000';
   statusCountFilters.offset = '0';
   const statusCountParams = new URLSearchParams(statusCountFilters);
-  const [data, statusCountData, summary, gmailStatus, dailyBrief] = await Promise.all([
+  const [data, statusCountData, summary, gmailStatus, dailyBrief, contractorsData] = await Promise.all([
     api(`/api/leads?${params}`),
     api(`/api/leads?${statusCountParams}`),
     api('/api/leads/summary').catch(() => ({ total: 0, statuses: [], sources: [] })),
@@ -1876,8 +1884,10 @@ async function renderLeads(el, filters = {}) {
       content: '',
       updated_at: null,
     })),
+    tireMode ? Promise.resolve({ rows: [] }) : api('/api/contractors?active=1').catch(() => ({ rows: [] })),
   ]);
   gmailAccountsCache = gmailStatus.accounts || [];
+  currentLeadContractors = sortLeadContractorOptions(contractorsData.rows || []);
   ensureConnectedGmailSender();
   const rows = applyLeadQuickFilters(data.leads || [], filters);
   currentLeadRowsForExport = rows;
@@ -2039,6 +2049,7 @@ async function renderLeads(el, filters = {}) {
               <th>${tireMode ? 'Phone / Email' : 'Телефон / Email'}</th>
               <th>${tireMode ? 'City' : 'Град'}</th>
               <th>${tireMode ? 'Status' : 'Статус'}</th>
+              ${tireMode ? '' : '<th>Подрядчик</th>'}
               <th>${tireMode ? 'Channels' : 'Контакт'}</th>
               <th>${tireMode ? 'Interest' : 'Тип / интерес'}</th>
               <th>Время</th>
@@ -2076,6 +2087,7 @@ async function renderLeads(el, filters = {}) {
                     ><span>📝</span></button>
                   </div>
                 </td>
+                ${tireMode ? '' : `<td style="width:142px;max-width:142px;" onclick="event.stopPropagation();">${renderLeadContractorCell(l)}</td>`}
                 <td onclick="event.stopPropagation();" style="min-width:96px;width:96px;">${renderLeadTableContactActions(l)}</td>
                 <td style="max-width:150px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};line-height:1.2;word-break:break-word;">${l.area_label || l.interest_products || '—'}</td>
                 <td style="width:118px;">${renderLeadTimingCell(l, tireMode)}</td>
@@ -2088,7 +2100,7 @@ async function renderLeads(el, filters = {}) {
                   <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadDetail(${l.id})">👁</button>
                 </td>
               </tr>
-            `).join('') : `<tr><td colspan="10" style="text-align:center;color:#666;padding:30px;">${tireMode ? 'No leads match this filter.' : 'Нет лидов по этому фильтру.'}</td></tr>`}
+            `).join('') : `<tr><td colspan="${tireMode ? 10 : 11}" style="text-align:center;color:#666;padding:30px;">${tireMode ? 'No leads match this filter.' : 'Нет лидов по этому фильтру.'}</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -2174,6 +2186,13 @@ function renderLeadMobileCard(l, tireMode = false) {
         </div>
       </div>
 
+      ${tireMode ? '' : `
+        <div class="lead-mobile-card-row" onclick="event.stopPropagation();">
+          <div class="lead-mobile-card-label">Подрядчик</div>
+          <div style="width:100%;">${renderLeadContractorCell(l)}</div>
+        </div>
+      `}
+
       <div class="lead-mobile-card-row">
         <div class="lead-mobile-card-label">CRM</div>
         <div class="lead-mobile-card-time">${renderLeadTimingCell(l, tireMode)}</div>
@@ -2194,6 +2213,50 @@ function clearLeadStatusFilter() {
   const nextFilters = { ...currentLeadFilters };
   delete nextFilters.status;
   renderLeads(document.getElementById('main'), nextFilters);
+}
+
+function sortLeadContractorOptions(rows = []) {
+  const score = (item = {}) => {
+    const status = String(item.contact_status || '').toLowerCase();
+    if (status === 'interested') return 0;
+    if (status === 'negotiating') return 1;
+    if (status === 'agreed') return 2;
+    if (status === 'callback') return 3;
+    if (status === 'new') return 4;
+    if (status === 'inactive') return 6;
+    if (status === 'declined') return 7;
+    return 5;
+  };
+
+  return [...rows].sort((a, b) => {
+    const diff = score(a) - score(b);
+    if (diff !== 0) return diff;
+    return String(a.company_name || '').localeCompare(String(b.company_name || ''), 'bg');
+  });
+}
+
+function renderLeadContractorCell(lead = {}) {
+  const mode = String(lead.contractor_mode || '').toLowerCase();
+  const company = lead.contractor_company || '';
+  const tone = mode === 'own'
+    ? 'background:rgba(34,197,94,0.12);border-color:rgba(74,222,128,0.3);color:#bbf7d0;'
+    : mode === 'need'
+      ? 'background:rgba(251,191,36,0.1);border-color:rgba(251,191,36,0.28);color:#f6d365;'
+      : '';
+  const label = mode === 'own'
+    ? '🦺 Есть'
+    : mode === 'need'
+      ? `🦺 ${escapeHtml(company || 'Выбрать')}`
+      : '🦺 Подрядчик';
+
+  return `
+    <button
+      class="btn btn-sm btn-secondary"
+      onclick="openLeadContractorModal(${lead.id})"
+      title="${escapeAttr(mode === 'own' ? 'У клиента есть свой подрядчик' : company || 'Выбрать подрядчика из базы')}"
+      style="width:100%;justify-content:flex-start;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${tone}"
+    >${label}</button>
+  `;
 }
 
 function leadStatusTabStyle(status, active) {
@@ -3187,6 +3250,115 @@ async function saveQuickLeadComment(id) {
     } else {
       alert('Грешка: ' + err.message);
     }
+  }
+}
+
+async function openLeadContractorModal(id) {
+  let lead = null;
+  try {
+    const data = await api(`/api/leads/${id}`);
+    lead = data.lead || null;
+  } catch (err) {
+    alert('Не удалось загрузить клиента: ' + err.message);
+    return;
+  }
+
+  const contractors = currentLeadContractors || [];
+  const currentMode = String(lead?.contractor_mode || '').toLowerCase();
+  const currentContractorId = Number(lead?.contractor_id || 0);
+  const currentCompany = lead?.contractor_company || '';
+
+  openModal('Подрядчик по клиенту', `
+    <div class="form-group full">
+      <label>Клиент</label>
+      <div style="font-size:14px;font-weight:700;color:#e5e7eb;">${escapeHtml(lead?.company_name || lead?.contact_name || `Лид #${id}`)}</div>
+    </div>
+
+    <div class="form-group">
+      <label>Есть свой подрядчик?</label>
+      <select id="lead-contractor-mode" onchange="toggleLeadContractorFields()">
+        <option value="">Не указано</option>
+        <option value="own" ${currentMode === 'own' ? 'selected' : ''}>Есть</option>
+        <option value="need" ${currentMode === 'need' ? 'selected' : ''}>Нет, нужен подрядчик</option>
+      </select>
+    </div>
+
+    <div id="lead-contractor-fields" ${currentMode === 'need' ? '' : 'style="display:none;"'}>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Подрядчик из базы</label>
+          <select id="lead-contractor-id" onchange="fillLeadContractorCompany()">
+            <option value="">Выбрать подрядчика</option>
+            ${contractors.map(item => `
+              <option value="${item.id}" ${Number(item.id) === currentContractorId ? 'selected' : ''}>
+                ${escapeHtml(item.company_name || '')}${item.city ? ` · ${escapeHtml(item.city)}` : ''}${item.contact_status ? ` · ${escapeHtml(contractorStatusLabel(item.contact_status))}` : ''}
+              </option>
+            `).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Компания подрядчика</label>
+          <input id="lead-contractor-company" value="${escapeAttr(currentCompany)}" placeholder="Если выбрали из базы, подтянется автоматически">
+        </div>
+      </div>
+      <div style="font-size:11px;color:#8b97b7;margin-top:6px;">Сверху в списке идут подрядчики со статусами “Интересует” и “Переговоры”.</div>
+    </div>
+
+    <div id="lead-contractor-result" class="sync-result"></div>
+
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="saveLeadContractor(${id})">Сохранить</button>
+    </div>
+  `);
+
+  setTimeout(() => fillLeadContractorCompany(), 10);
+}
+
+function toggleLeadContractorFields() {
+  const mode = document.getElementById('lead-contractor-mode')?.value || '';
+  const wrap = document.getElementById('lead-contractor-fields');
+  if (wrap) wrap.style.display = mode === 'need' ? '' : 'none';
+}
+
+function fillLeadContractorCompany() {
+  const contractorId = Number(document.getElementById('lead-contractor-id')?.value || 0);
+  const contractor = (currentLeadContractors || []).find(item => Number(item.id) === contractorId);
+  const input = document.getElementById('lead-contractor-company');
+  if (!input || !contractor) return;
+  input.value = contractor.company_name || '';
+}
+
+async function saveLeadContractor(id) {
+  const result = document.getElementById('lead-contractor-result');
+  const mode = document.getElementById('lead-contractor-mode')?.value || '';
+  const contractorId = Number(document.getElementById('lead-contractor-id')?.value || 0);
+  const contractor = (currentLeadContractors || []).find(item => Number(item.id) === contractorId);
+  const contractorCompany = (document.getElementById('lead-contractor-company')?.value || '').trim();
+
+  result.className = 'sync-result show';
+  result.textContent = 'Сохраняю подрядчика...';
+
+  try {
+    await api(`/api/leads/${id}`, {
+      method: 'PUT',
+      body: {
+        contractor_mode: mode || null,
+        contractor_id: mode === 'need' && contractorId ? contractorId : null,
+        contractor_company: mode === 'need'
+          ? (contractorCompany || contractor?.company_name || '')
+          : '',
+      },
+    });
+    result.className = 'sync-result show ok';
+    result.textContent = '✅ Подрядчик сохранён.';
+    setTimeout(() => {
+      closeModal();
+      renderLeads(document.getElementById('main'), currentLeadFilters);
+    }, 350);
+  } catch (err) {
+    result.className = 'sync-result show err';
+    result.textContent = '❌ ' + err.message;
   }
 }
 

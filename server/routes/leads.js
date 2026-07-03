@@ -60,6 +60,18 @@ async function ensureLeadSheetColumns() {
   if (!cols.includes('qualification_data')) {
     await db.query(`ALTER TABLE leads ADD COLUMN qualification_data JSONB DEFAULT '{}'::jsonb`);
   }
+
+  if (!cols.includes('contractor_mode')) {
+    await db.query(`ALTER TABLE leads ADD COLUMN contractor_mode TEXT`);
+  }
+
+  if (!cols.includes('contractor_id')) {
+    await db.query(`ALTER TABLE leads ADD COLUMN contractor_id INTEGER`);
+  }
+
+  if (!cols.includes('contractor_company')) {
+    await db.query(`ALTER TABLE leads ADD COLUMN contractor_company TEXT`);
+  }
 }
 
 async function ensureDealOverrides() {
@@ -176,6 +188,16 @@ function normalizeLeadPayload(payload = {}) {
       || normalized.premium_manual === 'true'
       || normalized.premium_manual === '1'
       || normalized.premium_manual === 1;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(normalized, 'contractor_id')) {
+    const parsed = Number(normalized.contractor_id);
+    normalized.contractor_id = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(normalized, 'contractor_mode')) {
+    const mode = String(normalized.contractor_mode || '').trim().toLowerCase();
+    normalized.contractor_mode = ['own', 'need'].includes(mode) ? mode : null;
   }
 
   return normalized;
