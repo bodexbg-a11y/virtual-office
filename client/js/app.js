@@ -129,7 +129,7 @@ async function renderPage(page) {
       case 'worker-rostislav': await renderWorker(main, 'rostislav'); break;
       case 'worker-maria': await renderWorker(main, 'maria'); break;
       case 'agent-reports': await renderAgentReports(main); break;
-      case 'leads': await renderLeads(main); break;
+      case 'leads': await renderLeads(main, { view: 'all' }); break;
       case 'tires': await renderLeads(main, { view: 'tires' }); break;
       case 'tire-base': await renderLeads(main, { view: 'tire_base' }); break;
       case 'clients': await renderClients(main); break;
@@ -7840,7 +7840,7 @@ if (gmailCallbackState) {
   window.history.replaceState({}, document.title, window.location.pathname);
 }
 refreshRole().finally(() => {
-  navigate(gmailCallbackState && currentRole === 'admin' ? 'settings' : (currentRole === 'admin' ? 'dashboard' : 'leads'));
+  navigate(gmailCallbackState && currentRole === 'admin' ? 'settings' : 'leads');
   if (gmailCallbackState === 'connected') {
     setTimeout(() => alert(`Gmail подключён: ${gmailCallbackMessage}`), 300);
   } else if (gmailCallbackState === 'error') {
