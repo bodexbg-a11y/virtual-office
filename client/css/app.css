@@ -2562,22 +2562,22 @@ tr.lead-row-new:hover {
 .lead-contact-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   white-space: nowrap;
 }
 
 .lead-contact-btn {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 7px;
   border: 1px solid rgba(255,255,255,0.08);
   background: rgba(255,255,255,0.055);
   color: #e5e7eb;
   text-decoration: none;
-  font-size: 14px;
+  font-size: 13px;
   transition: 0.15s ease;
 }
 

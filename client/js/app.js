@@ -2049,7 +2049,7 @@ async function renderLeads(el, filters = {}) {
               <th>${tireMode ? 'Phone / Email' : 'Телефон / Email'}</th>
               <th>${tireMode ? 'City' : 'Град'}</th>
               <th>${tireMode ? 'Status' : 'Статус'}</th>
-              ${tireMode ? '' : '<th>Подрядчик</th>'}
+              ${tireMode ? '' : '<th>Подр.</th>'}
               <th>${tireMode ? 'Channels' : 'Контакт'}</th>
               <th>${tireMode ? 'Interest' : 'Тип / интерес'}</th>
               <th>Время</th>
@@ -2247,14 +2247,14 @@ function renderLeadContractorCell(lead = {}) {
     ? '🦺 Есть'
     : mode === 'need'
       ? `🦺 ${escapeHtml(company || 'Выбрать')}`
-      : '🦺 Подрядчик';
+      : '🦺 Подр.';
 
   return `
     <button
       class="btn btn-sm btn-secondary"
       onclick="openLeadContractorModal(${lead.id})"
       title="${escapeAttr(mode === 'own' ? 'У клиента есть свой подрядчик' : company || 'Выбрать подрядчика из базы')}"
-      style="width:100%;justify-content:flex-start;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${tone}"
+      style="width:100%;justify-content:flex-start;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 8px;font-size:12px;min-height:30px;${tone}"
     >${label}</button>
   `;
 }
@@ -5322,7 +5322,6 @@ function renderLeadTableContactActions(lead = {}) {
 
   return `
     <div class="lead-contact-actions">
-      <button class="lead-contact-btn ${gmailEnabled ? '' : 'disabled'}" title="Отправить с ${escapeAttr(selectedGmailSender().email)}" onclick="event.stopPropagation();sendLeadEmail(${lead.id}, 'intro')" ${gmailEnabled ? '' : 'disabled'}>✉️</button>
       <a class="lead-contact-btn ${whatsapp ? '' : 'disabled'}" title="WhatsApp" ${whatsapp ? `href="${escapeAttr(whatsapp)}" target="_blank" rel="noopener"` : ''}>💬</a>
       <a class="lead-contact-btn ${viber ? '' : 'disabled'}" title="Viber" ${viber ? `href="${escapeAttr(viber)}"` : ''}>📲</a>
     </div>
