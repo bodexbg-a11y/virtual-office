@@ -3090,13 +3090,26 @@ function leadQualificationType(lead = {}, qualification = leadQualificationData(
 
 function isSpecificObjectLead(lead = {}) {
   const qualification = leadQualificationData(lead);
+  const text = [
+    lead.area_label || '',
+    lead.notes || '',
+    lead.form_summary || '',
+    lead.interest_products || '',
+    lead.company_type || '',
+    lead.latest_comment || '',
+    qualification.application_type || '',
+    qualification.quantities || '',
+    qualification.materials_interest || '',
+    qualification.notes || '',
+  ].join(' ').toLowerCase();
   return String(qualification.client_type || '').toLowerCase() === 'concrete_object'
     || Boolean(String(qualification.object_type || '').trim())
     || Boolean(String(qualification.problem_type || '').trim())
     || (Array.isArray(qualification.problems) && qualification.problems.length > 0)
     || Boolean(qualification.volumes && Object.values(qualification.volumes).some(Boolean))
     || Boolean(String(qualification.timing || '').trim())
-    || Boolean(String(qualification.executor || '').trim());
+    || Boolean(String(qualification.executor || '').trim())
+    || /(конкретен\s+обект|конкретный\s+объект|specific\s+object|project\s+request|м²|m²|м2|m2|кв\.?\s*м|квадрат|[0-9]+\s*[xх]\s*[0-9]+|покрив|roof|терас|terrace|подземен\s+паркинг|паркинг|parking|мазе|basement|подвал|плоча|slab|балкон|balcony|фундамент|foundation|резервоар|reservoir|тунел|tunnel|гараж|garage|стена|wall|таван|ceiling)/.test(text);
 }
 
 function isConstructionLead(lead = {}) {

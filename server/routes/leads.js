@@ -132,7 +132,16 @@ function inferCrmSegment(lead = {}) {
     : {};
   const explicit = String(lead.crm_segment || '').trim().toLowerCase();
   if (explicit === 'distributor') return explicit;
-  const text = `${lead.company_type || ''} ${lead.lead_type || ''} ${lead.interest_products || ''} ${lead.notes || ''}`.toLowerCase();
+  const text = [
+    lead.company_type || '',
+    lead.lead_type || '',
+    lead.interest_products || '',
+    lead.notes || '',
+    qualification.application_type || '',
+    qualification.quantities || '',
+    qualification.materials_interest || '',
+    qualification.notes || '',
+  ].join(' ').toLowerCase();
   if (/дистриб|distributor|dealer|дилър|reseller|търговец/.test(text)) return 'distributor';
   if (
     String(qualification.client_type || '').toLowerCase() === 'concrete_object'
@@ -142,6 +151,7 @@ function inferCrmSegment(lead = {}) {
     || (qualification.volumes && Object.values(qualification.volumes).some(Boolean))
     || String(qualification.timing || '').trim()
     || String(qualification.executor || '').trim()
+    || /(конкретен\s+обект|конкретный\s+объект|specific\s+object|project\s+request|м²|m²|м2|m2|кв\.?\s*м|квадрат|[0-9]+\s*[xх]\s*[0-9]+|покрив|roof|терас|terrace|подземен\s+паркинг|паркинг|parking|мазе|basement|подвал|плоча|slab|балкон|balcony|фундамент|foundation|резервоар|reservoir|тунел|tunnel|гараж|garage|стена|wall|таван|ceiling)/.test(text)
   ) return 'objects';
   if (explicit === 'construction') return explicit;
   return 'construction';
@@ -222,6 +232,8 @@ function extractLeadAreaLabel(lead = {}) {
   if (!text) return null;
 
   const patterns = [
+    /какво\s+количество\s+ви\s+е\s+необходимо\s*:\s*([^\n|]+)/i,
+    /колко\s+квадрат[^\n:]*:\s*([^\n|]+)/i,
     /Обем\s*\/\s*тип\s*запитване\s*:\s*([^\n|]+)/i,
     /какъв[\s_]*тип[\s_]*запитване[^\n:]*:\s*([^\n|]+)/i,
     /обем[^\n:]*:\s*([^\n|]+)/i,
@@ -426,6 +438,15 @@ function enrichLeadRow(lead = {}) {
 }
 
 const LEAD_TEXT_SQL = "lower(concat_ws(' ', coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))";
+const OBJECT_SCOPE_TEXT_SQL = "lower(concat_ws(' ', coalesce(company_type, ''), coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, ''), coalesce(qualification_data->>'application_type', ''), coalesce(qualification_data->>'quantities', ''), coalesce(qualification_data->>'materials_interest', ''), coalesce(qualification_data->>'notes', '')))";
+const OBJECT_SCOPE_REGEX_SQL = "(конкретен\\s+обект|конкретный\\s+объект|specific\\s+object|project\\s+request|м²|m²|м2|m2|кв\\.?\\s*м|квадрат|[0-9]+\\s*[xх]\\s*[0-9]+|покрив|roof|терас|terrace|подземен\\s+паркинг|паркинг|parking|мазе|basement|подвал|плоча|slab|балкон|balcony|фундамент|foundation|резервоар|reservoir|тунел|tunnel|гараж|garage|стена|wall|таван|ceiling)";
+const OBJECT_COMMENT_SQL = `EXISTS (
+  SELECT 1
+  FROM lead_activities la
+  WHERE la.lead_id = leads.id
+    AND la.action = 'comment'
+    AND lower(coalesce(la.description, '')) ~ '${OBJECT_SCOPE_REGEX_SQL}'
+)`;
 const DISTRIBUTOR_LEAD_SQL = `(
   lower(coalesce(company_name, '')) ~ 'solvarex'
   OR crm_segment = 'distributor'
@@ -447,6 +468,8 @@ const SPECIFIC_OBJECT_LEAD_SQL = `(
   )
   OR nullif(coalesce(qualification_data->>'timing', ''), '') IS NOT NULL
   OR nullif(coalesce(qualification_data->>'executor', ''), '') IS NOT NULL
+  OR ${OBJECT_SCOPE_TEXT_SQL} ~ '${OBJECT_SCOPE_REGEX_SQL}'
+  OR ${OBJECT_COMMENT_SQL}
 )`;
 const NORMALIZED_STATUS_SQL = `CASE
   WHEN status IN ('contacted', 'details', 'qualified', 'interested', 'catalog_sent', 'thinking') THEN 'needs_discovery'
@@ -1745,6 +1768,8 @@ async function normalizeLegacyLeadStatuses() {
             )
             OR nullif(coalesce(qualification_data->>'timing', ''), '') IS NOT NULL
             OR nullif(coalesce(qualification_data->>'executor', ''), '') IS NOT NULL
+            OR ${OBJECT_SCOPE_TEXT_SQL} ~ '${OBJECT_SCOPE_REGEX_SQL}'
+            OR ${OBJECT_COMMENT_SQL}
           THEN 'objects'
           ELSE 'construction'
         END
