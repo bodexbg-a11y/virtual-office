@@ -1923,6 +1923,7 @@ async function renderLeads(el, filters = {}) {
           </select>
         </label>
         ${tireMode ? '' : '<button class="btn btn-secondary" onclick="openBulkPingModal()">Пинг всем</button>'}
+        ${tireMode || coldBaseMode || currentRole !== 'admin' ? '' : '<button class="btn btn-secondary" onclick="reclassifyLeadSegments()">↻ Отсортировать</button>'}
         <button class="btn btn-secondary" onclick="downloadLeadAnalysisCsv()">${tireMode ? '⬇ Analysis CSV' : '⬇ CSV для анализа'}</button>
         ${coldBaseMode ? '' : `<button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 ${tireMode ? 'Sync Facebook leads' : 'Синхронизирай FB лиды'}</button>`}
         <button class="btn btn-primary" onclick="openNewLeadModal('${coldBaseMode ? 'tires_base' : tireMode ? 'tires' : 'materials'}')">+ ${tireMode ? 'New lead' : 'Нов лид'}</button>
@@ -3089,6 +3090,7 @@ function leadQualificationType(lead = {}, qualification = leadQualificationData(
 }
 
 function isSpecificObjectLead(lead = {}) {
+  if (String(lead.crm_segment || '').toLowerCase() === 'objects') return true;
   const qualification = leadQualificationData(lead);
   const text = [
     lead.area_label || '',
@@ -3113,10 +3115,10 @@ function isSpecificObjectLead(lead = {}) {
 }
 
 function isConstructionLead(lead = {}) {
+  if (String(lead.crm_segment || '').toLowerCase() === 'construction') return true;
   if (isDistributorLead(lead) || isServicesLead(lead) || isTireLead(lead)) return false;
   if (isSpecificObjectLead(lead)) return false;
   const qualification = leadQualificationData(lead);
-  if (String(lead.crm_segment || '').toLowerCase() === 'construction') return true;
   if (String(qualification.client_type || '').toLowerCase() === 'construction_company') return true;
   const text = `${lead.company_type || ''} ${lead.notes || ''} ${lead.form_summary || ''} ${lead.interest_products || ''}`.toLowerCase();
   if (/строител|construction|builder|contractor|подряд|фирм|company|designer|проектант/.test(text)) return true;
@@ -3202,6 +3204,32 @@ async function syncFacebookLeadsFromLeadsPage() {
   } catch (err) {
     el.className = 'sync-result show err';
     el.textContent = tireMode ? `❌ Facebook sync failed: ${err.message}` : '❌ ' + err.message;
+  }
+}
+
+async function reclassifyLeadSegments() {
+  if (!confirm('Пересчитать сегменты лидов?\n\nДистрибьюторы / Строительные фирмы / Под объект будут обновлены по текущим правилам.')) return;
+  const resultEl = document.getElementById('leads-sync-result');
+  if (resultEl) {
+    resultEl.className = 'sync-result info';
+    resultEl.textContent = 'Идёт умная сортировка лидов...';
+  }
+  try {
+    const data = await api('/api/leads/reclassify-segments', {
+      method: 'POST',
+    });
+    if (resultEl) {
+      resultEl.className = 'sync-result success';
+      resultEl.textContent = `Сортировка завершена: проверено ${data.checked}, обновлено ${data.updated}. Строит. фирмы: ${data.counts?.construction || 0}, под объект: ${data.counts?.objects || 0}, дистрибьюторы: ${data.counts?.distributor || 0}.`;
+    }
+    await renderLeads(document.getElementById('main'), currentLeadFilters);
+  } catch (err) {
+    if (resultEl) {
+      resultEl.className = 'sync-result error';
+      resultEl.textContent = `Ошибка сортировки: ${err.message}`;
+    } else {
+      alert(`Ошибка сортировки: ${err.message}`);
+    }
   }
 }
 

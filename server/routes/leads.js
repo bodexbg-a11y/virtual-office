@@ -157,6 +157,54 @@ function inferCrmSegment(lead = {}) {
   return 'construction';
 }
 
+function buildLeadClassificationText(lead = {}, commentsText = '') {
+  const qualification = lead.qualification_data && typeof lead.qualification_data === 'object'
+    ? lead.qualification_data
+    : {};
+  return [
+    lead.company_name || '',
+    lead.contact_name || '',
+    lead.company_type || '',
+    lead.lead_type || '',
+    lead.interest_products || '',
+    lead.notes || '',
+    commentsText || '',
+    qualification.application_type || '',
+    qualification.quantities || '',
+    qualification.materials_interest || '',
+    qualification.notes || '',
+  ].join(' ').toLowerCase();
+}
+
+function isDistributorLeadForSorting(lead = {}, commentsText = '') {
+  if (/solvarex/i.test(String(lead.company_name || ''))) return true;
+  const text = buildLeadClassificationText(lead, commentsText);
+  return /дистриб|distributor|dealer|дилър|reseller|търговец|партньор|partner/.test(text);
+}
+
+function isObjectLeadForSorting(lead = {}, commentsText = '') {
+  const qualification = lead.qualification_data && typeof lead.qualification_data === 'object'
+    ? lead.qualification_data
+    : {};
+
+  if (String(qualification.client_type || '').toLowerCase() === 'concrete_object') return true;
+  if (String(qualification.object_type || '').trim()) return true;
+  if (String(qualification.problem_type || '').trim()) return true;
+  if (Array.isArray(qualification.problems) && qualification.problems.length) return true;
+  if (qualification.volumes && Object.values(qualification.volumes).some(Boolean)) return true;
+  if (String(qualification.timing || '').trim()) return true;
+  if (String(qualification.executor || '').trim()) return true;
+
+  const text = buildLeadClassificationText(lead, commentsText);
+  return /(конкретен\s+обект|конкретный\s+объект|specific\s+object|project\s+request|кв\.?\s*м|м²|m²|м2|m2|квадрат|[0-9]+\s*[xх]\s*[0-9]+|покрив|roof|терас|terrace|подземен\s+паркинг|паркинг|parking|мазе|basement|подвал|плоча|slab|балкон|balcony|фундамент|foundation|резервоар|reservoir|тунел|tunnel|гараж|garage|стена|wall|таван|ceiling|обект|проект)/.test(text);
+}
+
+function classifyLeadSegmentForSorting(lead = {}, commentsText = '') {
+  if (isDistributorLeadForSorting(lead, commentsText)) return 'distributor';
+  if (isObjectLeadForSorting(lead, commentsText)) return 'objects';
+  return 'construction';
+}
+
 function normalizeCrmStatus(status, segment = 'objects') {
   const normalized = String(status || '').trim().toLowerCase();
   if (!normalized) return segment === 'distributor' ? 'partner_new' : 'new';
@@ -820,25 +868,10 @@ router.get('/', async (req, res) => {
       where.push(MATERIAL_LEAD_SQL);
     }
 
-    if (view === 'objects') {
-      where.push(`NOT ${DISTRIBUTOR_LEAD_SQL}`);
-      where.push(`NOT ${SERVICE_LEAD_SQL}`);
-      where.push(`NOT ${TIRES_LEAD_SQL}`);
-      where.push(`NOT ${TIRE_COLD_BASE_SQL}`);
-      where.push(SPECIFIC_OBJECT_LEAD_SQL);
-    }
-
-    if (view === 'builders') {
-      where.push(CONSTRUCTION_LEAD_SQL);
-    }
-
-    if (view === 'construction') {
-      where.push(CONSTRUCTION_LEAD_SQL);
-    }
-
-    if (view === 'distributors') {
-      where.push(DISTRIBUTOR_LEAD_SQL);
-    }
+    if (view === 'objects') where.push(`crm_segment = 'objects'`);
+    if (view === 'builders') where.push(`crm_segment = 'construction'`);
+    if (view === 'construction') where.push(`crm_segment = 'construction'`);
+    if (view === 'distributors') where.push(`crm_segment = 'distributor'`);
 
     if (view === 'services') {
       where.push(SERVICE_LEAD_SQL);
@@ -1075,19 +1108,24 @@ router.get('/summary', async (req, res) => {
     `);
     const distributorsRes = await db.query(`
       SELECT COUNT(*)::int as count FROM leads
-      WHERE ${DISTRIBUTOR_LEAD_SQL}
-    `);
-    const buildersRes = await db.query(`
-      SELECT COUNT(*)::int as count FROM leads
-      WHERE ${CONSTRUCTION_LEAD_SQL}
-    `);
-    const objectsRes = await db.query(`
-      SELECT COUNT(*)::int as count FROM leads
-      WHERE NOT ${DISTRIBUTOR_LEAD_SQL}
+      WHERE crm_segment = 'distributor'
         AND NOT ${SERVICE_LEAD_SQL}
         AND NOT ${TIRES_LEAD_SQL}
         AND NOT ${TIRE_COLD_BASE_SQL}
-        AND ${SPECIFIC_OBJECT_LEAD_SQL}
+    `);
+    const buildersRes = await db.query(`
+      SELECT COUNT(*)::int as count FROM leads
+      WHERE crm_segment = 'construction'
+        AND NOT ${SERVICE_LEAD_SQL}
+        AND NOT ${TIRES_LEAD_SQL}
+        AND NOT ${TIRE_COLD_BASE_SQL}
+    `);
+    const objectsRes = await db.query(`
+      SELECT COUNT(*)::int as count FROM leads
+      WHERE crm_segment = 'objects'
+        AND NOT ${SERVICE_LEAD_SQL}
+        AND NOT ${TIRES_LEAD_SQL}
+        AND NOT ${TIRE_COLD_BASE_SQL}
     `);
     const tiresRes = await db.query(`
       SELECT COUNT(*)::int as count FROM leads
@@ -1738,6 +1776,60 @@ router.delete('/:id', async (req, res) => {
     );
 
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/reclassify-segments', auth.requireAdmin, async (req, res) => {
+  try {
+    await ensureLeadSheetColumns();
+
+    const { rows: leads } = await db.query(`
+      SELECT *
+      FROM leads
+      WHERE NOT ${TIRES_LEAD_SQL}
+        AND NOT ${TIRE_COLD_BASE_SQL}
+        AND NOT ${SERVICE_LEAD_SQL}
+      ORDER BY id
+    `);
+
+    const { rows: comments } = await db.query(`
+      SELECT lead_id, string_agg(description, ' | ' ORDER BY created_at) AS comments
+      FROM lead_activities
+      WHERE action = 'comment'
+      GROUP BY lead_id
+    `);
+
+    const commentsMap = new Map(comments.map(row => [Number(row.lead_id), row.comments || '']));
+
+    let updated = 0;
+    const counts = {
+      construction: 0,
+      objects: 0,
+      distributor: 0,
+    };
+
+    for (const lead of leads) {
+      const nextSegment = classifyLeadSegmentForSorting(lead, commentsMap.get(Number(lead.id)) || '');
+      counts[nextSegment] += 1;
+      if (String(lead.crm_segment || '') !== nextSegment) {
+        await db.query(`
+          UPDATE leads
+          SET crm_segment = ?,
+              updated_at = NOW()
+          WHERE id = ?
+        `, [nextSegment, lead.id]);
+        updated += 1;
+      }
+    }
+
+    res.json({
+      success: true,
+      checked: leads.length,
+      updated,
+      counts,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
