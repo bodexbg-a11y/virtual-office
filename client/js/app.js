@@ -3076,18 +3076,27 @@ function leadQualificationType(lead = {}, qualification = leadQualificationData(
   if (qualification.client_type) return qualification.client_type;
   if (isTireLead(lead)) return 'tire_customer';
   if (isDistributorLead(lead)) return 'distributor';
-  if (qualification.problems?.length || qualification.object_type || isSpecificObjectLead(lead)) return 'concrete_object';
+  if (
+    qualification.problems?.length
+    || qualification.object_type
+    || qualification.problem_type
+    || (qualification.volumes && Object.values(qualification.volumes).some(Boolean))
+    || qualification.timing
+    || qualification.executor
+    || isSpecificObjectLead(lead)
+  ) return 'concrete_object';
   return 'construction_company';
 }
 
 function isSpecificObjectLead(lead = {}) {
   const qualification = leadQualificationData(lead);
-  const text = `${lead.area_label || ''} ${lead.notes || ''} ${lead.form_summary || ''} ${lead.interest_products || ''} ${lead.company_type || ''}`.toLowerCase();
-  return String(lead.crm_segment || '').toLowerCase() === 'objects'
-    || String(qualification.client_type || '').toLowerCase() === 'concrete_object'
+  return String(qualification.client_type || '').toLowerCase() === 'concrete_object'
     || Boolean(String(qualification.object_type || '').trim())
+    || Boolean(String(qualification.problem_type || '').trim())
     || (Array.isArray(qualification.problems) && qualification.problems.length > 0)
-    || /конкретен\s+обект|конкретный\s+объект|specific\s+object|project\s+request|обект/.test(text);
+    || Boolean(qualification.volumes && Object.values(qualification.volumes).some(Boolean))
+    || Boolean(String(qualification.timing || '').trim())
+    || Boolean(String(qualification.executor || '').trim());
 }
 
 function isConstructionLead(lead = {}) {

@@ -131,15 +131,19 @@ function inferCrmSegment(lead = {}) {
     ? lead.qualification_data
     : {};
   const explicit = String(lead.crm_segment || '').trim().toLowerCase();
-  if (['distributor', 'objects', 'construction'].includes(explicit)) return explicit;
+  if (explicit === 'distributor') return explicit;
   const text = `${lead.company_type || ''} ${lead.lead_type || ''} ${lead.interest_products || ''} ${lead.notes || ''}`.toLowerCase();
   if (/дистриб|distributor|dealer|дилър|reseller|търговец/.test(text)) return 'distributor';
   if (
     String(qualification.client_type || '').toLowerCase() === 'concrete_object'
     || String(qualification.object_type || '').trim()
+    || String(qualification.problem_type || '').trim()
     || (Array.isArray(qualification.problems) && qualification.problems.length)
-    || /конкретен\s+обект|конкретный\s+объект|specific\s+object|project\s+request|обект/.test(text)
+    || (qualification.volumes && Object.values(qualification.volumes).some(Boolean))
+    || String(qualification.timing || '').trim()
+    || String(qualification.executor || '').trim()
   ) return 'objects';
+  if (explicit === 'construction') return explicit;
   return 'construction';
 }
 
@@ -432,12 +436,17 @@ const DISTRIBUTOR_LEAD_SQL = `(
   )
 )`;
 const SPECIFIC_OBJECT_LEAD_SQL = `(
-  crm_segment = 'objects'
-  OR lower(coalesce(qualification_data->>'client_type', '')) = 'concrete_object'
+  lower(coalesce(qualification_data->>'client_type', '')) = 'concrete_object'
   OR nullif(coalesce(qualification_data->>'object_type', ''), '') IS NOT NULL
+  OR nullif(coalesce(qualification_data->>'problem_type', ''), '') IS NOT NULL
   OR jsonb_array_length(coalesce(qualification_data->'problems', '[]'::jsonb)) > 0
-  OR lower(concat_ws(' ', coalesce(company_type, ''), coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))
-    ~ '(конкретен\\s+обект|конкретный\\s+объект|specific\\s+object|project\\s+request|обект)'
+  OR EXISTS (
+    SELECT 1
+    FROM jsonb_each_text(coalesce(qualification_data->'volumes', '{}'::jsonb)) AS q(key, value)
+    WHERE nullif(trim(q.value), '') IS NOT NULL
+  )
+  OR nullif(coalesce(qualification_data->>'timing', ''), '') IS NOT NULL
+  OR nullif(coalesce(qualification_data->>'executor', ''), '') IS NOT NULL
 )`;
 const NORMALIZED_STATUS_SQL = `CASE
   WHEN status IN ('contacted', 'details', 'qualified', 'interested', 'catalog_sent', 'thinking') THEN 'needs_discovery'
@@ -1727,9 +1736,15 @@ async function normalizeLegacyLeadStatuses() {
           THEN 'distributor'
           WHEN lower(coalesce(qualification_data->>'client_type', '')) = 'concrete_object'
             OR nullif(coalesce(qualification_data->>'object_type', ''), '') IS NOT NULL
+            OR nullif(coalesce(qualification_data->>'problem_type', ''), '') IS NOT NULL
             OR jsonb_array_length(coalesce(qualification_data->'problems', '[]'::jsonb)) > 0
-            OR lower(concat_ws(' ', coalesce(company_type, ''), coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))
-              ~ '(конкретен\\s+обект|конкретный\\s+объект|specific\\s+object|project\\s+request|обект)'
+            OR EXISTS (
+              SELECT 1
+              FROM jsonb_each_text(coalesce(qualification_data->'volumes', '{}'::jsonb)) AS q(key, value)
+              WHERE nullif(trim(q.value), '') IS NOT NULL
+            )
+            OR nullif(coalesce(qualification_data->>'timing', ''), '') IS NOT NULL
+            OR nullif(coalesce(qualification_data->>'executor', ''), '') IS NOT NULL
           THEN 'objects'
           ELSE 'construction'
         END
