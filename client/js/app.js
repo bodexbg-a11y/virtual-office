@@ -1863,7 +1863,7 @@ async function pullDealsSheets() {
 
 // ===== LEADS =====
 async function renderLeads(el, filters = {}) {
-  if (!Object.keys(filters).length) filters = { view: 'objects' };
+  if (!Object.keys(filters).length) filters = { view: 'all' };
   const tireMode = filters.view === 'tires' || filters.view === 'tire_base';
   const coldBaseMode = filters.view === 'tire_base';
   const dailyBriefScope = tireMode ? 'tires' : 'materials';
@@ -1968,8 +1968,9 @@ async function renderLeads(el, filters = {}) {
     </div>
 
     ${tireMode ? `` : `<div class="lead-tabs fade-in">
-      ${leadTab('Объекты', { view: 'objects' }, summary.objects ?? (data.leads || []).filter(lead => !isDistributorLead(lead) && !isServicesLead(lead)).length, filters.view === 'objects')}
+      ${leadTab('Строит. фирмы', { view: 'builders' }, summary.builders ?? (data.leads || []).filter(isConstructionLead).length, filters.view === 'builders')}
       ${leadTab('Дистрибьюторы', { view: 'distributors' }, summary.distributors ?? (data.leads || []).filter(isDistributorLead).length, filters.view === 'distributors')}
+      ${leadTab('Под объект', { view: 'objects' }, summary.objects ?? (data.leads || []).filter(isSpecificObjectLead).length, filters.view === 'objects')}
       ${leadTab('Все лиды', { view: 'all' }, summary.total || 0, filters.view === 'all')}
       ${leadTab('Услуги', { view: 'services' }, summary.services || 0, filters.view === 'services')}
       ${leadTab('Сегодня', { view: 'all', date_range: 'today' }, summary.today || 0, filters.date_range === 'today')}
@@ -2310,7 +2311,11 @@ function applyLeadQuickFilters(rows, filters = {}) {
   let result = [...rows];
 
   if (filters.view === 'objects') {
-    result = result.filter(row => !isDistributorLead(row) && !isServicesLead(row) && !isTireLead(row));
+    result = result.filter(isSpecificObjectLead);
+  }
+
+  if (filters.view === 'builders') {
+    result = result.filter(isConstructionLead);
   }
 
   if (filters.view === 'distributors') {
@@ -2362,7 +2367,7 @@ function isFacebookLeadSource(lead = {}) {
 function isDistributorLead(lead = {}) {
   if (/solvarex/i.test(String(lead.company_name || ''))) return true;
   if (String(lead.crm_segment || '').toLowerCase() === 'distributor') return true;
-  if (String(lead.crm_segment || '').toLowerCase() === 'objects') return false;
+  if (['objects', 'construction'].includes(String(lead.crm_segment || '').toLowerCase())) return false;
   const text = `${lead.company_type || ''} ${lead.notes || ''} ${lead.form_summary || ''}`.toLowerCase();
   return /дистриб|distributor|dealer|дилър|reseller|търговец/.test(text);
 }
@@ -3076,8 +3081,24 @@ function leadQualificationType(lead = {}, qualification = leadQualificationData(
 }
 
 function isSpecificObjectLead(lead = {}) {
-  const text = `${lead.area_label || ''} ${lead.notes || ''} ${lead.form_summary || ''} ${lead.interest_products || ''}`.toLowerCase();
-  return /конкретен\s+обект/.test(text);
+  const qualification = leadQualificationData(lead);
+  const text = `${lead.area_label || ''} ${lead.notes || ''} ${lead.form_summary || ''} ${lead.interest_products || ''} ${lead.company_type || ''}`.toLowerCase();
+  return String(lead.crm_segment || '').toLowerCase() === 'objects'
+    || String(qualification.client_type || '').toLowerCase() === 'concrete_object'
+    || Boolean(String(qualification.object_type || '').trim())
+    || (Array.isArray(qualification.problems) && qualification.problems.length > 0)
+    || /конкретен\s+обект|конкретный\s+объект|specific\s+object|project\s+request|обект/.test(text);
+}
+
+function isConstructionLead(lead = {}) {
+  if (isDistributorLead(lead) || isServicesLead(lead) || isTireLead(lead)) return false;
+  if (isSpecificObjectLead(lead)) return false;
+  const qualification = leadQualificationData(lead);
+  if (String(lead.crm_segment || '').toLowerCase() === 'construction') return true;
+  if (String(qualification.client_type || '').toLowerCase() === 'construction_company') return true;
+  const text = `${lead.company_type || ''} ${lead.notes || ''} ${lead.form_summary || ''} ${lead.interest_products || ''}`.toLowerCase();
+  if (/строител|construction|builder|contractor|подряд|фирм|company|designer|проектант/.test(text)) return true;
+  return true;
 }
 
 function isServicesLead(lead = {}) {
@@ -4955,7 +4976,8 @@ function openNewLeadModal(section = 'materials') {
         ${tireMode ? '' : `<div class="form-group">
           <label>Воронка продаж</label>
           <select name="crm_segment">
-            <option value="objects">Объекты / покупатели материалов</option>
+            <option value="construction">Строительная фирма</option>
+            <option value="objects">Под конкретный объект</option>
             <option value="distributor">Дистрибьюторы / партнёры</option>
           </select>
         </div>`}
@@ -5096,7 +5118,8 @@ async function openLeadDetail(id) {
         <div class="form-group">
           <label>Воронка продаж</label>
           <select id="ld-crm-segment" onchange="refreshLeadStatusOptions()">
-            <option value="objects" ${isDistributorLead(l) ? '' : 'selected'}>Объекты / покупатели материалов</option>
+            <option value="construction" ${String(l.crm_segment || '').toLowerCase() === 'construction' || (!isDistributorLead(l) && !isSpecificObjectLead(l)) ? 'selected' : ''}>Строительная фирма</option>
+            <option value="objects" ${isSpecificObjectLead(l) ? 'selected' : ''}>Под конкретный объект</option>
             <option value="distributor" ${isDistributorLead(l) ? 'selected' : ''}>Дистрибьюторы / партнёры</option>
           </select>
         </div>

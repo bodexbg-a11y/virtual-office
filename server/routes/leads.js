@@ -127,10 +127,20 @@ function dealStageFromLeadStatus(status) {
 
 function inferCrmSegment(lead = {}) {
   if (/solvarex/i.test(String(lead.company_name || ''))) return 'distributor';
+  const qualification = lead.qualification_data && typeof lead.qualification_data === 'object'
+    ? lead.qualification_data
+    : {};
   const explicit = String(lead.crm_segment || '').trim().toLowerCase();
-  if (explicit === 'distributor' || explicit === 'objects') return explicit;
+  if (['distributor', 'objects', 'construction'].includes(explicit)) return explicit;
   const text = `${lead.company_type || ''} ${lead.lead_type || ''} ${lead.interest_products || ''} ${lead.notes || ''}`.toLowerCase();
-  return /дистриб|distributor|dealer|дилър|reseller|търговец/.test(text) ? 'distributor' : 'objects';
+  if (/дистриб|distributor|dealer|дилър|reseller|търговец/.test(text)) return 'distributor';
+  if (
+    String(qualification.client_type || '').toLowerCase() === 'concrete_object'
+    || String(qualification.object_type || '').trim()
+    || (Array.isArray(qualification.problems) && qualification.problems.length)
+    || /конкретен\s+обект|конкретный\s+объект|specific\s+object|project\s+request|обект/.test(text)
+  ) return 'objects';
+  return 'construction';
 }
 
 function normalizeCrmStatus(status, segment = 'objects') {
@@ -421,6 +431,14 @@ const DISTRIBUTOR_LEAD_SQL = `(
       ~ '(дистриб|distributor|dealer|дилър|reseller|търговец)'
   )
 )`;
+const SPECIFIC_OBJECT_LEAD_SQL = `(
+  crm_segment = 'objects'
+  OR lower(coalesce(qualification_data->>'client_type', '')) = 'concrete_object'
+  OR nullif(coalesce(qualification_data->>'object_type', ''), '') IS NOT NULL
+  OR jsonb_array_length(coalesce(qualification_data->'problems', '[]'::jsonb)) > 0
+  OR lower(concat_ws(' ', coalesce(company_type, ''), coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))
+    ~ '(конкретен\\s+обект|конкретный\\s+объект|specific\\s+object|project\\s+request|обект)'
+)`;
 const NORMALIZED_STATUS_SQL = `CASE
   WHEN status IN ('contacted', 'details', 'qualified', 'interested', 'catalog_sent', 'thinking') THEN 'needs_discovery'
   ELSE status
@@ -458,6 +476,13 @@ const TIRES_LEAD_SQL = `(
         AND tire_campaign.status = 'ACTIVE'
     )
   )
+)`;
+const CONSTRUCTION_LEAD_SQL = `(
+  NOT ${DISTRIBUTOR_LEAD_SQL}
+  AND NOT ${SERVICE_LEAD_SQL}
+  AND NOT ${TIRES_LEAD_SQL}
+  AND NOT ${TIRE_COLD_BASE_SQL}
+  AND NOT ${SPECIFIC_OBJECT_LEAD_SQL}
 )`;
 const TOUCHED_TODAY_SQL = `EXISTS (
   SELECT 1
@@ -767,6 +792,16 @@ router.get('/', async (req, res) => {
       where.push(`NOT ${DISTRIBUTOR_LEAD_SQL}`);
       where.push(`NOT ${SERVICE_LEAD_SQL}`);
       where.push(`NOT ${TIRES_LEAD_SQL}`);
+      where.push(`NOT ${TIRE_COLD_BASE_SQL}`);
+      where.push(SPECIFIC_OBJECT_LEAD_SQL);
+    }
+
+    if (view === 'builders') {
+      where.push(CONSTRUCTION_LEAD_SQL);
+    }
+
+    if (view === 'construction') {
+      where.push(CONSTRUCTION_LEAD_SQL);
     }
 
     if (view === 'distributors') {
@@ -1010,11 +1045,17 @@ router.get('/summary', async (req, res) => {
       SELECT COUNT(*)::int as count FROM leads
       WHERE ${DISTRIBUTOR_LEAD_SQL}
     `);
+    const buildersRes = await db.query(`
+      SELECT COUNT(*)::int as count FROM leads
+      WHERE ${CONSTRUCTION_LEAD_SQL}
+    `);
     const objectsRes = await db.query(`
       SELECT COUNT(*)::int as count FROM leads
       WHERE NOT ${DISTRIBUTOR_LEAD_SQL}
         AND NOT ${SERVICE_LEAD_SQL}
         AND NOT ${TIRES_LEAD_SQL}
+        AND NOT ${TIRE_COLD_BASE_SQL}
+        AND ${SPECIFIC_OBJECT_LEAD_SQL}
     `);
     const tiresRes = await db.query(`
       SELECT COUNT(*)::int as count FROM leads
@@ -1035,6 +1076,7 @@ router.get('/summary', async (req, res) => {
       materials: materialsRes.rows[0]?.count || 0,
       services: servicesRes.rows[0]?.count || 0,
       distributors: distributorsRes.rows[0]?.count || 0,
+      builders: buildersRes.rows[0]?.count || 0,
       objects: objectsRes.rows[0]?.count || 0,
       tires: tiresRes.rows[0]?.count || 0,
       tire_base: tireBaseRes.rows[0]?.count || 0,
@@ -1429,7 +1471,11 @@ router.put('/:id/qualification', async (req, res) => {
       completed_by: performedBy,
     });
 
-    const crmSegment = clientType === 'distributor' ? 'distributor' : 'objects';
+    const crmSegment = clientType === 'distributor'
+      ? 'distributor'
+      : clientType === 'construction_company'
+        ? 'construction'
+        : 'objects';
     const normalizedStatus = normalizeCrmStatus(leads[0].status, crmSegment);
 
     const { rows } = await db.query(`
@@ -1679,9 +1725,17 @@ async function normalizeLegacyLeadStatuses() {
           WHEN lower(concat_ws(' ', coalesce(company_type, ''), coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))
             ~ '(дистриб|distributor|dealer|дилър|reseller|търговец)'
           THEN 'distributor'
-          ELSE 'objects'
+          WHEN lower(coalesce(qualification_data->>'client_type', '')) = 'concrete_object'
+            OR nullif(coalesce(qualification_data->>'object_type', ''), '') IS NOT NULL
+            OR jsonb_array_length(coalesce(qualification_data->'problems', '[]'::jsonb)) > 0
+            OR lower(concat_ws(' ', coalesce(company_type, ''), coalesce(lead_type, ''), coalesce(interest_products, ''), coalesce(notes, '')))
+              ~ '(конкретен\\s+обект|конкретный\\s+объект|specific\\s+object|project\\s+request|обект)'
+          THEN 'objects'
+          ELSE 'construction'
         END
-    WHERE crm_segment IS NULL OR crm_segment NOT IN ('objects', 'distributor')
+    WHERE NOT ${TIRES_LEAD_SQL}
+      AND NOT ${TIRE_COLD_BASE_SQL}
+      AND NOT ${SERVICE_LEAD_SQL}
   `);
   await db.query(`
     UPDATE leads
