@@ -1874,7 +1874,12 @@ async function renderLeads(el, filters = {}) {
   statusCountFilters.limit = '5000';
   statusCountFilters.offset = '0';
   const statusCountParams = new URLSearchParams(statusCountFilters);
-  const [data, statusCountData, summary, gmailStatus, dailyBrief, contractorsData] = await Promise.all([
+  const shouldUseUnifiedLeadUniverse = !tireMode && !coldBaseMode;
+  const unifiedLeadUniverseFilters = shouldUseUnifiedLeadUniverse
+    ? new URLSearchParams({ view: 'all', limit: '5000', offset: '0' })
+    : null;
+
+  const [data, statusCountData, summary, gmailStatus, dailyBrief, contractorsData, unifiedLeadUniverseData] = await Promise.all([
     api(`/api/leads?${params}`),
     api(`/api/leads?${statusCountParams}`),
     api('/api/leads/summary').catch(() => ({ total: 0, statuses: [], sources: [] })),
@@ -1885,10 +1890,12 @@ async function renderLeads(el, filters = {}) {
       updated_at: null,
     })),
     tireMode ? Promise.resolve({ rows: [] }) : api('/api/contractors?active=1').catch(() => ({ rows: [] })),
+    shouldUseUnifiedLeadUniverse ? api(`/api/leads?${unifiedLeadUniverseFilters}`) : Promise.resolve(null),
   ]);
   gmailAccountsCache = gmailStatus.accounts || [];
   currentLeadContractors = sortLeadContractorOptions(contractorsData.rows || []);
   ensureConnectedGmailSender();
+  const unifiedLeadUniverseRows = unifiedLeadUniverseData?.leads || [];
   const rows = applyLeadQuickFilters(data.leads || [], filters);
   currentLeadRowsForExport = rows;
   const tireBadge = document.getElementById('nav-badge-tires');
@@ -1896,12 +1903,26 @@ async function renderLeads(el, filters = {}) {
   const tireBaseBadge = document.getElementById('nav-badge-tire-base');
   if (tireBaseBadge && currentRole === 'admin') tireBaseBadge.textContent = summary.tire_base || 0;
   const visibleStages = leadStagesForView(filters);
-  const statusCountRows = applyLeadQuickFilters(statusCountData.leads || [], statusCountFilters);
+  const canUseUnifiedCounts =
+    shouldUseUnifiedLeadUniverse
+    && !statusCountFilters.date_range
+    && !statusCountFilters.followup
+    && !statusCountFilters.city
+    && !statusCountFilters.search
+    && ['all', 'builders', 'objects', 'distributors', undefined].includes(statusCountFilters.view);
+  const statusCountRows = applyLeadQuickFilters(
+    canUseUnifiedCounts ? unifiedLeadUniverseRows : (statusCountData.leads || []),
+    statusCountFilters
+  );
   const statusCounts = statusCountRows.reduce((counts, row) => {
     const status = leadDisplayStatus(row);
     counts[status] = (counts[status] || 0) + 1;
     return counts;
   }, {});
+  const buildersCount = shouldUseUnifiedLeadUniverse ? unifiedLeadUniverseRows.filter(isConstructionLead).length : (summary.builders || 0);
+  const distributorsCount = shouldUseUnifiedLeadUniverse ? unifiedLeadUniverseRows.filter(isDistributorLead).length : (summary.distributors || 0);
+  const objectsCount = shouldUseUnifiedLeadUniverse ? unifiedLeadUniverseRows.filter(isSpecificObjectLead).length : (summary.objects || 0);
+  const allLeadsCount = shouldUseUnifiedLeadUniverse ? unifiedLeadUniverseRows.length : (summary.total || 0);
   const responseMetrics = buildLeadResponseMetrics(statusCountRows, tireMode);
   const cityOptions = summary.cities || [];
   const mobileLeadCards = rows.length
@@ -1969,10 +1990,10 @@ async function renderLeads(el, filters = {}) {
     </div>
 
     ${tireMode ? `` : `<div class="lead-tabs fade-in">
-      ${leadTab('Строит. фирмы', { view: 'builders' }, summary.builders ?? (data.leads || []).filter(isConstructionLead).length, filters.view === 'builders')}
-      ${leadTab('Дистрибьюторы', { view: 'distributors' }, summary.distributors ?? (data.leads || []).filter(isDistributorLead).length, filters.view === 'distributors')}
-      ${leadTab('Под объект', { view: 'objects' }, summary.objects ?? (data.leads || []).filter(isSpecificObjectLead).length, filters.view === 'objects')}
-      ${leadTab('Все лиды', { view: 'all' }, summary.total || 0, filters.view === 'all')}
+      ${leadTab('Строит. фирмы', { view: 'builders' }, buildersCount, filters.view === 'builders')}
+      ${leadTab('Дистрибьюторы', { view: 'distributors' }, distributorsCount, filters.view === 'distributors')}
+      ${leadTab('Под объект', { view: 'objects' }, objectsCount, filters.view === 'objects')}
+      ${leadTab('Все лиды', { view: 'all' }, allLeadsCount, filters.view === 'all')}
       ${leadTab('Услуги', { view: 'services' }, summary.services || 0, filters.view === 'services')}
       ${leadTab('Сегодня', { view: 'all', date_range: 'today' }, summary.today || 0, filters.date_range === 'today')}
       ${leadTab('7 дней', { view: 'all', date_range: 'week' }, summary.week || 0, filters.date_range === 'week')}
