@@ -10,6 +10,8 @@ let currentLeadFilters = {};
 let currentProjectFilters = { q: '', status: '' };
 let currentContractorFilters = { q: '', active: '1' };
 let currentContractorRows = [];
+let currentConstructionFirmFilters = { q: '', active: '1' };
+let currentConstructionFirmRows = [];
 let agentReportsFilters = { agent: 'all', date_from: '', date_to: '', limit: 100 };
 let agentReportsCache = [];
 let currentOfferDraft = null;
@@ -71,6 +73,11 @@ function gmailSenderConnected(email) {
 
 function contractorStatusLabel(value = '') {
   return CONTRACTOR_CONTACT_STATUSES.find(([key]) => key === value)?.[1] || value || 'Новый';
+}
+
+function normalizeContractContactStatus(value = '') {
+  const normalized = String(value || '').trim();
+  return CONTRACTOR_CONTACT_STATUSES.some(([key]) => key === normalized) ? normalized : 'new';
 }
 
 function leadContractorModeLabel(value = '') {
@@ -136,6 +143,7 @@ async function renderPage(page) {
       case 'deals': await renderDeals(main); break;
       case 'projects': await renderProjects(main); break;
       case 'contractors': await renderContractors(main); break;
+      case 'construction-firms': await renderConstructionFirms(main); break;
       case 'pipeline': await renderPipeline(main); break;
       case 'facebook': await renderFacebook(main); break;
       case 'sheets': await renderSheets(main); break;
@@ -6491,6 +6499,7 @@ async function renderProjects(el) {
           </thead>
           <tbody>
             ${rows.length ? rows.map(r => `
+              ${(() => { r._uiContactStatus = normalizeContractContactStatus(r.contact_status); return ''; })()}
               <tr>
                 <td>
                   <div style="font-weight:700;color:#e5e7eb;">${escapeHtml(r.title || '—')}</div>
@@ -6841,6 +6850,7 @@ async function renderContractors(el) {
           </thead>
           <tbody>
             ${rows.length ? rows.map(r => `
+              ${(() => { r._uiContactStatus = normalizeContractContactStatus(r.contact_status); return ''; })()}
               <tr>
                 <td>
                   <div style="font-weight:700;color:#e5e7eb;">${escapeHtml(r.company_name || '—')}</div>
@@ -6859,10 +6869,10 @@ async function renderContractors(el) {
                 <td class="contractor-city-cell">${escapeHtml(r.city || '—')}</td>
                 <td onclick="event.stopPropagation();">
                   <select
-                    class="lead-inline-status-select contractor-inline-status contractor-inline-status-${escapeAttr(r.contact_status || 'new')}"
+                    class="lead-inline-status-select contractor-inline-status contractor-inline-status-${escapeAttr(r._uiContactStatus)}"
                     onchange="inlineUpdateContractorStatus(${r.id}, this.value)"
                   >
-                    ${CONTRACTOR_CONTACT_STATUSES.map(([value, label]) => `<option value="${value}" ${(r.contact_status || 'new') === value ? 'selected' : ''}>${label}</option>`).join('')}
+                    ${CONTRACTOR_CONTACT_STATUSES.map(([value, label]) => `<option value="${value}" ${r._uiContactStatus === value ? 'selected' : ''}>${label}</option>`).join('')}
                   </select>
                 </td>
                 <td class="contractor-specialties-cell" title="${escapeAttr(r.specialties || '')}">${escapeHtml(r.specialties || '—')}</td>
@@ -6919,7 +6929,7 @@ function openContractorModal(record = null) {
       <div class="form-group full"><label>Специализация</label><textarea id="ct-specialties" rows="3" placeholder="Инъектирование, гидроизоляция, ремонт бетона...">${escapeHtml(r.specialties || '')}</textarea></div>
       <div class="form-group"><label>Статус контакта</label>
         <select id="ct-contact-status">
-          ${CONTRACTOR_CONTACT_STATUSES.map(([value, label]) => `<option value="${value}" ${(r.contact_status || 'new') === value ? 'selected' : ''}>${label}</option>`).join('')}
+          ${CONTRACTOR_CONTACT_STATUSES.map(([value, label]) => `<option value="${value}" ${normalizeContractContactStatus(r.contact_status) === value ? 'selected' : ''}>${label}</option>`).join('')}
         </select>
       </div>
       <div class="form-group"><label>Приоритет</label><input id="ct-priority" value="${escapeAttr(r.priority || '')}" placeholder="Высокий / Средний / Низкий"></div>
@@ -6972,6 +6982,276 @@ async function saveContractorRecord(id = null) {
     await api(path, { method, body: payload });
     closeModal();
     navigate('contractors');
+  } catch (err) {
+    result.className = 'sync-result show err';
+    result.textContent = `❌ ${err.message}`;
+  }
+}
+
+function renderFirmCrmFlags(flags = {}) {
+  const items = [];
+  if (flags.existing_in_crm) items.push('<span class="badge badge-hot">Уже в CRM</span>');
+  if (flags.had_call) items.push('<span class="badge badge-medium">Был созвон</span>');
+  if (flags.is_partner) items.push('<span class="badge badge-won">Партнёр</span>');
+  return items.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${items.join('')}</div>` : '';
+}
+
+async function renderConstructionFirms(el) {
+  const query = currentConstructionFirmFilters?.q || '';
+  const active = currentConstructionFirmFilters?.active || '1';
+  const qs = new URLSearchParams();
+  if (query) qs.set('q', query);
+  if (active !== '') qs.set('active', active);
+  const data = await api(`/api/construction-firms${qs.toString() ? `?${qs.toString()}` : ''}`);
+  const rows = data.rows || [];
+  currentConstructionFirmRows = rows;
+  const summary = data.summary || {};
+
+  el.innerHTML = `
+    <div class="page-header fade-in">
+      <h2>🏗️ Строительные фирмы</h2>
+      <div class="page-header-actions">
+        <button class="btn btn-primary" onclick="openConstructionFirmModal()">+ Новая фирма</button>
+      </div>
+    </div>
+
+    <div class="stats-grid fade-in">
+      <div class="stat-card"><div class="stat-label">Всего</div><div class="stat-value">${summary.total || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">Активные</div><div class="stat-value green">${summary.active || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">Неактивные</div><div class="stat-value">${summary.inactive || 0}</div></div>
+    </div>
+
+    <div class="card fade-in" style="margin-top:18px;">
+      <div class="card-title">База строительных фирм</div>
+      <div class="search-bar" style="margin-bottom:14px;">
+        <input
+          placeholder="Поиск по компании, городу, региону, телефону, специализации..."
+          value="${escapeAttr(query)}"
+          oninput="currentConstructionFirmFilters = {...currentConstructionFirmFilters, q: this.value}"
+          onkeydown="if(event.key==='Enter'){renderConstructionFirms(document.getElementById('main'))}"
+        >
+        <select onchange="currentConstructionFirmFilters = {...currentConstructionFirmFilters, active: this.value}; renderConstructionFirms(document.getElementById('main'))">
+          <option value="1" ${active === '1' ? 'selected' : ''}>Только активные</option>
+          <option value="" ${active === '' ? 'selected' : ''}>Все</option>
+          <option value="0" ${active === '0' ? 'selected' : ''}>Только неактивные</option>
+        </select>
+        <button class="btn btn-secondary" onclick="renderConstructionFirms(document.getElementById('main'))">Поиск</button>
+      </div>
+      <div class="table-wrap">
+        <table class="contractor-table">
+          <thead>
+            <tr>
+              <th>Компания</th>
+              <th>Контакт</th>
+              <th>Телефон</th>
+              <th>Город</th>
+              <th>Статус</th>
+              <th>Тип работ</th>
+              <th>Комментарий</th>
+              <th>Активность</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map(r => `
+              <tr>
+                <td>
+                  <div style="font-weight:700;color:#e5e7eb;">${escapeHtml(r.company_name || '—')}</div>
+                  <div style="font-size:11px;color:#aeb8c5;">${escapeHtml(r.email || '')}</div>
+                  ${renderFirmCrmFlags(r.crm_flags)}
+                </td>
+                <td>
+                  <div class="contractor-contact-primary">${escapeHtml(r.public_contact || r.contact_name || '—')}</div>
+                  <div class="contractor-contact-secondary">${escapeHtml(r.regions || '')}</div>
+                </td>
+                <td class="contractor-phone-cell">
+                  <div class="contractor-phone-row">
+                    <span>${escapeHtml(r.phone || '—')}</span>
+                    ${r.website ? `<a class="contractor-site-link" href="${escapeAttr(r.website)}" target="_blank" rel="noreferrer" title="Открыть сайт">🌐</a>` : ''}
+                  </div>
+                </td>
+                <td class="contractor-city-cell">${escapeHtml(r.city || '—')}</td>
+                <td onclick="event.stopPropagation();">
+                  <select
+                    class="lead-inline-status-select contractor-inline-status contractor-inline-status-${escapeAttr(r._uiContactStatus)}"
+                    onchange="inlineUpdateConstructionFirmStatus(${r.id}, this.value)"
+                  >
+                    ${CONTRACTOR_CONTACT_STATUSES.map(([value, label]) => `<option value="${value}" ${r._uiContactStatus === value ? 'selected' : ''}>${label}</option>`).join('')}
+                  </select>
+                </td>
+                <td class="contractor-specialties-cell" title="${escapeAttr(r.specialties || '')}">${escapeHtml(r.specialties || '—')}</td>
+                <td>
+                  <div
+                    class="contractor-comment-pill"
+                    title="${escapeAttr((r.manager_comment || r.call_result || ''))}"
+                    onclick="event.stopPropagation();openQuickConstructionFirmCommentModal(${r.id}, '${encodeURIComponent(r.manager_comment || r.call_result || '')}')"
+                  >
+                    ${escapeHtml(r.manager_comment || r.call_result || 'Добавить')}
+                  </div>
+                </td>
+                <td><span class="badge ${r.is_active ? 'badge-won' : 'badge-low'}">${r.is_active ? 'Активный' : 'Неактивный'}</span></td>
+                <td><button class="btn btn-secondary btn-sm" style="padding:6px 10px;min-width:40px;" onclick='openConstructionFirmModal(${JSON.stringify(r).replace(/'/g, "&apos;")})' title="Редактировать">✏️</button></td>
+              </tr>
+            `).join('') : '<tr><td colspan="9" style="text-align:center;color:#777;padding:24px;">Пока нет строительных фирм.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+async function inlineUpdateConstructionFirmStatus(id, status) {
+  const row = (currentConstructionFirmRows || []).find(item => Number(item.id) === Number(id));
+  if (!row) return;
+  const nextActive = status === 'inactive' ? false : true;
+  try {
+    await api(`/api/construction-firms/${id}`, {
+      method: 'PUT',
+      body: {
+        ...row,
+        contact_status: status,
+        is_active: nextActive,
+      },
+    });
+    await renderConstructionFirms(document.getElementById('main'));
+  } catch (err) {
+    alert('Грешка: ' + err.message);
+  }
+}
+
+function openConstructionFirmModal(record = null) {
+  const r = record || {};
+  openModal(record ? 'Редактировать строительную фирму' : 'Новая строительная фирма', `
+    <div class="form-grid">
+      <div class="form-group"><label>Компания</label><input id="cf-company-name" value="${escapeAttr(r.company_name || '')}" placeholder="Название компании"></div>
+      <div class="form-group"><label>Город (база)</label><input id="cf-city" value="${escapeAttr(r.city || '')}"></div>
+      <div class="form-group"><label>География работы</label><input id="cf-regions" value="${escapeAttr(r.regions || '')}" placeholder="София, Пловдив, Варна..."></div>
+      <div class="form-group"><label>Телефон</label><input id="cf-phone" value="${escapeAttr(r.phone || '')}"></div>
+      <div class="form-group"><label>Email</label><input id="cf-email" value="${escapeAttr(r.email || '')}"></div>
+      <div class="form-group"><label>Сайт</label><input id="cf-website" value="${escapeAttr(r.website || '')}" placeholder="https://..."></div>
+      <div class="form-group full"><label>Контакт (открытые источники)</label><textarea id="cf-public-contact" rows="2" placeholder="Телефоны, email, EIK, адрес из открытых источников...">${escapeHtml(r.public_contact || r.contact_name || '')}</textarea></div>
+      <div class="form-group full"><label>Специализация</label><textarea id="cf-specialties" rows="3" placeholder="Инжектирование, гидроизоляция, ремонт бетона...">${escapeHtml(r.specialties || '')}</textarea></div>
+      <div class="form-group"><label>Статус контакта</label>
+        <select id="cf-contact-status">
+          ${CONTRACTOR_CONTACT_STATUSES.map(([value, label]) => `<option value="${value}" ${normalizeContractContactStatus(r.contact_status) === value ? 'selected' : ''}>${label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Приоритет</label><input id="cf-priority" value="${escapeAttr(r.priority || '')}" placeholder="Высокий / Средний / Низкий"></div>
+      <div class="form-group"><label>Роль</label><input id="cf-role" value="${escapeAttr(r.role || '')}" placeholder="Клиент, партнёр, поставщик..."></div>
+      <div class="form-group"><label>Дата контакта</label><input id="cf-contact-date" value="${escapeAttr(r.contact_date || '')}" placeholder="дд.мм.гггг"></div>
+      <div class="form-group"><label>Ответственный</label><input id="cf-owner-name" value="${escapeAttr(r.owner_name || '')}" placeholder="Менеджер"></div>
+      <div class="form-group full"><label>Комментарий для менеджера</label><textarea id="cf-manager-comment" rows="3" placeholder="Что важно знать перед звонком...">${escapeHtml(r.manager_comment || '')}</textarea></div>
+      <div class="form-group full"><label>Результат звонка</label><textarea id="cf-call-result" rows="2" placeholder="Что ответил клиент, итоги разговора...">${escapeHtml(r.call_result || '')}</textarea></div>
+      <div class="form-group full"><label>Доп. заметки</label><textarea id="cf-notes" rows="3" placeholder="Комментарии, сильные стороны, условия...">${escapeHtml(r.notes || '')}</textarea></div>
+      <div class="form-group full">
+        <label style="display:flex;align-items:center;gap:10px;">
+          <input id="cf-is-active" type="checkbox" ${r.is_active === false ? '' : 'checked'}>
+          <span>Активная фирма</span>
+        </label>
+      </div>
+    </div>
+    <div id="cf-result" class="sync-result"></div>
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="saveConstructionFirmRecord(${r.id || 'null'})">Сохранить</button>
+    </div>
+  `);
+}
+
+async function saveConstructionFirmRecord(id = null) {
+  const payload = {
+    company_name: document.getElementById('cf-company-name')?.value || '',
+    contact_name: '',
+    public_contact: document.getElementById('cf-public-contact')?.value || '',
+    phone: document.getElementById('cf-phone')?.value || '',
+    email: document.getElementById('cf-email')?.value || '',
+    city: document.getElementById('cf-city')?.value || '',
+    regions: document.getElementById('cf-regions')?.value || '',
+    specialties: document.getElementById('cf-specialties')?.value || '',
+    website: document.getElementById('cf-website')?.value || '',
+    contact_status: document.getElementById('cf-contact-status')?.value || '',
+    priority: document.getElementById('cf-priority')?.value || '',
+    role: document.getElementById('cf-role')?.value || '',
+    manager_comment: document.getElementById('cf-manager-comment')?.value || '',
+    call_result: document.getElementById('cf-call-result')?.value || '',
+    contact_date: document.getElementById('cf-contact-date')?.value || '',
+    owner_name: document.getElementById('cf-owner-name')?.value || '',
+    notes: document.getElementById('cf-notes')?.value || '',
+    is_active: document.getElementById('cf-is-active')?.checked || false,
+  };
+  const result = document.getElementById('cf-result');
+  result.className = 'sync-result show';
+  result.textContent = 'Сохраняю фирму...';
+  try {
+    const path = id ? `/api/construction-firms/${id}` : '/api/construction-firms';
+    const method = id ? 'PUT' : 'POST';
+    await api(path, { method, body: payload });
+    closeModal();
+    navigate('construction-firms');
+  } catch (err) {
+    result.className = 'sync-result show err';
+    result.textContent = `❌ ${err.message}`;
+  }
+}
+
+async function openQuickConstructionFirmCommentModal(id, encodedComment = '') {
+  openModal('Комментарий по строительной фирме', `
+    <div class="form-group full">
+      <label>Последний</label>
+      <div style="font-size:14px;color:#9fd3ff;">${escapeHtml(decodeURIComponent(encodedComment || '')) || '—'}</div>
+    </div>
+    <div class="form-group full">
+      <label>Комментарий после звонка</label>
+      <textarea id="quick-construction-firm-comment" rows="4" placeholder="Напишите короткий результат разговора..."></textarea>
+    </div>
+    <div id="quick-construction-firm-comment-history" class="quick-comment-history"></div>
+    <div id="quick-construction-firm-comment-result" class="sync-result"></div>
+    <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="saveQuickConstructionFirmComment(${id})">Сохранить</button>
+    </div>
+  `);
+  await loadQuickConstructionFirmCommentHistory(id);
+  setTimeout(() => document.getElementById('quick-construction-firm-comment')?.focus(), 50);
+}
+
+async function loadQuickConstructionFirmCommentHistory(id) {
+  const wrap = document.getElementById('quick-construction-firm-comment-history');
+  if (!wrap) return;
+  try {
+    const data = await api(`/api/construction-firms/${id}`);
+    const comments = data.comments || [];
+    wrap.innerHTML = comments.length
+      ? comments.map(item => `
+          <div class="quick-comment-history-item">
+            <div class="quick-comment-history-meta">${formatDateTime(item.created_at)} · ${escapeHtml(item.performed_by || 'manager')}</div>
+            <div>${escapeHtml(item.comment || '')}</div>
+          </div>
+        `).join('')
+      : '<div class="quick-comment-history-empty">Истории комментариев пока нет.</div>';
+  } catch (err) {
+    wrap.innerHTML = `<div class="quick-comment-history-empty">Не удалось загрузить историю: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function saveQuickConstructionFirmComment(id) {
+  const input = document.getElementById('quick-construction-firm-comment');
+  const result = document.getElementById('quick-construction-firm-comment-result');
+  const comment = input?.value?.trim?.() || '';
+  if (!comment) {
+    result.className = 'sync-result show err';
+    result.textContent = '❌ Напишите комментарий.';
+    return;
+  }
+  result.className = 'sync-result show';
+  result.textContent = 'Сохраняю комментарий...';
+  try {
+    await api(`/api/construction-firms/${id}/comments`, {
+      method: 'POST',
+      body: { comment, performed_by: currentRole === 'admin' ? 'admin' : 'manager' },
+    });
+    closeModal();
+    await renderConstructionFirms(document.getElementById('main'));
   } catch (err) {
     result.className = 'sync-result show err';
     result.textContent = `❌ ${err.message}`;
