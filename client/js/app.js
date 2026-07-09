@@ -3671,6 +3671,7 @@ async function openLeadQualificationModal(id) {
         <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:16px;">
           <button type="button" class="btn btn-secondary" onclick="closeModal()">${tireMode ? 'Отмена' : 'Отказ'}</button>
           <button type="button" class="btn btn-secondary" onclick="downloadLeadQualificationViberQuestions(${id})">Скачать вопросы для Viber</button>
+          <button type="button" class="btn btn-secondary" onclick="downloadLeadQualificationTxtBg(${id})">${tireMode ? 'Download BG draft' : 'Скачать BG draft'}</button>
           <button type="button" class="btn btn-secondary" onclick="downloadLeadQualificationTxt(${id})">${tireMode ? 'Download e-mail draft' : 'Скачать e-mail draft'}</button>
           <button type="submit" class="btn btn-primary">${tireMode ? 'Сохранить ответы' : 'Запази отговорите'}</button>
         </div>
@@ -3976,6 +3977,187 @@ function formatLeadQualificationTxt(lead, qualificationData) {
   return lines.join('\n');
 }
 
+function formatLeadQualificationTxtBg(lead, qualificationData) {
+  const clientType = qualificationData.client_type || leadQualificationType(lead, qualificationData);
+  const valueOrDash = (value) => (value === undefined || value === null || value === '' ? '-' : String(value));
+  const yesNo = (value) => (value ? 'Да' : 'Не');
+  const clientTypeLabels = {
+    tire_customer: 'Клиент за гуми / джанти',
+    concrete_object: 'Конкретен обект / проект',
+    construction_company: 'Строителна фирма',
+    distributor: 'Дистрибутор / партньор',
+  };
+  const problemLabels = {
+    active_leaks: 'Активни течове',
+    wall_moisture: 'Влажност по стените',
+    cracks: 'Пукнатини',
+    construction_joints: 'Вода през работни фуги',
+    utility_entries: 'Вода около тръби или кабели',
+    voids_behind_structure: 'Кухини зад конструкцията',
+    structural_strengthening: 'Необходимост от укрепване',
+    other: 'Друг проблем',
+  };
+  const selectValueLabels = {
+    urgent: 'Спешно',
+    '1_2_weeks': 'До 1–2 седмици',
+    within_month: 'До 1 месец',
+    later: 'По-късно',
+    yes: 'Да',
+    no: 'Не',
+    preparing: 'Подготвя се',
+    discuss: 'Да обсъдим условията',
+    pending: 'Предстои',
+    foundation: 'Фундамент',
+    slab: 'Плоча',
+    columns: 'Колони',
+    walls: 'Стени',
+    soil: 'Почва',
+  };
+  const bgFieldLabels = {
+    leak_location: 'Къде точно е течът',
+    leak_when: 'Кога се появява течът',
+    water_behavior: 'Тече ли вода или има само влага',
+    water_flow: 'Какъв е приблизителният дебит',
+    leak_zone_length: 'Дължина на зоната на теча',
+    photo_video: 'Има ли снимки / видео',
+    moisture_pattern: 'Влагата тръгва ли отдолу нагоре или е по цялата стена',
+    wet_length: 'Дължина на влажната зона',
+    wet_height: 'Височина на влажната зона',
+    white_salts: 'Има ли бял налеп (соли)',
+    mold: 'Има ли мухъл',
+    wall_material: 'Материал на стената',
+    inside_or_outside: 'Отвътре или отвън',
+    crack_location: 'Къде са пукнатините',
+    crack_length: 'Дължина на пукнатината',
+    crack_width: 'Ширина на пукнатината',
+    crack_water: 'Суха ли е пукнатината или минава вода',
+    crack_growing: 'Пукнатините увеличават ли се',
+    crack_count: 'Приблизителен брой пукнатини',
+    crack_photos: 'Има ли снимки',
+    joint_location: 'Къде е разположена фугата',
+    joint_length: 'Дължина на фугата',
+    joint_water_when: 'Водата минава ли постоянно или само при дъжд',
+    joint_pressure: 'Има ли водно налягане',
+    joint_repaired_before: 'Правен ли е ремонт преди',
+    entry_type: 'Тръба или кабел',
+    entry_diameter: 'Диаметър на прохода',
+    entry_leak_path: 'Откъде точно минава водата',
+    entry_count: 'Брой проходи',
+    entry_constant_leak: 'Има ли постоянен теч',
+    void_location: 'Къде се намират кухините',
+    void_reason: 'Защо смятате, че има кухини',
+    void_settlement: 'Има ли слягане',
+    void_cracks: 'Има ли пукнатини',
+    void_volume: 'Ориентировъчен обем',
+    void_geology: 'Има ли геология',
+    strengthening_target: 'Какво трябва да се укрепи',
+    strengthening_reason: 'Защо е необходимо укрепване',
+    engineer_report: 'Има ли инженерно становище',
+    strengthening_settlement: 'Има ли слягане',
+    strengthening_area: 'Размер на участъка',
+    other_problem_description: 'Описание на проблема',
+    other_problem_location: 'Локация на проблема',
+    other_problem_dimensions: 'Размери на засегнатата зона',
+    other_problem_started: 'Кога е започнал проблемът',
+    other_problem_now: 'Какво се случва в момента',
+    other_problem_photos: 'Има ли снимки',
+    construction_type: 'Тип конструкция',
+    construction_material: 'Материал на конструкцията',
+    zone_length: 'Дължина на проблемната зона',
+    zone_width: 'Ширина на проблемната зона',
+    zone_depth: 'Дълбочина на проблемната зона',
+    external_access: 'Има ли достъп отвън',
+    internal_access: 'Има ли достъп отвътре',
+    repair_timing: 'Кога е необходим ремонтът / доставката',
+    has_photos: 'Има ли снимки',
+    has_drawings: 'Има ли чертежи',
+    has_video: 'Има ли видео',
+    executor: 'Кой ще изпълнява работата',
+  };
+  const bgFieldValue = (fieldId, value) => {
+    if (value === undefined || value === null || value === '') return '-';
+    return selectValueLabels[String(value)] || String(value);
+  };
+  const subject = `BODEX технически бриф${lead.company_name ? `: ${lead.company_name}` : ''}`;
+  const lines = [
+    `Subject: ${subject}`,
+    '',
+    'Здравейте,',
+    '',
+    'Изпращаме техническия бриф, попълнен от мениджъра по нов клиентски запитване.',
+    '',
+    `Тип клиент: ${valueOrDash(clientTypeLabels[clientType] || lead.company_type || clientType)}`,
+    ''
+  ];
+
+  if (clientType === 'tire_customer') {
+    lines.push(
+      'Събрана информация:',
+      `1. Автомобил: ${valueOrDash(qualificationData.vehicle)}`,
+      `2. Размер гуми: ${valueOrDash(qualificationData.tire_size)}`,
+      `3. Тип гуми: ${valueOrDash(qualificationData.tire_type)}`,
+      `4. Предпочитана марка: ${valueOrDash(qualificationData.preferred_brand)}`,
+      `5. Брой / джанти: ${valueOrDash(qualificationData.quantity_and_rims)}`,
+      `Достатъчно информация за оферта: ${yesNo(qualificationData.manual_complete)}`
+    );
+  } else if (clientType === 'concrete_object') {
+    const problemType = qualificationData.problem_type || qualificationData.problems?.[0] || '';
+    const problemDetails = qualificationData.problem_details || {};
+    const commonDetails = qualificationData.common_details || {};
+    lines.push(
+      `Основен проблем: ${valueOrDash(problemLabels[problemType] || objectQualificationLabel(problemType) || problemType)}`,
+      ''
+    );
+    const problemConfig = OBJECT_QUALIFICATION_PROBLEM_FIELDS[problemType];
+    if (problemConfig?.fields?.length) {
+      lines.push('Отговори по конкретния проблем:');
+      problemConfig.fields.forEach(field => {
+        lines.push(`- ${bgFieldLabels[field.id] || field.label}: ${bgFieldValue(field.id, problemDetails[field.id])}`);
+      });
+      lines.push('');
+    }
+    lines.push('Общи задължителни данни:');
+    OBJECT_QUALIFICATION_COMMON_FIELDS.forEach(field => {
+      lines.push(`- ${bgFieldLabels[field.id] || field.label}: ${bgFieldValue(field.id, commonDetails[field.id])}`);
+    });
+    lines.push(
+      '',
+      `Достатъчно информация за оферта: ${yesNo(qualificationData.manual_complete)}`
+    );
+  } else if (clientType === 'construction_company') {
+    lines.push(
+      'Събрана информация:',
+      `1. Интерес към материали: ${valueOrDash(qualificationData.materials_interest)}`,
+      `2. Обект / приложение: ${valueOrDash(qualificationData.application_type)}`,
+      `3. Ориентировъчни количества: ${valueOrDash(qualificationData.quantities)}`,
+      `4. Срок за доставка: ${bgFieldValue('delivery_timing', qualificationData.delivery_timing)}`,
+      `5. Количествена сметка / спецификация: ${bgFieldValue('has_specification', qualificationData.has_specification)}`,
+      `Достатъчно информация за оферта: ${yesNo(qualificationData.manual_complete)}`
+    );
+  } else if (clientType === 'distributor') {
+    lines.push(
+      'Събрана информация:',
+      `1. Регион / град: ${valueOrDash(qualificationData.region)}`,
+      `2. Текущи продукти / марки: ${valueOrDash(qualificationData.current_products)}`,
+      `3. Склад / търговски екип: ${valueOrDash(qualificationData.warehouse_team)}`,
+      `4. Обеми на продажби: ${valueOrDash(qualificationData.sales_volume)}`,
+      `5. Интерес към партньорство: ${bgFieldValue('partnership_interest', qualificationData.partnership_interest)}`,
+      `Достатъчно информация за оферта: ${yesNo(qualificationData.manual_complete)}`
+    );
+  } else {
+    lines.push(`Тип бриф: ${valueOrDash(clientType)}`);
+    lines.push(JSON.stringify(qualificationData, null, 2));
+  }
+
+  lines.push(
+    '',
+    'Поздрави,',
+    'BODEX Virtual Office'
+  );
+
+  return lines.join('\n');
+}
+
 function formatLeadQualificationQuestionsForViber(lead, qualificationData) {
   const clientType = qualificationData.client_type || leadQualificationType(lead, qualificationData);
   const bgProblemLabels = {
@@ -4154,6 +4336,40 @@ async function downloadLeadQualificationTxt(id) {
     if (result) {
       result.className = 'sync-result show err';
       result.textContent = 'Ошибка загрузки e-mail draft: ' + err.message;
+    }
+  }
+}
+
+async function downloadLeadQualificationTxtBg(id) {
+  const result = document.getElementById('qualification-result');
+  try {
+    const data = await api(`/api/leads/${id}`);
+    const lead = data.lead || {};
+    let qualificationData = {};
+    const form = document.getElementById('lead-qualification-form');
+    if (form) {
+      qualificationData = collectLeadQualificationFormData();
+    } else {
+      qualificationData = leadQualificationData(lead);
+    }
+    const content = formatLeadQualificationTxtBg(lead, qualificationData);
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `lead-${id}-bg-draft.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    if (result) {
+      result.className = 'sync-result show ok';
+      result.textContent = 'BG draft downloaded.';
+    }
+  } catch (err) {
+    if (result) {
+      result.className = 'sync-result show err';
+      result.textContent = 'Грешка при изтегляне на BG draft: ' + err.message;
     }
   }
 }
