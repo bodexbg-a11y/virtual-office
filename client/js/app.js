@@ -4087,6 +4087,13 @@ function formatLeadQualificationTxtBg(lead, qualificationData) {
     'Изпращаме техническия бриф, попълнен от мениджъра по нов клиентски запитване.',
     '',
     `Тип клиент: ${valueOrDash(clientTypeLabels[clientType] || lead.company_type || clientType)}`,
+    '',
+    'Контактни данни:',
+    `- Фирма: ${valueOrDash(lead.company_name)}`,
+    `- Контактно лице: ${valueOrDash(lead.contact_name)}`,
+    `- Телефон: ${valueOrDash(lead.phone)}`,
+    `- E-mail: ${valueOrDash(lead.email)}`,
+    `- Град: ${valueOrDash(lead.city)}`,
     ''
   ];
 
