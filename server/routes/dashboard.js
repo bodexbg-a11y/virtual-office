@@ -10,10 +10,11 @@ const DEAL_STAGES = [
   { id: 'catalog_sent', label: 'Каталог / презентация', short: 'Каталог' },
   { id: 'thinking', label: 'Думают', short: 'Думают' },
   { id: 'offer_sent', label: 'Коммерческое предложение', short: 'КП' },
+  { id: 'invoice_sent', label: 'Invoice отправлен', short: 'Invoice' },
   { id: 'negotiation', label: 'Переговоры', short: 'Переговоры' },
   { id: 'office_meeting', label: 'Встреча в офисе', short: 'Встреча' },
   { id: 'contract', label: 'Договор', short: 'Договор' },
-  { id: 'purchase', label: 'Закупка', short: 'Закупка' },
+  { id: 'purchase', label: 'Оплата получена', short: 'Оплата' },
   { id: 'won', label: 'Закрыто успешно', short: 'Закрыто' },
   { id: 'lost', label: 'Отказ / неактуально', short: 'Отказ' },
 ];
@@ -206,7 +207,7 @@ async function workerData() {
     SELECT
       COUNT(*) as total,
       SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_leads,
-      SUM(CASE WHEN status IN ('interested','catalog_sent','thinking','offer_sent','negotiation','office_meeting','contract','purchase','contacted','qualified','needs_discovery','details','offer_preparation','partner_qualification','partner_negotiation','partner_meeting','partner_terms_sent','partner_test_order') THEN 1 ELSE 0 END) as active,
+      SUM(CASE WHEN status IN ('interested','catalog_sent','thinking','offer_sent','invoice_sent','negotiation','office_meeting','contract','purchase','contacted','qualified','needs_discovery','details','offer_preparation','partner_qualification','partner_negotiation','partner_meeting','partner_terms_sent','partner_test_order') THEN 1 ELSE 0 END) as active,
       COALESCE(SUM(CASE WHEN status != 'lost' THEN estimated_value ELSE 0 END), 0) as pipeline
     FROM leads
   `);
@@ -532,9 +533,11 @@ function classifyDeal(row) {
   ].join(' '));
 
   if (matchAny(text, [/отказ/, /(^|[\s|,;:/-])не\s+актуал/, /(^|[\s|,;:/-])не\s+интерес/, /неинтерес/, /(^|[\s|,;:/-])нет\s+интерес/, /refus/, /lost/, /cancel/])) return 'lost';
-  if (matchAny(text, [/закрыт/, /заключен/, /подписан/, /оплат/, /купил/, /купув/, /спечел/, /won/, /договор\s+подпис/])) return 'won';
+  if (matchAny(text, [/закрыт/, /заключен/, /подписан/, /купил/, /купув/, /спечел/, /won/, /договор\s+подпис/])) return 'won';
+  if (matchAny(text, [/оплат/, /payment/, /paid/, /получ.*оплат/])) return 'purchase';
   if (matchAny(text, [/закуп/, /готовы\s+закуп/, /готови\s+да\s+куп/])) return 'purchase';
-  if (matchAny(text, [/договор/, /contract/, /фактур/, /invoice/])) return 'contract';
+  if (matchAny(text, [/фактур/, /invoice/, /инвойс/])) return 'invoice_sent';
+  if (matchAny(text, [/договор/, /contract/])) return 'contract';
   if (matchAny(text, [/встреч.*офис/, /офис.*встреч/, /срещ.*офис/, /офис.*срещ/, /meeting.*office/, /office.*meeting/])) return 'office_meeting';
   if (matchAny(text, [/переговор/, /жд[уе]т\s+цен/, /ожида.*цен/, /встреч/, /срещ/, /meeting/, /цена/, /оферт.*обсуж/])) return 'negotiation';
   if (matchAny(text, [/коммерческ/, /предложен/, /\bкп\b/, /оферт/, /proposal/, /quote/])) return 'offer_sent';
@@ -552,10 +555,11 @@ function nextDealAction(stageId, row) {
     catalog_sent: 'Проверить, посмотрел ли клиент каталог / презентацию',
     thinking: 'Дать короткий follow-up и зафиксировать следующий срок ответа',
     offer_sent: 'Дожать обратную связь по коммерческому предложению',
+    invoice_sent: 'Проверить инвойс и дожать оплату',
     negotiation: 'Уточнить цену, срок поставки и следующий шаг',
     office_meeting: 'Подготовить и провести встречу в офисе',
     contract: 'Подготовить договор, реквизиты и условия оплаты',
-    purchase: 'Довести до оплаты, поставки и закрытия заказа',
+    purchase: 'Подтвердить получение оплаты и переход к закрытию',
     won: 'Зафиксировать результат и запросить повторный заказ',
     lost: 'Оставить причину отказа и дату возможного возврата',
   };
@@ -569,6 +573,7 @@ function leadStatusFromDealStage(stageId) {
     catalog_sent: 'catalog_sent',
     thinking: 'thinking',
     offer_sent: 'offer_sent',
+    invoice_sent: 'invoice_sent',
     negotiation: 'negotiation',
     office_meeting: 'office_meeting',
     contract: 'contract',
@@ -645,7 +650,7 @@ async function buildDealsPayload() {
       summary.interested += 1;
       section.summary.interested += 1;
     }
-    if (['catalog_sent', 'offer_sent'].includes(stage.id)) {
+    if (['catalog_sent', 'offer_sent', 'invoice_sent'].includes(stage.id)) {
       summary.catalog_or_offer += 1;
       section.summary.catalog_or_offer += 1;
     }
@@ -711,6 +716,7 @@ function normalizeDealStage(status) {
     partner_negotiation: 'negotiation',
     partner_meeting: 'office_meeting',
     partner_terms_sent: 'offer_sent',
+    invoice_sent: 'invoice_sent',
     partner_test_order: 'purchase',
     partner_active: 'won',
   };
@@ -735,7 +741,7 @@ router.get('/stats', async (req, res) => {
       SELECT
         COUNT(*) as total_leads,
         SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_leads,
-        SUM(CASE WHEN status IN ('interested','catalog_sent','thinking','offer_sent','negotiation','office_meeting','contract','purchase','contacted','qualified','needs_discovery','details','offer_preparation','partner_qualification','partner_negotiation','partner_meeting','partner_terms_sent','partner_test_order') THEN 1 ELSE 0 END) as active_leads,
+        SUM(CASE WHEN status IN ('interested','catalog_sent','thinking','offer_sent','invoice_sent','negotiation','office_meeting','contract','purchase','contacted','qualified','needs_discovery','details','offer_preparation','partner_qualification','partner_negotiation','partner_meeting','partner_terms_sent','partner_test_order') THEN 1 ELSE 0 END) as active_leads,
         SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) as won_deals,
         SUM(CASE WHEN date(created_at) = CURRENT_DATE THEN 1 ELSE 0 END) as today_leads,
         COALESCE(SUM(CASE WHEN status != 'lost' THEN estimated_value ELSE 0 END), 0) as pipeline_value,

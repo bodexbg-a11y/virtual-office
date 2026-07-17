@@ -24,7 +24,7 @@ let bulkPingQueueIndex = 0;
 let bulkPingQueueChannel = '';
 let currentLeadRowsForExport = [];
 let currentLeadContractors = [];
-const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
+const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'invoice_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
 const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
 const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
 const GMAIL_SENDERS = [
@@ -1799,6 +1799,7 @@ function dealBadgeClass(stageId) {
     catalog_sent: 'contacted',
     thinking: 'high',
     offer_sent: 'offer_sent',
+    invoice_sent: 'offer_sent',
     negotiation: 'negotiation',
     office_meeting: 'qualified',
     contract: 'won',
@@ -2297,6 +2298,7 @@ function leadStatusTabStyle(status, active) {
     needs_discovery: ['rgba(251,191,36,0.12)', '#f6d365', 'rgba(251,191,36,0.32)'],
     offer_preparation: ['rgba(59,130,246,0.12)', '#7dc4ff', 'rgba(59,130,246,0.32)'],
     offer_sent: ['rgba(167,139,250,0.12)', '#c4b5fd', 'rgba(167,139,250,0.32)'],
+    invoice_sent: ['rgba(250,204,21,0.12)', '#fde68a', 'rgba(250,204,21,0.32)'],
     negotiation: ['rgba(244,114,182,0.12)', '#f9a8d4', 'rgba(244,114,182,0.32)'],
     office_meeting: ['rgba(45,212,191,0.12)', '#99f6e4', 'rgba(45,212,191,0.32)'],
     contract: ['rgba(34,197,94,0.1)', '#86efac', 'rgba(34,197,94,0.26)'],
@@ -2322,10 +2324,11 @@ function tireStatusLabel(status) {
     needs_discovery: 'Clarify details',
     offer_preparation: 'Prepare offer',
     offer_sent: 'Offer sent',
+    invoice_sent: 'Invoice sent',
     negotiation: 'Negotiation',
     office_meeting: 'Meeting',
     contract: 'Contract approval',
-    purchase: 'Purchase & delivery',
+    purchase: 'Payment received',
     won: 'Won',
     lost: 'Lost / inactive',
   }[status] || statusLabel(status);
@@ -2440,6 +2443,7 @@ function leadDisplayStatus(lead = {}) {
     thinking: 'partner_qualification',
     offer_preparation: 'partner_terms_sent',
     offer_sent: 'partner_terms_sent',
+    invoice_sent: 'partner_test_order',
     negotiation: 'partner_negotiation',
     office_meeting: 'partner_meeting',
     contract: 'partner_test_order',
@@ -6639,6 +6643,7 @@ function projectStatusLabel(status) {
     estimate: 'Оценка стоимости',
     offer_preparation: 'Подбор материалов',
     offer_sent: 'КП отправлено',
+    invoice_sent: 'Invoice отправлен',
     waiting_client: 'Ждём клиента',
     approved: 'Согласовано',
     archived: 'Архив',
@@ -8373,10 +8378,11 @@ function statusLabel(s) {
     thinking: 'Сбор данных',
     offer_preparation: 'Подготовка КП',
     offer_sent: 'КП отправлено',
+    invoice_sent: 'Invoice отправлен',
     negotiation: 'Переговоры',
     office_meeting: 'Встреча',
     contract: 'Договор',
-    purchase: 'Закупка',
+    purchase: 'Оплата получена',
     won: 'Успешно',
     lost: 'Отказ',
     partner_new: 'Новый партнёр',

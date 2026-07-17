@@ -4,7 +4,7 @@ const db = require('../db');
 const googleSheets = require('../services/googleSheets');
 const auth = require('../services/auth');
 const tireColdBaseSeed = require('../data/tire_cold_base_seed.json');
-const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
+const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'invoice_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
 const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
 const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
 const LEGACY_STATUS_MAP = {
@@ -108,6 +108,7 @@ function dealStageFromLeadStatus(status) {
     catalog_sent: 'catalog_sent',
     thinking: 'thinking',
     offer_sent: 'offer_sent',
+    invoice_sent: 'invoice_sent',
     negotiation: 'negotiation',
     office_meeting: 'office_meeting',
     contract: 'contract',
@@ -217,6 +218,7 @@ function normalizeCrmStatus(status, segment = 'objects') {
       needs_discovery: 'partner_qualification',
       offer_preparation: 'partner_terms_sent',
       offer_sent: 'partner_terms_sent',
+      invoice_sent: 'partner_terms_sent',
       negotiation: 'partner_negotiation',
       office_meeting: 'partner_meeting',
       contract: 'partner_test_order',
@@ -713,8 +715,10 @@ function inferStatusFromSheet(row) {
   ].filter(Boolean).join(' ')).toLowerCase().replace(/ё/g, 'е');
 
   if (/отказ|не\s+интерес|неинтерес|нет\s+интерес/.test(text)) return 'lost';
-  if (/закрыт|заключен|спечел|оплат|купил/.test(text)) return 'won';
+  if (/закрыт|заключен|спечел|купил/.test(text)) return 'won';
+  if (/оплат|payment|paid|получ.*оплат/.test(text)) return 'purchase';
   if (/закуп|готов/.test(text)) return 'purchase';
+  if (/invoice|инвойс|фактур/.test(text)) return 'invoice_sent';
   if (/договор|contract/.test(text)) return 'contract';
   if (/встреч.*офис|офис.*встреч|срещ.*офис|офис.*срещ/.test(text)) return 'office_meeting';
   if (/подготов.*(?:кп|оферт|предложен)|расчет|разчет/.test(text)) return 'offer_preparation';
@@ -957,13 +961,14 @@ router.get('/', async (req, res) => {
             WHEN 'thinking' THEN 2
             WHEN 'offer_preparation' THEN 3
             WHEN 'offer_sent' THEN 4
-            WHEN 'negotiation' THEN 5
-            WHEN 'office_meeting' THEN 6
-            WHEN 'contract' THEN 7
-            WHEN 'purchase' THEN 8
-            WHEN 'won' THEN 9
-            WHEN 'lost' THEN 10
-            ELSE 11
+            WHEN 'invoice_sent' THEN 5
+            WHEN 'negotiation' THEN 6
+            WHEN 'office_meeting' THEN 7
+            WHEN 'contract' THEN 8
+            WHEN 'purchase' THEN 9
+            WHEN 'won' THEN 10
+            WHEN 'lost' THEN 11
+            ELSE 12
           END, created_at DESC`
         : `created_at DESC,
           CASE priority
@@ -1203,13 +1208,14 @@ router.get('/stats/pipeline', async (req, res) => {
         WHEN 'thinking' THEN 2
         WHEN 'offer_preparation' THEN 3
         WHEN 'offer_sent' THEN 4
-        WHEN 'negotiation' THEN 5
-        WHEN 'office_meeting' THEN 6
-        WHEN 'contract' THEN 7
-        WHEN 'purchase' THEN 8
-        WHEN 'won' THEN 9
-        WHEN 'lost' THEN 10
-        ELSE 11
+        WHEN 'invoice_sent' THEN 5
+        WHEN 'negotiation' THEN 6
+        WHEN 'office_meeting' THEN 7
+        WHEN 'contract' THEN 8
+        WHEN 'purchase' THEN 9
+        WHEN 'won' THEN 10
+        WHEN 'lost' THEN 11
+        ELSE 12
       END
     `);
 
