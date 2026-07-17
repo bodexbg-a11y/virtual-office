@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const auth = require('../services/auth');
 const productCatalog = require('../services/productCatalog');
+const { ensureWonLeadOperations } = require('../services/orderOperations');
 
 const DEAL_STAGES = [
   { id: 'new', label: 'Новый лид', short: 'Новый' },
@@ -996,6 +997,8 @@ router.patch('/deals/status', async (req, res) => {
         ]);
       }
 
+      if (nextLeadStatus === 'won') await ensureWonLeadOperations(lead.id);
+
       return res.json({ success: true, lead_id: lead.id, stage_id: stage.id, stage_label: stage.label });
     }
 
@@ -1033,6 +1036,7 @@ router.patch('/deals/status', async (req, res) => {
         lead.status,
         nextLeadStatus,
       ]);
+      if (nextLeadStatus === 'won') await ensureWonLeadOperations(lead.id);
     }
 
     res.json({ success: true, sheet_name, row_number, stage_id: stage.id, stage_label: stage.label });

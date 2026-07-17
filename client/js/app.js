@@ -7511,8 +7511,8 @@ async function renderLogistics(el) {
 
     <div class="stats-grid fade-in">
       <div class="stat-card"><div class="stat-label">Всего</div><div class="stat-value">${summary.total || 0}</div></div>
-      <div class="stat-card"><div class="stat-label">Запланировано</div><div class="stat-value blue">${summary.planned || 0}</div></div>
-      <div class="stat-card"><div class="stat-label">В пути</div><div class="stat-value yellow">${summary.in_transit || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">На упаковке</div><div class="stat-value blue">${summary.planned || 0}</div></div>
+      <div class="stat-card"><div class="stat-label">В службе доставки</div><div class="stat-value yellow">${summary.in_transit || 0}</div></div>
       <div class="stat-card"><div class="stat-label">Доставлено</div><div class="stat-value green">${summary.delivered || 0}</div></div>
     </div>
 
@@ -7638,7 +7638,7 @@ async function renderPayments(el) {
               <tr>
                 <td style="font-weight:700;color:#ddd;">${r.client_name || r.lead_company_name || '—'}<div style="font-size:11px;color:#777;">${r.offer_number || ''}</div></td>
                 <td>${r.invoice_number || '—'}</td>
-                <td>${Number(r.amount || 0).toLocaleString()} ${r.currency || 'EUR'}</td>
+                <td>${r.amount === null || r.amount === undefined ? '—' : `${Number(r.amount).toLocaleString()} ${r.currency || 'EUR'}`}</td>
                 <td><div>${r.due_date || '—'}</div><div style="font-size:11px;color:#777;">${r.paid_date ? `Оплачено: ${r.paid_date}` : ''}</div></td>
                 <td><span class="badge badge-${r.status === 'paid' ? 'won' : r.status === 'overdue' ? 'lost' : r.status === 'sent' ? 'catalog_sent' : 'thinking'}">${paymentStatusLabel(r.status)}</span></td>
                 <td><button class="btn btn-secondary btn-sm" onclick='openPaymentModal(${JSON.stringify(leads).replace(/'/g, "&apos;")}, ${JSON.stringify(offers).replace(/'/g, "&apos;")}, ${JSON.stringify(r).replace(/'/g, "&apos;")})'>Редактировать</button></td>
@@ -8410,8 +8410,8 @@ function sourceLabel(s) {
 
 function logisticsStatusLabel(status) {
   const map = {
-    planned: 'Запланировано',
-    in_transit: 'В пути',
+    planned: 'Отправлено на упаковку',
+    in_transit: 'Передано в службу доставки',
     delivered: 'Доставлено',
   };
   return map[status] || status || '—';

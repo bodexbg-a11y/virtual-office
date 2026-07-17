@@ -2,55 +2,12 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../services/auth');
 const db = require('../db');
+const {
+  ensureOpsTables,
+  syncWonLeadOperations,
+} = require('../services/orderOperations');
 
 router.use(auth.requireAdmin);
-
-async function ensureOpsTables() {
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS logistics_records (
-      id SERIAL PRIMARY KEY,
-      lead_id INTEGER REFERENCES leads(id) ON DELETE SET NULL,
-      client_name TEXT NOT NULL,
-      delivery_city TEXT,
-      transport_company TEXT,
-      vehicle_number TEXT,
-      driver_name TEXT,
-      transport_note_number TEXT,
-      tracking_number TEXT,
-      planned_date DATE,
-      delivered_date DATE,
-      status TEXT DEFAULT 'planned',
-      notes TEXT,
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_logistics_lead_id ON logistics_records(lead_id);
-    CREATE INDEX IF NOT EXISTS idx_logistics_status ON logistics_records(status);
-    CREATE INDEX IF NOT EXISTS idx_logistics_planned_date ON logistics_records(planned_date);
-
-    CREATE TABLE IF NOT EXISTS payment_records (
-      id SERIAL PRIMARY KEY,
-      lead_id INTEGER REFERENCES leads(id) ON DELETE SET NULL,
-      offer_id INTEGER REFERENCES offers(id) ON DELETE SET NULL,
-      client_name TEXT NOT NULL,
-      invoice_number TEXT,
-      amount NUMERIC(12,2) DEFAULT 0,
-      currency TEXT DEFAULT 'EUR',
-      issue_date DATE,
-      due_date DATE,
-      paid_date DATE,
-      status TEXT DEFAULT 'draft',
-      payment_method TEXT,
-      notes TEXT,
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_payments_lead_id ON payment_records(lead_id);
-    CREATE INDEX IF NOT EXISTS idx_payments_offer_id ON payment_records(offer_id);
-    CREATE INDEX IF NOT EXISTS idx_payments_status ON payment_records(status);
-    CREATE INDEX IF NOT EXISTS idx_payments_due_date ON payment_records(due_date);
-  `);
-}
 
 router.get('/goals', async (req, res) => {
   try {
@@ -251,7 +208,7 @@ router.get('/weekly-report', async (req, res) => {
 
 router.get('/logistics', async (req, res) => {
   try {
-    await ensureOpsTables();
+    await syncWonLeadOperations();
     const rows = await db.all(`
       SELECT
         lr.*,
@@ -365,7 +322,7 @@ router.put('/logistics/:id', async (req, res) => {
 
 router.get('/payments', async (req, res) => {
   try {
-    await ensureOpsTables();
+    await syncWonLeadOperations();
     const rows = await db.all(`
       SELECT
         pr.*,

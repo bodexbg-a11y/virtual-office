@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const googleSheets = require('../services/googleSheets');
 const auth = require('../services/auth');
+const { ensureWonLeadOperations } = require('../services/orderOperations');
 const tireColdBaseSeed = require('../data/tire_cold_base_seed.json');
 const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'invoice_sent', 'purchase', 'won', 'lost'];
 const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
@@ -1689,6 +1690,10 @@ router.put('/:id', async (req, res) => {
     `, params);
 
     const updated = updatedRes.rows[0];
+
+    if (updated.status === 'won') {
+      await ensureWonLeadOperations(updated);
+    }
 
     if (b.status && b.status !== old.status) {
       await db.query(`
