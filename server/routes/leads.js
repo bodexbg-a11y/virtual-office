@@ -4,7 +4,7 @@ const db = require('../db');
 const googleSheets = require('../services/googleSheets');
 const auth = require('../services/auth');
 const tireColdBaseSeed = require('../data/tire_cold_base_seed.json');
-const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'invoice_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
+const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'invoice_sent', 'purchase', 'won', 'lost'];
 const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
 const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
 const LEGACY_STATUS_MAP = {
@@ -14,6 +14,8 @@ const LEGACY_STATUS_MAP = {
   interested: 'needs_discovery',
   catalog_sent: 'needs_discovery',
   thinking: 'needs_discovery',
+  office_meeting: 'negotiation',
+  contract: 'negotiation',
 };
 
 async function ensureLeadSheetColumns() {
@@ -99,25 +101,23 @@ async function ensureIgnoredFacebookLeads() {
 function dealStageFromLeadStatus(status) {
   const map = {
     new: 'new',
-    contacted: 'interested',
-    needs_discovery: 'interested',
-    details: 'interested',
-    offer_preparation: 'offer_sent',
-    interested: 'interested',
-    qualified: 'interested',
-    catalog_sent: 'catalog_sent',
-    thinking: 'thinking',
+    contacted: 'needs_discovery',
+    needs_discovery: 'needs_discovery',
+    details: 'needs_discovery',
+    offer_preparation: 'offer_preparation',
+    interested: 'needs_discovery',
+    qualified: 'needs_discovery',
+    catalog_sent: 'needs_discovery',
+    thinking: 'needs_discovery',
     offer_sent: 'offer_sent',
-    invoice_sent: 'invoice_sent',
     negotiation: 'negotiation',
-    office_meeting: 'office_meeting',
-    contract: 'contract',
+    invoice_sent: 'invoice_sent',
     purchase: 'purchase',
     won: 'won',
     partner_new: 'new',
-    partner_qualification: 'interested',
+    partner_qualification: 'needs_discovery',
     partner_negotiation: 'negotiation',
-    partner_meeting: 'office_meeting',
+    partner_meeting: 'negotiation',
     partner_terms_sent: 'offer_sent',
     partner_test_order: 'purchase',
     partner_active: 'won',
@@ -719,8 +719,8 @@ function inferStatusFromSheet(row) {
   if (/оплат|payment|paid|получ.*оплат/.test(text)) return 'purchase';
   if (/закуп|готов/.test(text)) return 'purchase';
   if (/invoice|инвойс|фактур/.test(text)) return 'invoice_sent';
-  if (/договор|contract/.test(text)) return 'contract';
-  if (/встреч.*офис|офис.*встреч|срещ.*офис|офис.*срещ/.test(text)) return 'office_meeting';
+  if (/договор|contract/.test(text)) return 'negotiation';
+  if (/встреч.*офис|офис.*встреч|срещ.*офис|офис.*срещ/.test(text)) return 'negotiation';
   if (/подготов.*(?:кп|оферт|предложен)|расчет|разчет/.test(text)) return 'offer_preparation';
   if (/коммерческ|оферт|предложен|\bкп\b/.test(text)) return 'offer_sent';
   if (/встреч|срещ|дума|цена|жд[уе]т|ответит/.test(text)) return 'negotiation';
@@ -961,14 +961,12 @@ router.get('/', async (req, res) => {
             WHEN 'thinking' THEN 2
             WHEN 'offer_preparation' THEN 3
             WHEN 'offer_sent' THEN 4
-            WHEN 'invoice_sent' THEN 5
-            WHEN 'negotiation' THEN 6
-            WHEN 'office_meeting' THEN 7
-            WHEN 'contract' THEN 8
-            WHEN 'purchase' THEN 9
-            WHEN 'won' THEN 10
-            WHEN 'lost' THEN 11
-            ELSE 12
+            WHEN 'negotiation' THEN 5
+            WHEN 'invoice_sent' THEN 6
+            WHEN 'purchase' THEN 7
+            WHEN 'won' THEN 8
+            WHEN 'lost' THEN 9
+            ELSE 10
           END, created_at DESC`
         : `created_at DESC,
           CASE priority
@@ -1208,14 +1206,12 @@ router.get('/stats/pipeline', async (req, res) => {
         WHEN 'thinking' THEN 2
         WHEN 'offer_preparation' THEN 3
         WHEN 'offer_sent' THEN 4
-        WHEN 'invoice_sent' THEN 5
-        WHEN 'negotiation' THEN 6
-        WHEN 'office_meeting' THEN 7
-        WHEN 'contract' THEN 8
-        WHEN 'purchase' THEN 9
-        WHEN 'won' THEN 10
-        WHEN 'lost' THEN 11
-        ELSE 12
+        WHEN 'negotiation' THEN 5
+        WHEN 'invoice_sent' THEN 6
+        WHEN 'purchase' THEN 7
+        WHEN 'won' THEN 8
+        WHEN 'lost' THEN 9
+        ELSE 10
       END
     `);
 
@@ -1889,10 +1885,11 @@ async function normalizeLegacyLeadStatuses() {
             ELSE status
           END
           WHEN status IN ('contacted', 'qualified', 'interested', 'catalog_sent', 'thinking', 'details') THEN 'needs_discovery'
+          WHEN status IN ('office_meeting', 'contract') THEN 'negotiation'
           ELSE status
         END,
         updated_at = NOW()
-    WHERE status IN ('contacted', 'qualified', 'interested', 'catalog_sent', 'thinking', 'details')
+    WHERE status IN ('contacted', 'qualified', 'interested', 'catalog_sent', 'thinking', 'details', 'office_meeting', 'contract')
        OR (crm_segment = 'distributor' AND status NOT IN ('partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'))
   `);
 }

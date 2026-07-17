@@ -24,7 +24,7 @@ let bulkPingQueueIndex = 0;
 let bulkPingQueueChannel = '';
 let currentLeadRowsForExport = [];
 let currentLeadContractors = [];
-const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'invoice_sent', 'negotiation', 'office_meeting', 'contract', 'purchase', 'won', 'lost'];
+const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'invoice_sent', 'purchase', 'won', 'lost'];
 const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
 const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
 const GMAIL_SENDERS = [
@@ -2324,10 +2324,8 @@ function tireStatusLabel(status) {
     needs_discovery: 'Clarify details',
     offer_preparation: 'Prepare offer',
     offer_sent: 'Offer sent',
-    invoice_sent: 'Invoice sent',
     negotiation: 'Negotiation',
-    office_meeting: 'Meeting',
-    contract: 'Contract approval',
+    invoice_sent: 'Invoice sent',
     purchase: 'Payment received',
     won: 'Won',
     lost: 'Lost / inactive',
@@ -2428,7 +2426,11 @@ function leadDisplayStatus(lead = {}) {
     catalog_sent: 'needs_discovery',
     thinking: 'needs_discovery',
   };
-  const objectStatus = legacyObject[status] || status || 'new';
+  const retiredObject = {
+    office_meeting: 'negotiation',
+    contract: 'negotiation',
+  };
+  const objectStatus = retiredObject[status] || legacyObject[status] || status || 'new';
   if (!isDistributorLead(lead)) {
     return OBJECT_CRM_STAGES.includes(objectStatus) ? objectStatus : 'new';
   }
@@ -2443,10 +2445,10 @@ function leadDisplayStatus(lead = {}) {
     thinking: 'partner_qualification',
     offer_preparation: 'partner_terms_sent',
     offer_sent: 'partner_terms_sent',
-    invoice_sent: 'partner_test_order',
     negotiation: 'partner_negotiation',
     office_meeting: 'partner_meeting',
     contract: 'partner_test_order',
+    invoice_sent: 'partner_test_order',
     purchase: 'partner_test_order',
     won: 'partner_active',
     lost: 'lost',
@@ -5783,6 +5785,10 @@ function bulkPingTemplateForStatus(status = 'needs_discovery') {
       'Свързваме се, за да продължим обсъждането на условията.',
       'Готови сме да уточним финалната цена, количеството, доставката и срока за изпълнение.',
     ],
+    invoice_sent: [
+      'Изпратихме Ви фактурата за договорената поръчка.',
+      'Моля, потвърдете получаването и ни уведомете, ако е необходима допълнителна информация за плащането.',
+    ],
     office_meeting: [
       'Потвърждаваме интереса към среща в офиса.',
       'Моля, предложете удобни дата и час, за да подготвим материалите и конкретните условия за обсъждане.',
@@ -8378,10 +8384,8 @@ function statusLabel(s) {
     thinking: 'Сбор данных',
     offer_preparation: 'Подготовка КП',
     offer_sent: 'КП отправлено',
-    invoice_sent: 'Invoice отправлен',
     negotiation: 'Переговоры',
-    office_meeting: 'Встреча',
-    contract: 'Договор',
+    invoice_sent: 'Invoice отправлен',
     purchase: 'Оплата получена',
     won: 'Успешно',
     lost: 'Отказ',

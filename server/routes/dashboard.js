@@ -6,14 +6,11 @@ const productCatalog = require('../services/productCatalog');
 
 const DEAL_STAGES = [
   { id: 'new', label: 'Новый лид', short: 'Новый' },
-  { id: 'interested', label: 'Интерес / горячий', short: 'Интерес' },
-  { id: 'catalog_sent', label: 'Каталог / презентация', short: 'Каталог' },
-  { id: 'thinking', label: 'Думают', short: 'Думают' },
-  { id: 'offer_sent', label: 'Коммерческое предложение', short: 'КП' },
-  { id: 'invoice_sent', label: 'Invoice отправлен', short: 'Invoice' },
+  { id: 'needs_discovery', label: 'Сбор данных', short: 'Данные' },
+  { id: 'offer_preparation', label: 'Подготовка КП', short: 'Подготовка' },
+  { id: 'offer_sent', label: 'КП отправлено', short: 'КП' },
   { id: 'negotiation', label: 'Переговоры', short: 'Переговоры' },
-  { id: 'office_meeting', label: 'Встреча в офисе', short: 'Встреча' },
-  { id: 'contract', label: 'Договор', short: 'Договор' },
+  { id: 'invoice_sent', label: 'Invoice отправлен', short: 'Invoice' },
   { id: 'purchase', label: 'Оплата получена', short: 'Оплата' },
   { id: 'won', label: 'Закрыто успешно', short: 'Закрыто' },
   { id: 'lost', label: 'Отказ / неактуально', short: 'Отказ' },
@@ -537,13 +534,12 @@ function classifyDeal(row) {
   if (matchAny(text, [/оплат/, /payment/, /paid/, /получ.*оплат/])) return 'purchase';
   if (matchAny(text, [/закуп/, /готовы\s+закуп/, /готови\s+да\s+куп/])) return 'purchase';
   if (matchAny(text, [/фактур/, /invoice/, /инвойс/])) return 'invoice_sent';
-  if (matchAny(text, [/договор/, /contract/])) return 'contract';
-  if (matchAny(text, [/встреч.*офис/, /офис.*встреч/, /срещ.*офис/, /офис.*срещ/, /meeting.*office/, /office.*meeting/])) return 'office_meeting';
+  if (matchAny(text, [/договор/, /contract/])) return 'negotiation';
+  if (matchAny(text, [/встреч.*офис/, /офис.*встреч/, /срещ.*офис/, /офис.*срещ/, /meeting.*office/, /office.*meeting/])) return 'negotiation';
   if (matchAny(text, [/переговор/, /жд[уе]т\s+цен/, /ожида.*цен/, /встреч/, /срещ/, /meeting/, /цена/, /оферт.*обсуж/])) return 'negotiation';
+  if (matchAny(text, [/подготов.*(?:кп|оферт|предложен)/, /расчет/, /разчет/])) return 'offer_preparation';
   if (matchAny(text, [/коммерческ/, /предложен/, /\bкп\b/, /оферт/, /proposal/, /quote/])) return 'offer_sent';
-  if (matchAny(text, [/дума/, /посмотрит/, /смотрит/, /чакат/, /ожида/, /повторить/, /follow/, /ответит/])) return 'thinking';
-  if (matchAny(text, [/каталог/, /презентац/, /presentation/, /catalog/])) return 'catalog_sent';
-  if (matchAny(text, [/очень\s+интерес/, /заинтерес/, /интерес/, /hot/, /high/, /средн/])) return 'interested';
+  if (matchAny(text, [/дума/, /посмотрит/, /смотрит/, /чакат/, /ожида/, /повторить/, /follow/, /ответит/, /каталог/, /презентац/, /presentation/, /catalog/, /очень\s+интерес/, /заинтерес/, /интерес/, /hot/, /high/, /средн/])) return 'needs_discovery';
   return 'new';
 }
 
@@ -551,14 +547,11 @@ function nextDealAction(stageId, row) {
   if (row.action_needed) return row.action_needed;
   const byStage = {
     new: 'Уточнить потребность и заполнить интерес / контекст',
-    interested: 'Связаться сегодня, понять объект и нужные материалы',
-    catalog_sent: 'Проверить, посмотрел ли клиент каталог / презентацию',
-    thinking: 'Дать короткий follow-up и зафиксировать следующий срок ответа',
+    needs_discovery: 'Собрать данные по объекту, материалам, объёму и срокам',
+    offer_preparation: 'Подготовить и проверить коммерческое предложение',
     offer_sent: 'Дожать обратную связь по коммерческому предложению',
     invoice_sent: 'Проверить инвойс и дожать оплату',
     negotiation: 'Уточнить цену, срок поставки и следующий шаг',
-    office_meeting: 'Подготовить и провести встречу в офисе',
-    contract: 'Подготовить договор, реквизиты и условия оплаты',
     purchase: 'Подтвердить получение оплаты и переход к закрытию',
     won: 'Зафиксировать результат и запросить повторный заказ',
     lost: 'Оставить причину отказа и дату возможного возврата',
@@ -569,14 +562,16 @@ function nextDealAction(stageId, row) {
 function leadStatusFromDealStage(stageId) {
   const map = {
     new: 'new',
-    interested: 'interested',
-    catalog_sent: 'catalog_sent',
-    thinking: 'thinking',
+    interested: 'needs_discovery',
+    catalog_sent: 'needs_discovery',
+    thinking: 'needs_discovery',
+    needs_discovery: 'needs_discovery',
+    offer_preparation: 'offer_preparation',
     offer_sent: 'offer_sent',
     invoice_sent: 'invoice_sent',
     negotiation: 'negotiation',
-    office_meeting: 'office_meeting',
-    contract: 'contract',
+    office_meeting: 'negotiation',
+    contract: 'negotiation',
     purchase: 'purchase',
     won: 'won',
     lost: 'lost',
@@ -706,16 +701,19 @@ async function buildDealsPayload() {
 
 function normalizeDealStage(status) {
   const map = {
-    contacted: 'interested',
-    qualified: 'interested',
-    needs_discovery: 'interested',
-    details: 'interested',
-    offer_preparation: 'offer_sent',
+    contacted: 'needs_discovery',
+    qualified: 'needs_discovery',
+    interested: 'needs_discovery',
+    catalog_sent: 'needs_discovery',
+    thinking: 'needs_discovery',
+    details: 'needs_discovery',
     partner_new: 'new',
-    partner_qualification: 'interested',
+    partner_qualification: 'needs_discovery',
     partner_negotiation: 'negotiation',
-    partner_meeting: 'office_meeting',
+    partner_meeting: 'negotiation',
     partner_terms_sent: 'offer_sent',
+    office_meeting: 'negotiation',
+    contract: 'negotiation',
     invoice_sent: 'invoice_sent',
     partner_test_order: 'purchase',
     partner_active: 'won',
