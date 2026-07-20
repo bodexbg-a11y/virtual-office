@@ -6,6 +6,7 @@ const cron = require('node-cron');
 
 const googleSheets = require('./services/googleSheets');
 const facebookAds = require('./services/facebookAds');
+const auth = require('./services/auth');
 const db = require('./db');
 
 const app = express();
@@ -15,14 +16,15 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'client')));
+app.use('/api', auth.requireCrm);
 
 // API Routes
+app.use('/api/auth', require('./routes/auth'));
 app.use('/api/leads', require('./routes/leads'));
 app.use('/api/google', require('./routes/google'));
 app.use('/api/facebook', require('./routes/facebook'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/settings', require('./routes/settings'));
-app.use('/api/auth', require('./routes/auth'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/agents', require('./routes/agents'));
 app.use('/api/offers', require('./routes/offers'));

@@ -72,6 +72,108 @@ body.mobile-nav-open {
   overflow: hidden;
 }
 
+.crm-login-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    linear-gradient(135deg, rgba(20,24,29,0.72), rgba(48,55,64,0.48)),
+    url('/assets/metallic-glass-bg.jpg') center / cover fixed;
+}
+
+.crm-locked {
+  overflow: hidden;
+}
+
+.crm-locked .crm-login-gate {
+  display: flex;
+}
+
+.crm-locked > .sidebar,
+.crm-locked > .main,
+.crm-locked > .mobile-topbar,
+.crm-locked > .sidebar-backdrop,
+.crm-locked > .modal-overlay {
+  display: none !important;
+}
+
+.crm-login-card {
+  width: min(420px, 100%);
+  padding: 32px;
+  border: 1px solid rgba(255,255,255,0.26);
+  border-radius: 8px;
+  background: rgba(52,60,70,0.72);
+  box-shadow: 0 24px 70px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.18);
+  backdrop-filter: blur(22px) saturate(125%);
+  -webkit-backdrop-filter: blur(22px) saturate(125%);
+}
+
+.crm-login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.crm-login-card h1 {
+  font-size: 25px;
+  letter-spacing: 0;
+  margin-bottom: 8px;
+}
+
+.crm-login-card p {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 22px;
+}
+
+.crm-login-card label {
+  display: block;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 7px;
+}
+
+.crm-login-card input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  color: var(--text);
+  background: rgba(24,29,35,0.46);
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 6px;
+  outline: none;
+  font-size: 16px;
+}
+
+.crm-login-card input:focus {
+  border-color: rgba(255,255,255,0.58);
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.08);
+}
+
+.crm-login-error {
+  min-height: 34px;
+  padding-top: 9px;
+  color: #fecaca;
+  font-size: 12px;
+}
+
+.crm-login-submit {
+  width: 100%;
+  min-height: 44px;
+  justify-content: center;
+}
+
+#crm-logout-btn {
+  margin-top: 6px;
+}
+
 .mobile-topbar {
   display: none;
 }

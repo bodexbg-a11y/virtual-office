@@ -7,7 +7,24 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/css/app.css">
 </head>
-<body>
+<body class="crm-locked">
+  <section class="crm-login-gate" id="crm-login-gate" aria-labelledby="crm-login-title">
+    <form class="crm-login-card" id="crm-login-form" onsubmit="loginCrm(event)">
+      <div class="crm-login-brand">
+        <div class="logo-icon">B</div>
+        <div>
+          <div class="logo-text">BODEX</div>
+          <div class="logo-sub">Virtual Office</div>
+        </div>
+      </div>
+      <h1 id="crm-login-title">Вход в CRM</h1>
+      <p>Введите пароль для доступа к клиентской базе.</p>
+      <label for="crm-password">Пароль</label>
+      <input id="crm-password" type="password" autocomplete="current-password" required autofocus>
+      <div class="crm-login-error" id="crm-login-error" role="alert"></div>
+      <button class="btn btn-primary crm-login-submit" id="crm-login-submit" type="submit">Войти</button>
+    </form>
+  </section>
   <div class="mobile-topbar">
     <button class="mobile-menu-btn" type="button" onclick="toggleMobileSidebar(true)" aria-label="Open navigation">☰</button>
     <div class="mobile-topbar-brand">
@@ -133,7 +150,8 @@
         <div class="role-label">Режим</div>
         <div class="role-value" id="role-value">Работник</div>
         <button class="btn btn-secondary btn-sm" id="admin-login-btn" onclick="openAdminLogin()">Админ</button>
-        <button class="btn btn-danger btn-sm" id="admin-logout-btn" onclick="logoutAdmin()" style="display:none;">Выйти</button>
+        <button class="btn btn-danger btn-sm" id="admin-logout-btn" onclick="logoutAdmin()" style="display:none;">Выйти из админа</button>
+        <button class="btn btn-secondary btn-sm" id="crm-logout-btn" onclick="logoutCrm()">Выйти из CRM</button>
       </div>
       <div class="connection-status">
         <span class="dot-live"></span>

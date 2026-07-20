@@ -1,9 +1,12 @@
 // ===== BODEX Virtual Office — Frontend App =====
 
-const API = 'https://virtual-office-f48m.onrender.com';
+const API = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+  ? window.location.origin
+  : 'https://virtual-office-f48m.onrender.com';
 const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers', 'logistics', 'payments', 'tires', 'tire-base']);
 let currentPage = 'leads';
 let currentRole = 'worker';
+let crmToken = localStorage.getItem('bodex_crm_token') || '';
 let adminToken = localStorage.getItem('bodex_admin_token') || '';
 let markAgentPoll = null;
 let currentLeadFilters = {};
@@ -160,15 +163,93 @@ async function renderPage(page) {
 }
 
 // ===== API HELPER =====
+function authHeaders(extra = {}) {
+  return {
+    ...(crmToken ? { 'X-CRM-Token': crmToken } : {}),
+    ...(adminToken ? { 'X-Admin-Token': adminToken } : {}),
+    ...extra,
+  };
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(API + path, {
-    headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
     ...opts,
+    headers: authHeaders({ 'Content-Type': 'application/json', ...(opts.headers || {}) }),
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && data.code === 'CRM_AUTH_REQUIRED' && path !== '/api/auth/crm-login') {
+    lockCrm();
+  }
   if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
   return data;
+}
+
+function lockCrm() {
+  crmToken = '';
+  adminToken = '';
+  currentRole = 'worker';
+  localStorage.removeItem('bodex_crm_token');
+  localStorage.removeItem('bodex_admin_token');
+  document.body.classList.add('crm-locked');
+  const error = document.getElementById('crm-login-error');
+  if (error) error.textContent = '';
+  setTimeout(() => document.getElementById('crm-password')?.focus(), 50);
+}
+
+function unlockCrm(token) {
+  crmToken = token;
+  localStorage.setItem('bodex_crm_token', token);
+  document.body.classList.remove('crm-locked');
+}
+
+async function loginCrm(event) {
+  event?.preventDefault();
+  const passwordInput = document.getElementById('crm-password');
+  const error = document.getElementById('crm-login-error');
+  const submit = document.getElementById('crm-login-submit');
+  if (!passwordInput || !submit) return;
+
+  error.textContent = '';
+  submit.disabled = true;
+  submit.textContent = 'Проверка...';
+  try {
+    const data = await api('/api/auth/crm-login', {
+      method: 'POST',
+      body: { password: passwordInput.value },
+    });
+    unlockCrm(data.token);
+    passwordInput.value = '';
+    await refreshRole();
+    navigate('leads');
+  } catch (err) {
+    error.textContent = err.message.includes('Too many')
+      ? 'Слишком много попыток. Повторите через 15 минут.'
+      : 'Неверный пароль.';
+    passwordInput.select();
+  } finally {
+    submit.disabled = false;
+    submit.textContent = 'Войти';
+  }
+}
+
+async function validateCrmSession() {
+  if (!crmToken) return false;
+  try {
+    await api('/api/auth/crm-status');
+    document.body.classList.remove('crm-locked');
+    return true;
+  } catch {
+    lockCrm();
+    return false;
+  }
+}
+
+async function logoutCrm() {
+  try {
+    await api('/api/auth/crm-logout', { method: 'POST' });
+  } catch {}
+  lockCrm();
 }
 
 async function refreshRole() {
@@ -7018,7 +7099,7 @@ async function uploadProjectPhotos(projectId) {
   files.forEach(file => formData.append('photos', file));
   const res = await fetch(`${API}/api/projects/${projectId}/photos`, {
     method: 'POST',
-    headers: adminToken ? { 'X-Admin-Token': adminToken } : {},
+    headers: authHeaders(),
     body: formData,
   });
   const data = await res.json().catch(() => ({}));
@@ -7730,7 +7811,7 @@ function openPdfFromBase64(base64, filename) {
 async function downloadOfferPdf(id) {
   try {
     const res = await fetch(`${API}/api/offers/${id}/pdf`, {
-      headers: { ...(adminToken ? { 'X-Admin-Token': adminToken } : {}) },
+      headers: authHeaders(),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const blob = await res.blob();
@@ -8446,7 +8527,9 @@ const gmailCallbackMessage = gmailCallbackParams.get('email') || gmailCallbackPa
 if (gmailCallbackState) {
   window.history.replaceState({}, document.title, window.location.pathname);
 }
-refreshRole().finally(() => {
+validateCrmSession().then(async authenticated => {
+  if (!authenticated) return;
+  await refreshRole();
   navigate(gmailCallbackState && currentRole === 'admin' ? 'settings' : 'leads');
   if (gmailCallbackState === 'connected') {
     setTimeout(() => alert(`Gmail подключён: ${gmailCallbackMessage}`), 300);
