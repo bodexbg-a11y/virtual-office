@@ -27,7 +27,8 @@ let bulkPingQueueIndex = 0;
 let bulkPingQueueChannel = '';
 let currentLeadRowsForExport = [];
 let currentLeadContractors = [];
-const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'invoice_sent', 'purchase', 'won', 'lost'];
+const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'contractor_assigned', 'negotiation', 'invoice_sent', 'purchase', 'won', 'lost'];
+const TIRE_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'invoice_sent', 'purchase', 'won', 'lost'];
 const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
 const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
 const GMAIL_SENDERS = [
@@ -1880,6 +1881,7 @@ function dealBadgeClass(stageId) {
     catalog_sent: 'contacted',
     thinking: 'high',
     offer_sent: 'offer_sent',
+    contractor_assigned: 'qualified',
     invoice_sent: 'offer_sent',
     negotiation: 'negotiation',
     office_meeting: 'qualified',
@@ -2379,6 +2381,7 @@ function leadStatusTabStyle(status, active) {
     needs_discovery: ['rgba(251,191,36,0.12)', '#f6d365', 'rgba(251,191,36,0.32)'],
     offer_preparation: ['rgba(59,130,246,0.12)', '#7dc4ff', 'rgba(59,130,246,0.32)'],
     offer_sent: ['rgba(167,139,250,0.12)', '#c4b5fd', 'rgba(167,139,250,0.32)'],
+    contractor_assigned: ['rgba(249,115,22,0.12)', '#fdba74', 'rgba(249,115,22,0.32)'],
     invoice_sent: ['rgba(250,204,21,0.12)', '#fde68a', 'rgba(250,204,21,0.32)'],
     negotiation: ['rgba(244,114,182,0.12)', '#f9a8d4', 'rgba(244,114,182,0.32)'],
     office_meeting: ['rgba(45,212,191,0.12)', '#99f6e4', 'rgba(45,212,191,0.32)'],
@@ -2490,10 +2493,12 @@ function isTireLead(lead = {}) {
 }
 
 function leadStagesForLead(lead = {}) {
+  if (isTireLead(lead)) return TIRE_CRM_STAGES;
   return isDistributorLead(lead) ? DISTRIBUTOR_CRM_STAGES : OBJECT_CRM_STAGES;
 }
 
 function leadStagesForView(filters = {}) {
+  if (filters.view === 'tires') return TIRE_CRM_STAGES;
   return filters.view === 'distributors' ? DISTRIBUTOR_CRM_STAGES : OBJECT_CRM_STAGES;
 }
 
@@ -5862,6 +5867,10 @@ function bulkPingTemplateForStatus(status = 'needs_discovery') {
       'Успяхте ли да разгледате изпратеното търговско предложение?',
       'Очакваме Вашата обратна връзка по цената, обема и срока за доставка.',
     ],
+    contractor_assigned: [
+      'Проектът Ви е предаден на избрания изпълнител за техническо уточнение.',
+      'Ще се свържем с Вас веднага след като получим обратна връзка и следващите стъпки.',
+    ],
     negotiation: [
       'Свързваме се, за да продължим обсъждането на условията.',
       'Готови сме да уточним финалната цена, количеството, доставката и срока за изпълнение.',
@@ -8465,6 +8474,7 @@ function statusLabel(s) {
     thinking: 'Сбор данных',
     offer_preparation: 'Подготовка КП',
     offer_sent: 'КП отправлено',
+    contractor_assigned: 'Подрядчик',
     negotiation: 'Переговоры',
     invoice_sent: 'Invoice отправлен',
     purchase: 'Оплата получена',
