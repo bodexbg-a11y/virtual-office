@@ -4,9 +4,12 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '1111';
 const DEFAULT_CRM_PASSWORD_HASH = '692cbaddd44628dd240931477daad634:7301d51fcc5437f294c6ef6417f306b5917e6f72e680e675c1c4315e160db2eb324ef569961ea8320d41dd8802e45b1dc3ab33d6762211cb4a6bd530f7d04fd2';
 const CRM_PASSWORD_HASH = process.env.CRM_PASSWORD_HASH || DEFAULT_CRM_PASSWORD_HASH;
 const AUTH_SECRET = process.env.AUTH_SECRET || process.env.ADMIN_PASSWORD || 'bodex-auth-secret';
-const CRM_AUTH_SECRET = process.env.CRM_AUTH_SECRET || crypto.randomBytes(32).toString('hex');
+const CRM_AUTH_SECRET = process.env.CRM_AUTH_SECRET || crypto
+  .createHash('sha256')
+  .update(`bodex-crm:${AUTH_SECRET}:${CRM_PASSWORD_HASH}`)
+  .digest('hex');
 const TOKEN_TTL_MS = Number(process.env.AUTH_TOKEN_TTL_MS || 1000 * 60 * 60 * 24 * 30); // 30 days
-const CRM_TOKEN_TTL_MS = Number(process.env.CRM_TOKEN_TTL_MS || 1000 * 60 * 60 * 12); // 12 hours
+const CRM_TOKEN_TTL_MS = Number(process.env.CRM_TOKEN_TTL_MS || 1000 * 60 * 60 * 24 * 365); // 1 year
 
 function base64url(input) {
   return Buffer.from(input).toString('base64url');
@@ -115,6 +118,12 @@ function loginCrm(password) {
   return createToken('crm', CRM_TOKEN_TTL_MS, CRM_AUTH_SECRET);
 }
 
+function renewCrmSession() {
+  const token = createToken('crm', CRM_TOKEN_TTL_MS, CRM_AUTH_SECRET);
+  const session = parseToken(token, { secret: CRM_AUTH_SECRET, roles: ['crm'] });
+  return { token, expiresAt: session.exp };
+}
+
 function logout(token) {
   return Boolean(token);
 }
@@ -124,6 +133,7 @@ module.exports = {
   getCrmSession,
   login,
   loginCrm,
+  renewCrmSession,
   logout,
   requireAdmin,
   requireCrm,

@@ -37,7 +37,12 @@ router.post('/crm-login', (req, res) => {
 });
 
 router.get('/crm-status', auth.requireCrmSession, (req, res) => {
-  res.json({ authenticated: true, expires_at: req.crmSession.exp });
+  const session = auth.renewCrmSession();
+  res.json({
+    authenticated: true,
+    token: session.token,
+    expires_at: session.expiresAt,
+  });
 });
 
 router.post('/crm-logout', (req, res) => {

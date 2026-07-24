@@ -237,7 +237,8 @@ async function loginCrm(event) {
 async function validateCrmSession() {
   if (!crmToken) return false;
   try {
-    await api('/api/auth/crm-status');
+    const session = await api('/api/auth/crm-status');
+    if (session.token) unlockCrm(session.token);
     document.body.classList.remove('crm-locked');
     return true;
   } catch {
