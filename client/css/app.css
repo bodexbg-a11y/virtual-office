@@ -5136,3 +5136,161 @@ table td .text-muted { color: #92a5ba !important; }
   .page-header-actions { justify-content: flex-start !important; }
   .card { padding: 13px !important; }
 }
+
+/* ===== Contrast correction: presentation-grade navy workspace ===== */
+html,
+body {
+  background-color: #080f19 !important;
+}
+
+body {
+  background-image:
+    linear-gradient(135deg, rgba(4, 10, 18, .97), rgba(9, 20, 35, .95)),
+    url('/assets/metallic-glass-bg.jpg') !important;
+  background-size: cover !important;
+  background-attachment: fixed !important;
+}
+
+.main {
+  background:
+    radial-gradient(circle at 80% 0%, rgba(37,99,235,.08), transparent 30%),
+    #080f19 !important;
+}
+
+.page-header,
+.page-header h2,
+.page-title-count,
+.card-title,
+.stat-card .stat-label,
+.stat-card .stat-value,
+.stat-card .stat-sub {
+  text-shadow: none !important;
+}
+
+.page-header {
+  border-bottom-color: #263a54 !important;
+}
+
+.page-header h2 { color: #f6f9fd !important; }
+.page-title-count { color: #cbd9ea !important; background: #17273b !important; border-color: #3a5271 !important; }
+
+.card,
+.stat-card,
+.lead-list-card,
+.lead-mobile-card,
+.worker-summary-card,
+.worker-activity-card,
+.maria-campaign-detail,
+.deal-card,
+.pipeline-card,
+.quarter-card {
+  background: #142338 !important;
+  border-color: #2f4866 !important;
+}
+
+.daily-brief-banner,
+#main > .qualification-intro {
+  background: #15263e !important;
+  border-color: #35557c !important;
+  border-left-color: #4385ff !important;
+}
+
+.lead-tab,
+.lead-status-tab {
+  background: #17283d !important;
+  border-color: #34506f !important;
+  color: #c7d5e5 !important;
+}
+
+.lead-tab.active,
+.lead-status-tab.active { background: #2864dc !important; border-color: #72a4ff !important; }
+
+/* The lead table is the primary work surface: dark frame, light readable rows. */
+.lead-list-card .table-wrap {
+  background: #0e1928 !important;
+  border-color: #3a5678 !important;
+  padding: 8px !important;
+}
+
+.lead-list-card table,
+.lead-list-card thead,
+.lead-list-card tbody {
+  background: #f8fafc !important;
+}
+
+.lead-list-card th {
+  color: #dce8f6 !important;
+  background: #0d1828 !important;
+  border-color: #273b56 !important;
+}
+
+.lead-list-card td,
+.lead-list-card td[style],
+.lead-list-card td div[style] {
+  color: #26364b !important;
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  text-shadow: none !important;
+}
+
+.lead-list-card tbody tr:nth-child(even) td { background: #f1f5f9 !important; }
+.lead-list-card tbody tr:hover td { background: #e8f1ff !important; }
+.lead-list-card td:first-child,
+.lead-list-card td:first-child div { color: #111c2d !important; }
+
+.lead-list-card .lead-inline-status-select,
+.lead-list-card .contractor-picker-btn,
+.lead-list-card .fresh-comment-btn,
+.lead-list-card .contractor-comment-pill,
+.lead-list-card .lead-contact-btn,
+.lead-list-card .lead-ping-bell,
+.lead-list-card .lead-qualification-btn {
+  color: #e6effa !important;
+  background: #162a43 !important;
+  border-color: #47688e !important;
+}
+
+.lead-list-card .lead-inline-status-select.lead-inline-status-new,
+.lead-list-card .lead-inline-status-select.lead-inline-status-needs_discovery,
+.lead-list-card .lead-inline-status-select.lead-inline-status-offer_preparation,
+.lead-list-card .lead-inline-status-select.lead-inline-status-offer_sent,
+.lead-list-card .lead-inline-status-select.lead-inline-status-negotiation,
+.lead-list-card .lead-inline-status-select.lead-inline-status-won,
+.lead-list-card .lead-inline-status-select.lead-inline-status-lost {
+  text-shadow: none !important;
+}
+
+.card:not(.lead-list-card) th,
+.contractor-table th {
+  color: #cbd9ea !important;
+  background: #0d1828 !important;
+  border-color: #2b415d !important;
+}
+
+.card:not(.lead-list-card) td,
+.contractor-table td {
+  color: #dce8f5 !important;
+  background: #142338 !important;
+  border-color: #273a53 !important;
+}
+
+.card:not(.lead-list-card) tbody tr:nth-child(even) td,
+.contractor-table tbody tr:nth-child(even) td { background: #111f32 !important; }
+
+.card:not(.lead-list-card) tbody tr:hover td,
+.contractor-table tbody tr:hover td { background: #1a304b !important; }
+
+.form-group label,
+.qualification-title,
+.qualification-check,
+.qualification-manual-complete,
+.qualification-intro,
+.facebook-lead-brief { text-shadow: none !important; }
+
+.modal-body,
+.modal-body .card,
+.modal-body .qualification-section { color: #eaf2fb !important; }
+
+@media (max-width: 768px) {
+  .lead-list-card .table-wrap { padding: 5px !important; }
+}
