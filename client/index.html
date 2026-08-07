@@ -62,7 +62,7 @@
     </div>
 
     <div class="nav-section">
-      <div class="nav-label">CRM</div>
+      <div class="nav-label" data-i18n-ru="Рабочая CRM" data-i18n-en="WORKSPACE">Рабочая CRM</div>
       <a class="nav-item active" data-page="leads" onclick="navigate('leads')">
         <span class="nav-icon nav-icon-clients"></span><span data-i18n-ru="Клиенты" data-i18n-en="Clients">Клиенты</span>
         <span class="nav-badge" id="nav-badge-leads">0</span>
@@ -70,13 +70,19 @@
       <a class="nav-item" data-page="projects" onclick="navigate('projects')">
         <span class="nav-icon nav-icon-projects"></span><span data-i18n-ru="Проекты" data-i18n-en="Projects">Проекты</span>
       </a>
-      <a class="nav-item" data-page="contractors" onclick="navigate('contractors')">
-        <span class="nav-icon nav-icon-contractors"></span><span data-i18n-ru="Подрядчики" data-i18n-en="Contractors">Подрядчики</span>
-      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label" data-i18n-ru="Базы" data-i18n-en="DATABASES">Базы</div>
       <a class="nav-item" data-page="construction-firms" onclick="navigate('construction-firms')">
         <span class="nav-icon nav-icon-builders"></span><span data-i18n-ru="Строительные фирмы" data-i18n-en="Construction firms">Строительные фирмы</span>
       </a>
-     
+      <a class="nav-item" data-page="contractors" onclick="navigate('contractors')">
+        <span class="nav-icon nav-icon-contractors"></span><span data-i18n-ru="Подрядчики" data-i18n-en="Contractors">Подрядчики</span>
+      </a>
+      <a class="nav-item" data-page="pipeline" onclick="navigate('pipeline')">
+        <span class="nav-icon nav-icon-pipeline"></span><span data-i18n-ru="Тендеры" data-i18n-en="Tenders">Тендеры</span>
+      </a>
     </div>
 
     <div class="nav-section admin-only" style="display:none;">
@@ -92,12 +98,12 @@
     </div>
 
     <div class="nav-section">
-      <div class="nav-label" data-i18n-ru="Работники" data-i18n-en="TEAM">Работники</div>
+      <div class="nav-label" data-i18n-ru="Команда" data-i18n-en="TEAM">Команда</div>
       <a class="nav-item" data-page="worker-rostislav" onclick="navigate('worker-rostislav')">
-        <span class="nav-icon nav-icon-user"></span><span>Manager</span>
+        <span class="nav-icon nav-icon-user"></span><span data-i18n-ru="Менеджер" data-i18n-en="Manager">Менеджер</span>
       </a>
       <a class="nav-item" data-page="worker-maria" onclick="navigate('worker-maria')">
-        <span class="nav-icon nav-icon-user"></span><span>Maria</span>
+        <span class="nav-icon nav-icon-user"></span><span data-i18n-ru="Мария" data-i18n-en="Maria">Мария</span>
       </a>
     </div>
 
@@ -109,12 +115,12 @@
     </div>
 
     <div class="nav-section admin-only" style="display:none;">
-      <div class="nav-label" data-i18n-ru="Интеграции" data-i18n-en="INTEGRATIONS">Интеграции</div>
+      <div class="nav-label" data-i18n-ru="Реклама" data-i18n-en="ADVERTISING">Реклама</div>
       <a class="nav-item" data-page="facebook" onclick="navigate('facebook')">
-        <span class="nav-icon nav-icon-ads"></span><span>Facebook Ads</span>
+        <span class="nav-icon nav-icon-ads"></span><span data-i18n-ru="Facebook Ads" data-i18n-en="Facebook Ads">Facebook Ads</span>
       </a>
       <a class="nav-item" data-page="sheets" onclick="navigate('sheets')">
-        <span class="nav-icon nav-icon-sheets"></span><span>Google Sheets</span>
+        <span class="nav-icon nav-icon-sheets"></span><span data-i18n-ru="Google" data-i18n-en="Google">Google</span>
       </a>
     </div>
 
