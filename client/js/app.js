@@ -8331,11 +8331,12 @@ function calculateBusinessMinutesBetween(startValue, endValue, timeZone = BERLIN
 }
 
 function formatBusinessResponseShort(minutes, tireMode = false) {
-  if (minutes === null || minutes === undefined) return tireMode ? 'No contact' : 'Нет контакта';
-  if (minutes < 60) return tireMode ? `${minutes}m work` : `${minutes}м раб.`;
+  const useEnglish = tireMode || currentLanguage === 'en';
+  if (minutes === null || minutes === undefined) return useEnglish ? 'No contact' : 'Нет контакта';
+  if (minutes < 60) return useEnglish ? `${minutes}m work` : `${minutes}м раб.`;
   const hours = Math.floor(minutes / 60);
   const restMinutes = minutes % 60;
-  return tireMode
+  return useEnglish
     ? `${hours}h ${restMinutes}m work`
     : `${hours}ч ${restMinutes}м раб.`;
 }
