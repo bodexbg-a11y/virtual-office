@@ -2055,13 +2055,15 @@ async function renderLeads(el, filters = {}) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>${coldBaseMode ? ui('База клиентов', 'Customer database') : tireMode ? 'Tires' : ui('Клиенты', 'Clients')} <span class="page-title-count">${rows.length}</span></h2>
+      <div class="page-title-block">
+        <h2>${coldBaseMode ? ui('База клиентов', 'Customer database') : tireMode ? 'Tires' : ui('Клиенты', 'Clients')} <span class="page-title-count">${rows.length}</span></h2>
+        ${coldBaseMode || tireMode ? '' : `<div class="page-kicker">${ui('B2B CRM для строительных фирм, дистрибьюторов и объектов', 'B2B CRM for construction firms, distributors and project requests')}</div>`}
+      </div>
       <div class="page-header-actions">
-        <label style="display:flex;align-items:center;gap:7px;font-size:11px;color:#999;">
+        <label class="toolbar-field">
           ${ui('Отправитель', 'Sender')}
           <select
             class="lead-city-filter"
-            style="width:230px;"
             onchange="setGmailSender(this.value);renderLeads(document.getElementById('main'), currentLeadFilters)"
           >
             ${gmailSenderOptions()}
@@ -2078,17 +2080,17 @@ async function renderLeads(el, filters = {}) {
               class="lead-source-icon-btn ${!filters.source_group ? 'active' : ''}"
               onclick="toggleLeadSourceGroupFilter()"
               title="${ui('Все источники', 'All sources')}"
-            >ALL</button>
+            >A</button>
             <button
               class="lead-source-icon-btn ${filters.source_group === 'facebook' ? 'active' : ''}"
               onclick="toggleLeadSourceGroupFilter('facebook')"
               title="Facebook"
-            >FB</button>
+            >F</button>
             <button
               class="lead-source-icon-btn ${filters.source_group === 'manual' ? 'active' : ''}"
               onclick="toggleLeadSourceGroupFilter('manual')"
               title="${ui('Сайт / вручную', 'Website / manual')}"
-            >WEB</button>
+            >W</button>
           </div>
         `}
         ${renderLanguageSwitch()}
@@ -2244,7 +2246,7 @@ async function renderLeads(el, filters = {}) {
                     <span class="fresh-comment-icon-wrap">💬${l.has_fresh_comment ? '<span class="fresh-comment-dot"></span>' : ''}</span><span style="display:inline-block;max-width:135px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.latest_comment ? escapeHtml(l.latest_comment) : (tireMode ? 'Add' : 'Добавить')}</span>
                   </button>
                 </td>
-                <td style="display:flex;gap:6px;">
+                <td class="lead-row-actions">
                   <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();openLeadDetail(${l.id})">👁</button>
                 </td>
               </tr>
