@@ -2060,39 +2060,6 @@ async function renderLeads(el, filters = {}) {
         ${coldBaseMode || tireMode ? '' : `<div class="page-kicker">${ui('B2B CRM для строительных фирм, дистрибьюторов и объектов', 'B2B CRM for construction firms, distributors and project requests')}</div>`}
       </div>
       <div class="page-header-actions">
-        <label class="toolbar-field">
-          ${ui('Отправитель', 'Sender')}
-          <select
-            class="lead-city-filter"
-            onchange="setGmailSender(this.value);renderLeads(document.getElementById('main'), currentLeadFilters)"
-          >
-            ${gmailSenderOptions()}
-          </select>
-        </label>
-        ${tireMode ? '' : `<button class="btn btn-secondary" onclick="openBulkPingModal()">${ui('Пинг всем', 'Ping all')}</button>`}
-        ${tireMode || coldBaseMode || currentRole !== 'admin' ? '' : `<button class="btn btn-secondary" onclick="reclassifyLeadSegments()">${ui('Сортировать', 'Classify')}</button>`}
-        <button class="btn btn-secondary" onclick="downloadLeadAnalysisCsv()">${ui('CSV для анализа', 'Analysis CSV')}</button>
-        ${coldBaseMode ? '' : `<button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">${ui('Синхронизировать Facebook', 'Sync Facebook')}</button>`}
-        <button class="btn btn-primary" onclick="openNewLeadModal('${coldBaseMode ? 'tires_base' : tireMode ? 'tires' : 'materials'}')">${ui('Новый клиент', 'New client')}</button>
-        ${coldBaseMode ? '' : `
-          <div class="lead-source-icons" title="${ui('Источники лидов', 'Lead sources')}">
-            <button
-              class="lead-source-icon-btn ${!filters.source_group ? 'active' : ''}"
-              onclick="toggleLeadSourceGroupFilter()"
-              title="${ui('Все источники', 'All sources')}"
-            >A</button>
-            <button
-              class="lead-source-icon-btn ${filters.source_group === 'facebook' ? 'active' : ''}"
-              onclick="toggleLeadSourceGroupFilter('facebook')"
-              title="Facebook"
-            >F</button>
-            <button
-              class="lead-source-icon-btn ${filters.source_group === 'manual' ? 'active' : ''}"
-              onclick="toggleLeadSourceGroupFilter('manual')"
-              title="${ui('Сайт / вручную', 'Website / manual')}"
-            >W</button>
-          </div>
-        `}
         ${renderLanguageSwitch()}
       </div>
     </div>
