@@ -6,6 +6,7 @@ const API = ['localhost', '127.0.0.1'].includes(window.location.hostname)
 const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers', 'logistics', 'payments', 'tires', 'tire-base']);
 let currentPage = 'leads';
 let currentRole = 'worker';
+let currentLanguage = localStorage.getItem('bodex_language') === 'en' ? 'en' : 'ru';
 let crmToken = localStorage.getItem('bodex_crm_token') || '';
 let adminToken = localStorage.getItem('bodex_admin_token') || '';
 let markAgentPoll = null;
@@ -53,6 +54,36 @@ const CONTRACTOR_CONTACT_STATUSES = [
   ['inactive', 'Неактивный'],
 ];
 
+function ui(ru, en) {
+  return currentLanguage === 'en' ? en : ru;
+}
+
+function renderLanguageSwitch() {
+  return `
+    <div class="language-switch" role="group" aria-label="Interface language">
+      <button type="button" class="${currentLanguage === 'ru' ? 'active' : ''}" onclick="setAppLanguage('ru')">RU</button>
+      <button type="button" class="${currentLanguage === 'en' ? 'active' : ''}" onclick="setAppLanguage('en')">EN</button>
+    </div>
+  `;
+}
+
+function applyStaticLanguage() {
+  document.documentElement.lang = currentLanguage;
+  document.querySelectorAll('[data-i18n-ru][data-i18n-en]').forEach(element => {
+    element.textContent = currentLanguage === 'en' ? element.dataset.i18nEn : element.dataset.i18nRu;
+  });
+  document.querySelectorAll('[data-lang]').forEach(button => {
+    button.classList.toggle('active', button.dataset.lang === currentLanguage);
+  });
+}
+
+function setAppLanguage(language) {
+  currentLanguage = language === 'en' ? 'en' : 'ru';
+  localStorage.setItem('bodex_language', currentLanguage);
+  applyStaticLanguage();
+  renderPage(currentPage);
+}
+
 function selectedGmailSender() {
   return GMAIL_SENDERS.find(sender => sender.key === selectedGmailSenderKey) || GMAIL_SENDERS[0];
 }
@@ -60,7 +91,7 @@ function selectedGmailSender() {
 function gmailSenderOptions() {
   return GMAIL_SENDERS.map(sender => `
     <option value="${sender.key}" ${selectedGmailSenderKey === sender.key ? 'selected' : ''} ${gmailSenderConnected(sender.email) ? '' : 'disabled'}>
-      ${escapeHtml(sender.label)} — ${escapeHtml(sender.email)}${gmailSenderConnected(sender.email) ? '' : ' (не подключен)'}
+      ${escapeHtml(sender.label)} — ${escapeHtml(sender.email)}${gmailSenderConnected(sender.email) ? '' : ` (${ui('не подключен', 'not connected')})`}
     </option>
   `).join('');
 }
@@ -126,7 +157,7 @@ function toggleMobileSidebar(forceState) {
 
 async function renderPage(page) {
   const main = document.getElementById('main');
-  main.innerHTML = '<div style="text-align:center;padding:60px;color:#555;">Зареждане...</div>';
+  main.innerHTML = `<div style="text-align:center;padding:60px;color:#555;">${ui('Загрузка...', 'Loading...')}</div>`;
 
   try {
     if (ADMIN_ONLY_PAGES.has(page) && currentRole !== 'admin') {
@@ -159,7 +190,7 @@ async function renderPage(page) {
       default: main.innerHTML = '<h2>404</h2>';
     }
   } catch (err) {
-    main.innerHTML = `<div class="card"><p style="color:var(--red);">Грешка: ${err.message}</p><p style="color:#666;margin-top:8px;">Уверете се, че сървърът работи на порт ${location.port || 3000}</p></div>`;
+    main.innerHTML = `<div class="card"><p style="color:var(--red);">${ui('Ошибка', 'Error')}: ${err.message}</p><p style="color:#666;margin-top:8px;">${ui('Убедитесь, что сервер работает на порту', 'Make sure the server is running on port')} ${location.port || 3000}</p></div>`;
   }
 }
 
@@ -331,7 +362,7 @@ async function logoutAdmin() {
 
 async function renderAdminGate(el) {
   el.innerHTML = `
-    <div class="page-header fade-in"><h2>🔒 Админ доступ</h2></div>
+    <div class="page-header fade-in"><h2>${ui('Админ-доступ', 'Admin access')}</h2></div>
     <div class="card fade-in">
       <div class="card-title">Этот раздел доступен только админу</div>
       <p style="font-size:13px;color:#aaa;line-height:1.6;margin-bottom:16px;">В рабочем режиме доступны лиды, клиенты, сделки, pipeline и разделы работников. Управление офисом, интеграциями и настройками видит только админ.</p>
@@ -357,7 +388,7 @@ async function renderDashboard(el) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>📊 Дашборд</h2>
+      <h2>${ui('Дашборд', 'Dashboard')}</h2>
       <div class="page-header-actions">
         <button class="btn btn-secondary" onclick="navigate('dashboard')">🔄 Обнови</button>
       </div>
@@ -604,7 +635,7 @@ async function renderGoals(el) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>🎯 Цели 2026</h2>
+      <h2>${ui('Цели 2026', 'Goals 2026')}</h2>
       <div class="page-header-actions">
         <span class="badge badge-hot">ADMIN ONLY</span>
       </div>
@@ -740,7 +771,7 @@ async function renderOffice(el) {
   };
 
   el.innerHTML = `
-    <div class="page-header fade-in"><h2>🏢 Виртуален офис</h2></div>
+    <div class="page-header fade-in"><h2>${ui('Виртуальный офис', 'Virtual office')}</h2></div>
     <div class="card fade-in">
       <div class="card-title">📐 Работен екип BODEX</div>
       <div class="office-grid">
@@ -793,7 +824,7 @@ async function renderWorker(el, workerId) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>${worker.avatar_emoji} ${worker.name}</h2>
+      <h2>${worker.name}</h2>
       <div class="page-header-actions">
         <span class="badge badge-${worker.type === 'human' ? 'qualified' : 'won'}">${worker.type === 'human' ? 'Человек' : 'AI агент'}</span>
         <button class="btn btn-secondary" onclick="navigate('office')">🏢 Офис</button>
@@ -1673,7 +1704,7 @@ async function renderClients(el, filters = {}) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>👥 Клиенты</h2>
+      <h2>${ui('Клиенты', 'Clients')}</h2>
       <div class="page-header-actions">
         <button class="btn btn-primary" onclick="pullBusinessSheets()">🔄 Обнови от Google Sheets</button>
       </div>
@@ -1810,7 +1841,7 @@ async function renderDeals(el) {
   el.innerHTML = `
     <div class="page-header fade-in">
       <div>
-        <h2>🤝 Сделки</h2>
+        <h2>${ui('Сделки', 'Deals')}</h2>
         <div style="color:var(--text-dim);font-size:13px;margin-top:4px;">
           Воронка строится только по листам УСЛУГИ и МАТЕРИАЛЫ. B2B остаётся базой для первичного обзвона. Последний sync: ${summary.last_sync || '—'}
         </div>
@@ -2020,14 +2051,14 @@ async function renderLeads(el, filters = {}) {
   const cityOptions = summary.cities || [];
   const mobileLeadCards = rows.length
     ? rows.map(l => renderLeadMobileCard(l, tireMode)).join('')
-    : `<div class="lead-mobile-empty">${tireMode ? 'No leads match this filter.' : 'Нет лидов по этому фильтру.'}</div>`;
+    : `<div class="lead-mobile-empty">${ui('Нет клиентов по этому фильтру.', 'No clients match this filter.')}</div>`;
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>${coldBaseMode ? '📇 База клиентов' : tireMode ? '🛞 Tires' : '👥 Клиенты'} <span style="color:#666;font-size:14px;">(${rows.length})</span></h2>
+      <h2>${coldBaseMode ? ui('База клиентов', 'Customer database') : tireMode ? 'Tires' : ui('Клиенты', 'Clients')} <span class="page-title-count">${rows.length}</span></h2>
       <div class="page-header-actions">
         <label style="display:flex;align-items:center;gap:7px;font-size:11px;color:#999;">
-          ${tireMode ? 'Sender' : 'Отправитель'}
+          ${ui('Отправитель', 'Sender')}
           <select
             class="lead-city-filter"
             style="width:230px;"
@@ -2036,61 +2067,62 @@ async function renderLeads(el, filters = {}) {
             ${gmailSenderOptions()}
           </select>
         </label>
-        ${tireMode ? '' : '<button class="btn btn-secondary" onclick="openBulkPingModal()">Пинг всем</button>'}
-        ${tireMode || coldBaseMode || currentRole !== 'admin' ? '' : '<button class="btn btn-secondary" onclick="reclassifyLeadSegments()">↻ Отсортировать</button>'}
-        <button class="btn btn-secondary" onclick="downloadLeadAnalysisCsv()">${tireMode ? '⬇ Analysis CSV' : '⬇ CSV для анализа'}</button>
-        ${coldBaseMode ? '' : `<button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">📘 ${tireMode ? 'Sync Facebook leads' : 'Синхронизирай FB лиды'}</button>`}
-        <button class="btn btn-primary" onclick="openNewLeadModal('${coldBaseMode ? 'tires_base' : tireMode ? 'tires' : 'materials'}')">+ ${tireMode ? 'New lead' : 'Нов лид'}</button>
+        ${tireMode ? '' : `<button class="btn btn-secondary" onclick="openBulkPingModal()">${ui('Пинг всем', 'Ping all')}</button>`}
+        ${tireMode || coldBaseMode || currentRole !== 'admin' ? '' : `<button class="btn btn-secondary" onclick="reclassifyLeadSegments()">${ui('Сортировать', 'Classify')}</button>`}
+        <button class="btn btn-secondary" onclick="downloadLeadAnalysisCsv()">${ui('CSV для анализа', 'Analysis CSV')}</button>
+        ${coldBaseMode ? '' : `<button class="btn btn-secondary" onclick="syncFacebookLeadsFromLeadsPage()">${ui('Синхронизировать Facebook', 'Sync Facebook')}</button>`}
+        <button class="btn btn-primary" onclick="openNewLeadModal('${coldBaseMode ? 'tires_base' : tireMode ? 'tires' : 'materials'}')">${ui('Новый клиент', 'New client')}</button>
         ${coldBaseMode ? '' : `
-          <div class="lead-source-icons" title="${tireMode ? 'Lead sources' : 'Источники лидов'}">
+          <div class="lead-source-icons" title="${ui('Источники лидов', 'Lead sources')}">
             <button
               class="lead-source-icon-btn ${!filters.source_group ? 'active' : ''}"
               onclick="toggleLeadSourceGroupFilter()"
-              title="${tireMode ? 'All sources' : 'Все источники'}"
-            >◎</button>
+              title="${ui('Все источники', 'All sources')}"
+            >ALL</button>
             <button
               class="lead-source-icon-btn ${filters.source_group === 'facebook' ? 'active' : ''}"
               onclick="toggleLeadSourceGroupFilter('facebook')"
               title="Facebook"
-            >📘</button>
+            >FB</button>
             <button
               class="lead-source-icon-btn ${filters.source_group === 'manual' ? 'active' : ''}"
               onclick="toggleLeadSourceGroupFilter('manual')"
-              title="${tireMode ? 'Website / manual' : 'Сайт / вручную'}"
-            >🌐</button>
+              title="${ui('Сайт / вручную', 'Website / manual')}"
+            >WEB</button>
           </div>
         `}
+        ${renderLanguageSwitch()}
       </div>
     </div>
 
     <div id="leads-sync-result" class="sync-result"></div>
 
-    <div class="qualification-intro fade-in" style="margin-top:0;display:flex;justify-content:space-between;align-items:flex-start;gap:14px;">
+    <div class="qualification-intro daily-brief-banner fade-in" style="margin-top:0;display:flex;justify-content:space-between;align-items:flex-start;gap:14px;">
       <div style="min-width:0;">
-        <div style="font-weight:700;color:#f3f4f6;">${coldBaseMode ? 'Холодная база клиентов' : 'Задача от админа на сегодня'}</div>
+        <div style="font-weight:700;color:#f3f4f6;">${coldBaseMode ? ui('Холодная база клиентов', 'Cold customer database') : ui('Задача от админа на сегодня', 'Admin task for today')}</div>
         <div style="font-size:13px;line-height:1.45;color:${dailyBrief.content ? '#d6dcf5' : '#8b97b7'};margin-top:4px;word-break:break-word;">
-          ${escapeHtml(coldBaseMode ? 'Отдельная база для холодного обзвона по шинам. Эти компании не относятся к тёплым Facebook-лидам.' : (dailyBrief.content || 'Пока задача не указана.'))}
+          ${escapeHtml(coldBaseMode ? ui('Отдельная база для холодного обзвона по шинам. Эти компании не относятся к тёплым Facebook-лидам.', 'Separate cold outreach database for tires. These companies are not warm Facebook leads.') : (dailyBrief.content || ui('Пока задача не указана.', 'No task has been assigned yet.')))}
         </div>
       </div>
       ${currentRole === 'admin' && !coldBaseMode ? `
         <button
           class="btn btn-secondary"
           onclick="openDailyBriefModal('${dailyBriefScope}')"
-          title="Редактировать задачу дня"
+          title="${ui('Редактировать задачу дня', 'Edit today’s task')}"
           style="padding:10px 12px;min-width:44px;flex:0 0 auto;"
-        >📝</button>
+        >${ui('Изменить', 'Edit')}</button>
       ` : ''}
     </div>
 
     ${tireMode ? `` : `<div class="lead-tabs fade-in">
-      ${leadTab('Строит. фирмы', { view: 'builders' }, buildersCount, filters.view === 'builders')}
-      ${leadTab('Дистрибьюторы', { view: 'distributors' }, distributorsCount, filters.view === 'distributors')}
-      ${leadTab('Под объект', { view: 'objects' }, objectsCount, filters.view === 'objects')}
-      ${leadTab('Все лиды', { view: 'all' }, allLeadsCount, filters.view === 'all')}
-      ${leadTab('Услуги', { view: 'services' }, summary.services || 0, filters.view === 'services')}
-      ${leadTab('Сегодня', { view: 'all', date_range: 'today' }, summary.today || 0, filters.date_range === 'today')}
-      ${leadTab('7 дней', { view: 'all', date_range: 'week' }, summary.week || 0, filters.date_range === 'week')}
-      ${leadTab('Звонки сегодня', { view: 'all', followup: 'due' }, summary.followups_due || 0, filters.followup === 'due')}
+      ${leadTab(ui('Строит. фирмы', 'Construction'), { view: 'builders' }, buildersCount, filters.view === 'builders')}
+      ${leadTab(ui('Дистрибьюторы', 'Distributors'), { view: 'distributors' }, distributorsCount, filters.view === 'distributors')}
+      ${leadTab(ui('Под объект', 'Projects'), { view: 'objects' }, objectsCount, filters.view === 'objects')}
+      ${leadTab(ui('Все лиды', 'All leads'), { view: 'all' }, allLeadsCount, filters.view === 'all')}
+      ${leadTab(ui('Услуги', 'Services'), { view: 'services' }, summary.services || 0, filters.view === 'services')}
+      ${leadTab(ui('Сегодня', 'Today'), { view: 'all', date_range: 'today' }, summary.today || 0, filters.date_range === 'today')}
+      ${leadTab(ui('7 дней', '7 days'), { view: 'all', date_range: 'week' }, summary.week || 0, filters.date_range === 'week')}
+      ${leadTab(ui('Звонки сегодня', 'Calls today'), { view: 'all', followup: 'due' }, summary.followups_due || 0, filters.followup === 'due')}
     </div>`}
 
     <div class="lead-status-tabs fade-in">
@@ -2099,7 +2131,7 @@ async function renderLeads(el, filters = {}) {
         style="${filters.status ? '' : 'background:#e5e7eb;color:#111827;border-color:#e5e7eb;'}"
         onclick="clearLeadStatusFilter()"
       >
-        Все <span>${statusCountRows.length}</span>
+        ${ui('Все', 'All')} <span>${statusCountRows.length}</span>
       </button>
       ${visibleStages.map(status =>
         `<button class="lead-status-tab ${filters.status === status ? 'active' : ''}" style="${leadStatusTabStyle(status, filters.status === status)}" onclick="renderLeads(document.getElementById('main'), {...currentLeadFilters, status: '${status}'})">
@@ -2110,9 +2142,9 @@ async function renderLeads(el, filters = {}) {
 
     <div class="qualification-intro fade-in" style="margin-top:12px;padding:12px 14px;">
       <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
-        <div><strong>${coldBaseMode ? 'Холодная база' : 'Средний 1-й ответ'}</strong>: ${coldBaseMode ? 'обзвон и квалификация' : (responseMetrics.avgMinutes === null ? 'пока нет данных' : formatBusinessResponseShort(responseMetrics.avgMinutes, tireMode))}</div>
-        <div style="color:#8b97b7;">Замерено лидов: ${responseMetrics.measured}</div>
-        <div style="color:#8b97b7;">Часовой пояс: ${tireMode ? 'Europe/Berlin' : 'Europe/Sofia'} · 09:00–18:00 · пн–пт</div>
+        <div><strong>${coldBaseMode ? ui('Холодная база', 'Cold database') : ui('Средний 1-й ответ', 'Average first response')}</strong>: ${coldBaseMode ? ui('обзвон и квалификация', 'outreach and qualification') : (responseMetrics.avgMinutes === null ? ui('пока нет данных', 'no data yet') : formatBusinessResponseShort(responseMetrics.avgMinutes, tireMode))}</div>
+        <div style="color:#8b97b7;">${ui('Замерено лидов', 'Measured leads')}: ${responseMetrics.measured}</div>
+        <div style="color:#8b97b7;">${ui('Часовой пояс', 'Time zone')}: ${tireMode ? 'Europe/Berlin' : 'Europe/Sofia'} · 09:00–18:00 · ${ui('пн–пт', 'Mon–Fri')}</div>
       </div>
     </div>
 
@@ -2122,7 +2154,7 @@ async function renderLeads(el, filters = {}) {
         onclick="toggleLeadQuickFilter('volume_sort', 'desc')"
         title="Сначала самые большие объёмы"
       >
-        📐 По объёму
+        ${ui('По объёму', 'By volume')}
       </button>`}
       <button
         class="btn ${filters.premium === '1' ? 'btn-primary' : 'btn-secondary'}"
@@ -2130,20 +2162,20 @@ async function renderLeads(el, filters = {}) {
         title="Только premium-лиды"
         style="${filters.premium === '1' ? 'background:#b68a28;border-color:#f6d365;color:#fff7d6;' : 'color:#f6d365;border-color:rgba(246,211,101,.35);'}"
       >
-        ✨ Premium
+        Premium
       </button>
       ${tireMode ? '' : `<button
         class="btn ${filters.specific_object === '1' ? 'btn-primary' : 'btn-secondary'}"
         onclick="toggleLeadQuickFilter('specific_object', '1')"
         title="Материалы под конкретный объект"
       >
-        🏗️ Конкретный объект
+        ${ui('Конкретный объект', 'Specific project')}
       </button>`}
       <select
         class="lead-city-filter"
         onchange="renderLeads(document.getElementById('main'), {...currentLeadFilters, city: this.value || undefined})"
       >
-        <option value="">${tireMode ? 'All cities' : 'Все города'}</option>
+        <option value="">${ui('Все города', 'All cities')}</option>
         ${cityOptions.map(item => `
           <option value="${escapeAttr(item.city)}" ${filters.city === item.city ? 'selected' : ''}>
             ${escapeHtml(item.city)}${item.count ? ` (${item.count})` : ''}
@@ -2160,16 +2192,16 @@ async function renderLeads(el, filters = {}) {
         <table>
           <thead>
             <tr>
-              <th>${tireMode ? 'Company' : 'Компания'}</th>
-              <th>${tireMode ? 'Contact' : 'Контакт'}</th>
-              <th>${tireMode ? 'Phone / Email' : 'Телефон / Email'}</th>
-              <th>${tireMode ? 'City' : 'Град'}</th>
-              <th>${tireMode ? 'Status' : 'Статус'}</th>
-              ${tireMode ? '' : '<th>Подр.</th>'}
-              <th>${tireMode ? 'Channels' : 'Контакт'}</th>
-              <th>${tireMode ? 'Interest' : 'Тип / интерес'}</th>
-              <th>Время</th>
-              <th>${tireMode ? 'Комментарий' : 'Комментарий'}</th>
+              <th>${ui('Компания', 'Company')}</th>
+              <th>${ui('Контакт', 'Contact')}</th>
+              <th>${ui('Телефон / Email', 'Phone / Email')}</th>
+              <th>${ui('Город', 'City')}</th>
+              <th>${ui('Статус', 'Status')}</th>
+              ${tireMode ? '' : `<th>${ui('Подр.', 'Contractor')}</th>`}
+              <th>${ui('Каналы', 'Channels')}</th>
+              <th>${ui('Тип / интерес', 'Type / interest')}</th>
+              <th>${ui('Время', 'Timing')}</th>
+              <th>${ui('Комментарий', 'Comment')}</th>
               <th></th>
             </tr>
           </thead>
@@ -2257,8 +2289,8 @@ function renderLeadMobileCard(l, tireMode = false) {
   const status = leadDisplayStatus(l);
   const titleColor = l.is_gold_lead ? '#f6d365' : '#f3f4f6';
   const interest = l.area_label || l.interest_products || '—';
-  const commentText = l.latest_comment ? escapeHtml(l.latest_comment) : (tireMode ? 'Add comment' : 'Добавить комментарий');
-  const commentTitle = escapeAttr(l.latest_comment || (tireMode ? 'Add comment' : 'Добавить комментарий'));
+  const commentText = l.latest_comment ? escapeHtml(l.latest_comment) : ui('Добавить комментарий', 'Add comment');
+  const commentTitle = escapeAttr(l.latest_comment || ui('Добавить комментарий', 'Add comment'));
 
   return `
     <article class="lead-mobile-card ${status === 'new' || status === 'partner_new' ? 'lead-mobile-card-new' : ''}" onclick="openLeadDetail(${l.id})">
@@ -2268,14 +2300,14 @@ function renderLeadMobileCard(l, tireMode = false) {
       </div>
 
       <div class="lead-mobile-card-meta">
-        <div><span>${tireMode ? 'Contact' : 'Контакт'}</span><strong>${escapeHtml(l.contact_name || '—')}</strong></div>
-        <div><span>${tireMode ? 'Phone / Email' : 'Телефон / Email'}</span><strong>${escapeHtml(l.phone || l.email || '—')}</strong></div>
-        <div><span>${tireMode ? 'City' : 'Город'}</span><strong>${escapeHtml(l.city || '—')}</strong></div>
-        <div><span>${tireMode ? 'Interest' : 'Интерес'}</span><strong style="color:${l.is_gold_lead ? '#f6d365' : '#d1d5db'};">${escapeHtml(interest)}</strong></div>
+        <div><span>${ui('Контакт', 'Contact')}</span><strong>${escapeHtml(l.contact_name || '—')}</strong></div>
+        <div><span>${ui('Телефон / Email', 'Phone / Email')}</span><strong>${escapeHtml(l.phone || l.email || '—')}</strong></div>
+        <div><span>${ui('Город', 'City')}</span><strong>${escapeHtml(l.city || '—')}</strong></div>
+        <div><span>${ui('Интерес', 'Interest')}</span><strong style="color:${l.is_gold_lead ? '#f6d365' : '#d1d5db'};">${escapeHtml(interest)}</strong></div>
       </div>
 
       <div class="lead-mobile-card-row" onclick="event.stopPropagation();">
-        <div class="lead-mobile-card-label">${tireMode ? 'Status' : 'Статус'}</div>
+        <div class="lead-mobile-card-label">${ui('Статус', 'Status')}</div>
         <div class="lead-status-cell">
           <select
             class="lead-inline-status-select lead-inline-status-${status}"
@@ -2377,30 +2409,30 @@ function renderLeadContractorCell(lead = {}) {
 
 function leadStatusTabStyle(status, active) {
   const map = {
-    new: ['rgba(96,165,250,0.12)', '#7fb3ff', 'rgba(96,165,250,0.3)'],
-    contacted: ['rgba(56,189,248,0.12)', '#7dd3fc', 'rgba(56,189,248,0.3)'],
-    needs_discovery: ['rgba(251,191,36,0.12)', '#f6d365', 'rgba(251,191,36,0.32)'],
-    offer_preparation: ['rgba(59,130,246,0.12)', '#7dc4ff', 'rgba(59,130,246,0.32)'],
-    offer_sent: ['rgba(167,139,250,0.12)', '#c4b5fd', 'rgba(167,139,250,0.32)'],
-    contractor_assigned: ['rgba(249,115,22,0.12)', '#fdba74', 'rgba(249,115,22,0.32)'],
-    invoice_sent: ['rgba(250,204,21,0.12)', '#fde68a', 'rgba(250,204,21,0.32)'],
-    negotiation: ['rgba(244,114,182,0.12)', '#f9a8d4', 'rgba(244,114,182,0.32)'],
-    office_meeting: ['rgba(45,212,191,0.12)', '#99f6e4', 'rgba(45,212,191,0.32)'],
-    contract: ['rgba(34,197,94,0.1)', '#86efac', 'rgba(34,197,94,0.26)'],
-    purchase: ['rgba(16,185,129,0.1)', '#6ee7b7', 'rgba(16,185,129,0.26)'],
-    won: ['rgba(74,222,128,0.14)', '#4ade80', 'rgba(74,222,128,0.35)'],
-    lost: ['rgba(248,113,113,0.12)', '#fca5a5', 'rgba(248,113,113,0.28)'],
-    partner_new: ['rgba(96,165,250,0.12)', '#7fb3ff', 'rgba(96,165,250,0.3)'],
-    partner_qualification: ['rgba(251,191,36,0.12)', '#f6d365', 'rgba(251,191,36,0.32)'],
-    partner_negotiation: ['rgba(244,114,182,0.12)', '#f9a8d4', 'rgba(244,114,182,0.32)'],
-    partner_meeting: ['rgba(45,212,191,0.12)', '#99f6e4', 'rgba(45,212,191,0.32)'],
-    partner_terms_sent: ['rgba(167,139,250,0.12)', '#c4b5fd', 'rgba(167,139,250,0.32)'],
-    partner_test_order: ['rgba(16,185,129,0.1)', '#6ee7b7', 'rgba(16,185,129,0.26)'],
-    partner_active: ['rgba(74,222,128,0.14)', '#4ade80', 'rgba(74,222,128,0.35)'],
+    new: ['#eff6ff', '#1d4ed8', '#bfdbfe'],
+    contacted: ['#f0f9ff', '#0369a1', '#bae6fd'],
+    needs_discovery: ['#fffbeb', '#a16207', '#fde68a'],
+    offer_preparation: ['#eff6ff', '#0369a1', '#bae6fd'],
+    offer_sent: ['#f5f3ff', '#6d28d9', '#ddd6fe'],
+    contractor_assigned: ['#fff7ed', '#c2410c', '#fed7aa'],
+    invoice_sent: ['#fefce8', '#a16207', '#fef08a'],
+    negotiation: ['#fdf2f8', '#be185d', '#fbcfe8'],
+    office_meeting: ['#f0fdfa', '#0f766e', '#99f6e4'],
+    contract: ['#f0fdf4', '#047857', '#bbf7d0'],
+    purchase: ['#ecfdf5', '#047857', '#a7f3d0'],
+    won: ['#f0fdf4', '#15803d', '#bbf7d0'],
+    lost: ['#fff1f2', '#b91c1c', '#fecdd3'],
+    partner_new: ['#eff6ff', '#1d4ed8', '#bfdbfe'],
+    partner_qualification: ['#fffbeb', '#a16207', '#fde68a'],
+    partner_negotiation: ['#fdf2f8', '#be185d', '#fbcfe8'],
+    partner_meeting: ['#f0fdfa', '#0f766e', '#99f6e4'],
+    partner_terms_sent: ['#f5f3ff', '#6d28d9', '#ddd6fe'],
+    partner_test_order: ['#ecfdf5', '#047857', '#a7f3d0'],
+    partner_active: ['#f0fdf4', '#15803d', '#bbf7d0'],
   };
-  const [bg, color, border] = map[status] || ['rgba(255,255,255,0.04)', '#ddd', 'rgba(255,255,255,0.08)'];
+  const [bg, color, border] = map[status] || ['#f8fafc', '#475569', '#cbd5e1'];
   if (!active) return `background:${bg};color:${color};border-color:${border};`;
-  return `background:${color};color:#111827;border-color:${color};box-shadow:0 0 0 1px ${border} inset;`;
+  return `background:${color};color:#fff;border-color:${color};box-shadow:none;`;
 }
 
 function tireStatusLabel(status) {
@@ -4617,7 +4649,7 @@ async function renderPipeline(el) {
   (pipeData || []).forEach(p => pipeMap[p.status] = p);
 
   el.innerHTML = `
-    <div class="page-header fade-in"><h2>🔄 Pipeline</h2></div>
+    <div class="page-header fade-in"><h2>Pipeline</h2></div>
     <div class="pipeline fade-in">
       ${stages.map(s => `
         <div class="pipeline-col">
@@ -4649,7 +4681,7 @@ async function renderFacebook(el) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>📢 Facebook Ads</h2>
+      <h2>Facebook Ads</h2>
       <div class="page-header-actions">
         <button class="btn btn-primary" onclick="syncFB()">🔄 Синхронизирай от FB</button>
       </div>
@@ -4737,7 +4769,7 @@ async function renderSheets(el) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>📑 Google Sheets</h2>
+      <h2>Google Sheets</h2>
     </div>
 
     <div class="card fade-in">
@@ -4911,7 +4943,7 @@ async function renderProducts(el) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>📦 Продукти ARCAN</h2>
+      <h2>${ui('Продукты ARCAN', 'ARCAN products')}</h2>
       <div class="page-header-actions">
         ${currentRole === 'admin' ? '<button class="btn btn-primary" onclick="syncProductsFromSite()">📄 Обнови от ARCAN каталог</button>' : ''}
       </div>
@@ -4973,7 +5005,7 @@ async function renderSettings(el) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>⚙️ Интеграции — Настройки</h2>
+      <h2>${ui('Интеграции — настройки', 'Integrations — settings')}</h2>
     </div>
 
     <!-- ========= GMAIL API ========= -->
@@ -6668,7 +6700,7 @@ async function renderOffers(el) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>📄 Коммерческие предложения</h2>
+      <h2>${ui('Коммерческие предложения', 'Commercial offers')}</h2>
       <div class="page-header-actions">
         <button class="btn btn-secondary" onclick="navigate('leads')">👥 Клиенты</button>
       </div>
@@ -6778,7 +6810,7 @@ async function renderProjects(el) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>🏗️ Проекты</h2>
+      <h2>${ui('Проекты', 'Projects')}</h2>
       <div class="page-header-actions">
         <button class="btn btn-primary" onclick='openProjectModal(${JSON.stringify(leads).replace(/'/g, "&apos;")}, ${JSON.stringify(contractors).replace(/'/g, "&apos;")})'>+ Новый проект</button>
       </div>
@@ -7130,7 +7162,7 @@ async function renderContractors(el) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>🦺 Подрядчики</h2>
+      <h2>${ui('Подрядчики', 'Contractors')}</h2>
       <div class="page-header-actions">
         <button class="btn btn-primary" onclick="openContractorModal()">+ Новый подрядчик</button>
       </div>
@@ -7334,7 +7366,7 @@ async function renderConstructionFirms(el) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>🏗️ Строительные фирмы</h2>
+      <h2>${ui('Строительные фирмы', 'Construction firms')}</h2>
       <div class="page-header-actions">
         <button class="btn btn-primary" onclick="openConstructionFirmModal()">+ Новая фирма</button>
       </div>
@@ -7594,7 +7626,7 @@ async function renderLogistics(el) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>🚚 Логистика</h2>
+      <h2>${ui('Логистика', 'Logistics')}</h2>
       <div class="page-header-actions">
         <button class="btn btn-primary" onclick='openLogisticsModal(${JSON.stringify(leads).replace(/'/g, "&apos;")})'>+ Новая доставка</button>
       </div>
@@ -7706,7 +7738,7 @@ async function renderPayments(el) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>💳 Оплаты</h2>
+      <h2>${ui('Оплаты', 'Payments')}</h2>
       <div class="page-header-actions">
         <button class="btn btn-primary" onclick='openPaymentModal(${JSON.stringify(leads).replace(/'/g, "&apos;")}, ${JSON.stringify(offers).replace(/'/g, "&apos;")})'>+ Новый инвойс / оплата</button>
       </div>
@@ -7854,7 +7886,7 @@ async function renderAgentReports(el) {
 
   el.innerHTML = `
     <div class="page-header fade-in">
-      <h2>🗂️ Отчёты агентов</h2>
+      <h2>${ui('Отчёты работников', 'Employee reports')}</h2>
       <div class="page-header-actions">
         <button class="btn btn-secondary" onclick="navigate('agent-reports')">🔄 Обновить</button>
       </div>
@@ -8464,7 +8496,15 @@ function downloadTextFile(filename, content, type) {
 
 // ===== HELPERS =====
 function statusLabel(s) {
-  const map = {
+  const map = currentLanguage === 'en' ? {
+    new: 'New', contacted: 'Contacted', needs_discovery: 'Data collection', details: 'Data collection',
+    interested: 'Data collection', qualified: 'Data collection', catalog_sent: 'Data collection', thinking: 'Data collection',
+    offer_preparation: 'Offer preparation', offer_sent: 'Offer sent', contractor_assigned: 'Contractor',
+    negotiation: 'Negotiation', invoice_sent: 'Invoice sent', purchase: 'Payment received', won: 'Won', lost: 'Lost',
+    partner_new: 'New partner', partner_qualification: 'Qualification', partner_negotiation: 'Negotiation',
+    partner_meeting: 'Meeting held', partner_terms_sent: 'Terms sent', partner_test_order: 'Test order',
+    partner_active: 'Active distributor'
+  } : {
     new: 'Новый',
     contacted: 'Связались',
     needs_discovery: 'Сбор данных',
@@ -8538,9 +8578,11 @@ const gmailCallbackMessage = gmailCallbackParams.get('email') || gmailCallbackPa
 if (gmailCallbackState) {
   window.history.replaceState({}, document.title, window.location.pathname);
 }
+applyStaticLanguage();
 validateCrmSession().then(async authenticated => {
   if (!authenticated) return;
   await refreshRole();
+  applyStaticLanguage();
   navigate(gmailCallbackState && currentRole === 'admin' ? 'settings' : 'leads');
   if (gmailCallbackState === 'connected') {
     setTimeout(() => alert(`Gmail подключён: ${gmailCallbackMessage}`), 300);

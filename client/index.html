@@ -17,12 +17,12 @@
           <div class="logo-sub">Virtual Office</div>
         </div>
       </div>
-      <h1 id="crm-login-title">Вход в CRM</h1>
-      <p>Введите пароль для доступа к клиентской базе.</p>
-      <label for="crm-password">Пароль</label>
+      <h1 id="crm-login-title" data-i18n-ru="Вход в CRM" data-i18n-en="CRM sign in">Вход в CRM</h1>
+      <p data-i18n-ru="Введите пароль для доступа к клиентской базе." data-i18n-en="Enter your password to access the customer database.">Введите пароль для доступа к клиентской базе.</p>
+      <label for="crm-password" data-i18n-ru="Пароль" data-i18n-en="Password">Пароль</label>
       <input id="crm-password" type="password" autocomplete="current-password" required autofocus>
       <div class="crm-login-error" id="crm-login-error" role="alert"></div>
-      <button class="btn btn-primary crm-login-submit" id="crm-login-submit" type="submit">Войти</button>
+      <button class="btn btn-primary crm-login-submit" id="crm-login-submit" type="submit" data-i18n-ru="Войти" data-i18n-en="Sign in">Войти</button>
     </form>
   </section>
   <div class="mobile-topbar">
@@ -49,32 +49,32 @@
     </div>
 
     <div class="nav-section admin-only" style="display:none;">
-      <div class="nav-label">Основно</div>
+      <div class="nav-label" data-i18n-ru="Основное" data-i18n-en="MAIN">Основное</div>
       <a class="nav-item" data-page="dashboard" onclick="navigate('dashboard')">
-        <span class="nav-icon">📊</span> Дашборд
+        <span class="nav-icon">DB</span><span data-i18n-ru="Дашборд" data-i18n-en="Dashboard">Дашборд</span>
       </a>
       <a class="nav-item" data-page="office" onclick="navigate('office')">
-        <span class="nav-icon">🏢</span> Офис
+        <span class="nav-icon">OF</span><span data-i18n-ru="Офис" data-i18n-en="Office">Офис</span>
       </a>
       <a class="nav-item" data-page="goals" onclick="navigate('goals')">
-        <span class="nav-icon">🎯</span> Цели 2026
+        <span class="nav-icon">GO</span><span data-i18n-ru="Цели 2026" data-i18n-en="Goals 2026">Цели 2026</span>
       </a>
     </div>
 
     <div class="nav-section">
       <div class="nav-label">CRM</div>
       <a class="nav-item active" data-page="leads" onclick="navigate('leads')">
-        <span class="nav-icon">👥</span> Клиенты
+        <span class="nav-icon">CL</span><span data-i18n-ru="Клиенты" data-i18n-en="Clients">Клиенты</span>
         <span class="nav-badge" id="nav-badge-leads">0</span>
       </a>
       <a class="nav-item" data-page="projects" onclick="navigate('projects')">
-        <span class="nav-icon">🏗️</span> Проекты
+        <span class="nav-icon">PR</span><span data-i18n-ru="Проекты" data-i18n-en="Projects">Проекты</span>
       </a>
       <a class="nav-item" data-page="contractors" onclick="navigate('contractors')">
-        <span class="nav-icon">🦺</span> Подрядчики
+        <span class="nav-icon">CO</span><span data-i18n-ru="Подрядчики" data-i18n-en="Contractors">Подрядчики</span>
       </a>
       <a class="nav-item" data-page="construction-firms" onclick="navigate('construction-firms')">
-        <span class="nav-icon">🏗️</span> Строительные фирмы
+        <span class="nav-icon">CF</span><span data-i18n-ru="Строительные фирмы" data-i18n-en="Construction firms">Строительные фирмы</span>
       </a>
      
     </div>
@@ -82,76 +82,80 @@
     <div class="nav-section admin-only" style="display:none;">
       <div class="nav-label">Automotive</div>
       <a class="nav-item" data-page="tires" onclick="navigate('tires')">
-        <span class="nav-icon">🛞</span> Tires
+        <span class="nav-icon">TR</span><span>Tires</span>
         <span class="nav-badge" id="nav-badge-tires">0</span>
       </a>
       <a class="nav-item" data-page="tire-base" onclick="navigate('tire-base')">
-        <span class="nav-icon">📇</span> База клиентов
+        <span class="nav-icon">DB</span><span data-i18n-ru="База клиентов" data-i18n-en="Customer database">База клиентов</span>
         <span class="nav-badge" id="nav-badge-tire-base">0</span>
       </a>
     </div>
 
     <div class="nav-section">
-      <div class="nav-label">Работники</div>
+      <div class="nav-label" data-i18n-ru="Работники" data-i18n-en="TEAM">Работники</div>
       <a class="nav-item" data-page="worker-rostislav" onclick="navigate('worker-rostislav')">
-        <span class="nav-icon">📞</span> Manager
+        <span class="nav-icon">MN</span><span>Manager</span>
       </a>
       <a class="nav-item" data-page="worker-maria" onclick="navigate('worker-maria')">
-        <span class="nav-icon">📢</span> Maria
+        <span class="nav-icon">MA</span><span>Maria</span>
       </a>
     </div>
 
     <div class="nav-section admin-only" style="display:none;">
-      <div class="nav-label">Отчёты</div>
+      <div class="nav-label" data-i18n-ru="Отчёты" data-i18n-en="REPORTS">Отчёты</div>
       <a class="nav-item" data-page="agent-reports" onclick="navigate('agent-reports')">
-        <span class="nav-icon">🗂️</span> Отчёты работников
+        <span class="nav-icon">RP</span><span data-i18n-ru="Отчёты работников" data-i18n-en="Employee reports">Отчёты работников</span>
       </a>
     </div>
 
     <div class="nav-section admin-only" style="display:none;">
-      <div class="nav-label">Интеграции</div>
+      <div class="nav-label" data-i18n-ru="Интеграции" data-i18n-en="INTEGRATIONS">Интеграции</div>
       <a class="nav-item" data-page="facebook" onclick="navigate('facebook')">
-        <span class="nav-icon">📢</span> Facebook Ads
+        <span class="nav-icon">FB</span><span>Facebook Ads</span>
       </a>
       <a class="nav-item" data-page="sheets" onclick="navigate('sheets')">
-        <span class="nav-icon">📑</span> Google Sheets
+        <span class="nav-icon">GS</span><span>Google Sheets</span>
       </a>
     </div>
 
     <div class="nav-section">
-      <div class="nav-label">Каталог</div>
+      <div class="nav-label" data-i18n-ru="Каталог" data-i18n-en="CATALOG">Каталог</div>
       <a class="nav-item" data-page="products" onclick="navigate('products')">
-        <span class="nav-icon">📦</span> Продукти
+        <span class="nav-icon">PD</span><span data-i18n-ru="Продукты" data-i18n-en="Products">Продукты</span>
       </a>
     </div>
 
     <div class="nav-section admin-only" style="display:none;">
-      <div class="nav-label">Документы</div>
+      <div class="nav-label" data-i18n-ru="Документы" data-i18n-en="DOCUMENTS">Документы</div>
       <a class="nav-item" data-page="offers" onclick="navigate('offers')">
-        <span class="nav-icon">📄</span> Коммерческие
+        <span class="nav-icon">OF</span><span data-i18n-ru="Коммерческие" data-i18n-en="Offers">Коммерческие</span>
       </a>
       <a class="nav-item" data-page="logistics" onclick="navigate('logistics')">
-        <span class="nav-icon">🚚</span> Логистика
+        <span class="nav-icon">LG</span><span data-i18n-ru="Логистика" data-i18n-en="Logistics">Логистика</span>
       </a>
       <a class="nav-item" data-page="payments" onclick="navigate('payments')">
-        <span class="nav-icon">💳</span> Оплаты
+        <span class="nav-icon">PM</span><span data-i18n-ru="Оплаты" data-i18n-en="Payments">Оплаты</span>
       </a>
     </div>
 
     <div class="nav-section admin-only" style="display:none;">
-      <div class="nav-label">Настройки</div>
+      <div class="nav-label" data-i18n-ru="Настройки" data-i18n-en="SETTINGS">Настройки</div>
       <a class="nav-item" data-page="settings" onclick="navigate('settings')">
-        <span class="nav-icon">⚙️</span> Интеграции
+        <span class="nav-icon">ST</span><span data-i18n-ru="Интеграции" data-i18n-en="Integrations">Интеграции</span>
       </a>
     </div>
 
     <div class="sidebar-footer">
+      <div class="sidebar-language-switch" role="group" aria-label="Interface language">
+        <button type="button" data-lang="ru" onclick="setAppLanguage('ru')">RU</button>
+        <button type="button" data-lang="en" onclick="setAppLanguage('en')">EN</button>
+      </div>
       <div class="role-panel">
-        <div class="role-label">Режим</div>
-        <div class="role-value" id="role-value">Работник</div>
-        <button class="btn btn-secondary btn-sm" id="admin-login-btn" onclick="openAdminLogin()">Админ</button>
-        <button class="btn btn-danger btn-sm" id="admin-logout-btn" onclick="logoutAdmin()" style="display:none;">Выйти из админа</button>
-        <button class="btn btn-secondary btn-sm" id="crm-logout-btn" onclick="logoutCrm()">Выйти из CRM</button>
+        <div class="role-label" data-i18n-ru="Режим" data-i18n-en="MODE">Режим</div>
+        <div class="role-value" id="role-value" data-i18n-ru="Работник" data-i18n-en="Employee">Работник</div>
+        <button class="btn btn-secondary btn-sm" id="admin-login-btn" onclick="openAdminLogin()" data-i18n-ru="Админ" data-i18n-en="Admin">Админ</button>
+        <button class="btn btn-danger btn-sm" id="admin-logout-btn" onclick="logoutAdmin()" style="display:none;" data-i18n-ru="Выйти из админа" data-i18n-en="Leave admin mode">Выйти из админа</button>
+        <button class="btn btn-secondary btn-sm" id="crm-logout-btn" onclick="logoutCrm()" data-i18n-ru="Выйти из CRM" data-i18n-en="Sign out">Выйти из CRM</button>
       </div>
       <div class="connection-status">
         <span class="dot-live"></span>
