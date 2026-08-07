@@ -4540,3 +4540,280 @@ body::after {
 .contractor-picker-btn * {
   text-shadow: none !important;
 }
+
+/* ===== Dense business CRM polish ===== */
+.page-header {
+  align-items: center !important;
+  gap: 18px !important;
+}
+
+.page-header h2 {
+  letter-spacing: -0.025em !important;
+}
+
+.page-header-actions {
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.language-switch {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 2px !important;
+  padding: 3px !important;
+  border-radius: 5px !important;
+  background: #0f172a !important;
+  border: 1px solid #1f2a3a !important;
+  box-shadow: 0 8px 20px rgba(15,23,42,0.14) !important;
+}
+
+.language-switch button {
+  min-width: 36px !important;
+  height: 30px !important;
+  padding: 0 9px !important;
+  border-radius: 4px !important;
+  color: #94a3b8 !important;
+  font-size: 11px !important;
+  font-weight: 850 !important;
+  letter-spacing: .04em !important;
+  background: transparent !important;
+}
+
+.language-switch button.active {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+
+.daily-brief-banner [style],
+.qualification-intro [style] {
+  color: #334155 !important;
+}
+
+.daily-brief-banner strong,
+.qualification-intro strong {
+  color: #172033 !important;
+}
+
+.lead-tabs {
+  grid-template-columns: repeat(8, minmax(92px, 1fr)) !important;
+  gap: 8px !important;
+}
+
+.lead-tab {
+  min-width: 0 !important;
+  min-height: 58px !important;
+  padding: 9px 10px !important;
+}
+
+.lead-tab span {
+  font-size: 12px !important;
+  line-height: 1.15 !important;
+}
+
+.lead-tab strong {
+  font-size: 22px !important;
+  line-height: 1.1 !important;
+}
+
+.lead-status-tabs {
+  gap: 7px !important;
+  align-items: center !important;
+}
+
+.lead-status-tab {
+  min-height: 31px !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+  line-height: 1.1 !important;
+  white-space: nowrap !important;
+}
+
+.search-bar {
+  gap: 8px !important;
+  margin: 12px 0 14px !important;
+}
+
+.search-bar .btn,
+.lead-city-filter {
+  min-height: 34px !important;
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+}
+
+.lead-list-card,
+.card {
+  padding: 16px !important;
+}
+
+.lead-list-card .table-wrap,
+.card .table-wrap {
+  overflow-x: hidden !important;
+}
+
+.lead-list-card table,
+.contractor-table,
+.card table {
+  width: 100% !important;
+  table-layout: fixed !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+}
+
+.lead-list-card th,
+.card th,
+.contractor-table th {
+  height: 34px !important;
+  padding: 7px 7px !important;
+  font-size: 10px !important;
+  line-height: 1.05 !important;
+  letter-spacing: .035em !important;
+}
+
+.lead-list-card td,
+.card td,
+.contractor-table td {
+  height: auto !important;
+  min-height: 46px !important;
+  padding: 7px 7px !important;
+  font-size: 12.5px !important;
+  line-height: 1.22 !important;
+  vertical-align: middle !important;
+}
+
+.lead-list-card td * {
+  line-height: 1.18 !important;
+}
+
+.lead-list-card td:nth-child(1),
+.lead-list-card th:nth-child(1) { width: 9% !important; }
+.lead-list-card td:nth-child(2),
+.lead-list-card th:nth-child(2) { width: 8.5% !important; }
+.lead-list-card td:nth-child(3),
+.lead-list-card th:nth-child(3) { width: 10.5% !important; }
+.lead-list-card td:nth-child(4),
+.lead-list-card th:nth-child(4) { width: 6.5% !important; }
+.lead-list-card td:nth-child(5),
+.lead-list-card th:nth-child(5) { width: 10% !important; }
+.lead-list-card td:nth-child(6),
+.lead-list-card th:nth-child(6) { width: 9% !important; }
+.lead-list-card td:nth-child(7),
+.lead-list-card th:nth-child(7) { width: 6.5% !important; }
+.lead-list-card td:nth-child(8),
+.lead-list-card th:nth-child(8) { width: 8.5% !important; }
+.lead-list-card td:nth-child(9),
+.lead-list-card th:nth-child(9) { width: 10.5% !important; }
+.lead-list-card td:nth-child(10),
+.lead-list-card th:nth-child(10) { width: 14% !important; }
+.lead-list-card td:nth-child(11),
+.lead-list-card th:nth-child(11) { width: 3% !important; }
+
+.lead-inline-status-select {
+  min-height: 28px !important;
+  max-width: 116px !important;
+  padding: 5px 22px 5px 8px !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+}
+
+.lead-status-cell {
+  grid-template-columns: minmax(0, 116px) 28px !important;
+  gap: 5px !important;
+}
+
+.lead-qualification-btn,
+.lead-contact-btn,
+.lead-ping-bell,
+.lead-row-actions .btn {
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  border-radius: 5px !important;
+}
+
+.lead-table-contact-actions {
+  gap: 4px !important;
+}
+
+.contractor-picker-btn,
+.lead-list-card td:nth-child(6) .btn {
+  min-height: 28px !important;
+  max-width: 118px !important;
+  padding: 5px 8px !important;
+  font-size: 11px !important;
+}
+
+.fresh-comment-btn,
+.contractor-comment-pill {
+  min-height: 30px !important;
+  max-width: 180px !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  line-height: 1.12 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.lead-row-actions {
+  width: 34px !important;
+  text-align: right !important;
+}
+
+.contractor-table th:nth-child(1),
+.contractor-table td:nth-child(1) { width: 13% !important; }
+.contractor-table th:nth-child(2),
+.contractor-table td:nth-child(2) { width: 12% !important; }
+.contractor-table th:nth-child(3),
+.contractor-table td:nth-child(3) { width: 13% !important; }
+.contractor-table th:nth-child(4),
+.contractor-table td:nth-child(4) { width: 8% !important; }
+.contractor-table th:nth-child(5),
+.contractor-table td:nth-child(5) { width: 11% !important; }
+.contractor-table th:nth-child(6),
+.contractor-table td:nth-child(6) { width: 20% !important; }
+.contractor-table th:nth-child(7),
+.contractor-table td:nth-child(7) { width: 14% !important; }
+.contractor-table th:nth-child(8),
+.contractor-table td:nth-child(8) { width: 6% !important; }
+.contractor-table th:nth-child(9),
+.contractor-table td:nth-child(9) { width: 3% !important; }
+
+.contractor-specialties-cell {
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+}
+
+.contractor-phone-row {
+  gap: 6px !important;
+}
+
+.contractor-site-link {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  border-radius: 5px !important;
+}
+
+.modal,
+.modal-content,
+.crm-login-card {
+  color: #172033;
+  text-shadow: none !important;
+}
+
+@media (max-width: 900px) {
+  .lead-list-card .table-wrap,
+  .card .table-wrap {
+    overflow-x: auto !important;
+  }
+
+  .lead-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .page-header {
+    align-items: flex-start !important;
+  }
+}

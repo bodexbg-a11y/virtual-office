@@ -189,9 +189,22 @@ async function renderPage(page) {
       case 'settings': await renderSettings(main); break;
       default: main.innerHTML = '<h2>404</h2>';
     }
+    ensurePageLanguageSwitch(main);
   } catch (err) {
     main.innerHTML = `<div class="card"><p style="color:var(--red);">${ui('Ошибка', 'Error')}: ${err.message}</p><p style="color:#666;margin-top:8px;">${ui('Убедитесь, что сервер работает на порту', 'Make sure the server is running on port')} ${location.port || 3000}</p></div>`;
   }
+}
+
+function ensurePageLanguageSwitch(main) {
+  const header = main?.querySelector?.('.page-header');
+  if (!header || header.querySelector('.language-switch')) return;
+  let actions = header.querySelector('.page-header-actions');
+  if (!actions) {
+    actions = document.createElement('div');
+    actions.className = 'page-header-actions';
+    header.appendChild(actions);
+  }
+  actions.insertAdjacentHTML('beforeend', renderLanguageSwitch());
 }
 
 // ===== API HELPER =====
