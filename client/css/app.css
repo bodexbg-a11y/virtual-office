@@ -4386,7 +4386,6 @@ body::after {
 
 .stats-grid .stat-card,
 .lead-tab,
-.lead-status-tab,
 .filter-pill,
 .btn-secondary,
 .lead-city-filter,
@@ -4402,7 +4401,6 @@ body::after {
 
 .lead-tab strong,
 .lead-tab span,
-.lead-status-tab span,
 .stat-label,
 .stat-value {
   color: #1e293b !important;
@@ -4410,7 +4408,6 @@ body::after {
 }
 
 .lead-tab.active,
-.lead-status-tab.active,
 .filter-pill.active {
   background: #2563eb !important;
   border-color: #2563eb !important;
@@ -4419,8 +4416,24 @@ body::after {
 }
 
 .lead-tab.active *,
-.lead-status-tab.active *,
 .filter-pill.active * {
+  color: #ffffff !important;
+}
+
+.lead-status-tabs .lead-status-tab {
+  border-radius: 6px !important;
+  box-shadow: 0 8px 18px rgba(15,23,42,0.07) !important;
+  text-shadow: none !important;
+}
+
+.lead-status-tabs .lead-status-tab span {
+  color: inherit !important;
+  opacity: 0.92 !important;
+  text-shadow: none !important;
+}
+
+.lead-status-tabs .lead-status-tab.active,
+.lead-status-tabs .lead-status-tab.active span {
   color: #ffffff !important;
 }
 
