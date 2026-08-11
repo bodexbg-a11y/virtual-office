@@ -3,7 +3,7 @@
 const API = ['localhost', '127.0.0.1'].includes(window.location.hostname)
   ? window.location.origin
   : 'https://virtual-office-f48m.onrender.com';
-const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers', 'logistics', 'payments', 'tires', 'tire-base']);
+const ADMIN_ONLY_PAGES = new Set(['dashboard', 'office', 'goals', 'facebook', 'sheets', 'settings', 'agent-reports', 'offers', 'logistics', 'payments', 'tires', 'tire-base', 'opsynq']);
 let currentPage = 'leads';
 let currentRole = 'worker';
 let currentLanguage = localStorage.getItem('bodex_language') === 'en' ? 'en' : 'ru';
@@ -31,6 +31,59 @@ let currentLeadContractors = [];
 const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'contractor_assigned', 'negotiation', 'invoice_sent', 'purchase', 'won', 'lost'];
 const TIRE_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'negotiation', 'invoice_sent', 'purchase', 'won', 'lost'];
 const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
+// OPSYNQ Sales Flow: Lead -> Light Qualification -> Demo/Discovery -> Solution/Proposal -> Closing
+const OPSYNQ_CRM_STAGES = ['new', 'opsynq_contacted', 'opsynq_qualified', 'demo_booked', 'demo_completed', 'solution_call_booked', 'proposal_presented', 'negotiation', 'won', 'lost'];
+const OPSYNQ_CALL_SCRIPT = [
+  {
+    key: 'call1',
+    title: { ru: 'Call #1 — Light Qualification', en: 'Call #1 — Light Qualification' },
+    duration: '3-5 min',
+    goal: { ru: 'Не продавать. Подтвердить, что лид реальный, и забронировать demo.', en: "Don't sell. Confirm the lead is real and book a demo." },
+    lines: [
+      { ru: 'Поблагодарить за заявку.', en: 'Thank them for the request.' },
+      { ru: '"What is the main thing you\'d like to improve in your business right now?"', en: '"What is the main thing you\'d like to improve in your business right now?"' },
+      { ru: '"How are you managing this today - Excel, WhatsApp, an existing CRM, or another system?"', en: '"How are you managing this today - Excel, WhatsApp, an existing CRM, or another system?"' },
+      { ru: '"Would Tuesday at 11:00 or Wednesday at 14:00 work better for you?"', en: '"Would Tuesday at 11:00 or Wednesday at 14:00 work better for you?"' },
+    ],
+  },
+  {
+    key: 'call2',
+    title: { ru: 'Call #2 — Demo + Discovery', en: 'Call #2 — Demo + Discovery' },
+    duration: '30-45 min',
+    goal: { ru: 'Понять боль клиента, показать только релевантные модули (Projects, Teams, CRM, Stock, Finance, AI, Automation).', en: 'Understand the pain, show only relevant modules (Projects, Teams, CRM, Stock, Finance, AI, Automation).' },
+    lines: [
+      { ru: 'Discovery 10-15 мин: процессы, инструменты, кто принимает решение.', en: 'Discovery 10-15 min: processes, tools, decision maker.' },
+      { ru: 'Demo 15-20 мин релевантных модулей.', en: 'Demo 15-20 min of relevant modules.' },
+      { ru: '"Based on what we\'ve discussed, we can prepare a proposed OPSYNQ structure specifically for your company, including the workflow, modules, implementation plan and investment."', en: '"Based on what we\'ve discussed, we can prepare a proposed OPSYNQ structure specifically for your company, including the workflow, modules, implementation plan and investment."' },
+    ],
+  },
+  {
+    key: 'call3',
+    title: { ru: 'Call #3 — Solution + Proposal', en: 'Call #3 — Solution + Proposal' },
+    duration: '25-35 min',
+    goal: { ru: 'Показать proposed workflow, модули, сроки и цену под клиента.', en: 'Show the proposed workflow, modules, timeline and price for this client.' },
+    lines: [
+      { ru: 'Leads -> Estimates -> Projects -> Teams -> Stock -> Finance -> Reporting', en: 'Leads -> Estimates -> Projects -> Teams -> Stock -> Finance -> Reporting' },
+      { ru: '"Does this solution cover what you were looking to achieve?"', en: '"Does this solution cover what you were looking to achieve?"' },
+      { ru: 'Готов — договор + депозит. Нужно согласование — сразу бронируем Call #4.', en: 'Ready — contract + deposit. Needs approval — book Call #4 right away.' },
+    ],
+  },
+  {
+    key: 'call4',
+    title: { ru: 'Call #4 — Closing / Decision', en: 'Call #4 — Closing / Decision' },
+    duration: '15-20 min',
+    goal: { ru: 'Только если нужен. Снять возражения и получить финальное решение — без "let me know" без даты.', en: 'Only if needed. Remove objections and get a final decision — never "let me know" without a date.' },
+    lines: [
+      { ru: '"I need to discuss it with my partner." -> "Absolutely. Let\'s schedule a short follow-up once you\'ve had a chance to review it. Would Thursday or Friday work better?"', en: '"I need to discuss it with my partner." -> "Absolutely. Let\'s schedule a short follow-up once you\'ve had a chance to review it. Would Thursday or Friday work better?"' },
+    ],
+  },
+];
+const OPSYNQ_SLA_TARGETS = [
+  { ru: 'Lead → первый контакт', en: 'Lead → first contact', target: { ru: 'как можно быстрее в рабочее время', en: 'ASAP within business hours' } },
+  { ru: 'Lead → Demo', en: 'Lead → Demo', target: { ru: '1-3 дня', en: '1-3 days' } },
+  { ru: 'Demo → Solution/Proposal', en: 'Demo → Solution/Proposal', target: { ru: '2-5 дней', en: '2-5 days' } },
+  { ru: 'Proposal → Decision', en: 'Proposal → Decision', target: { ru: '3-14 дней', en: '3-14 days' } },
+];
 const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
 const GMAIL_SENDERS = [
   { key: 'bodex', email: 'bodexbg@gmail.com', label: 'Bodex Bulgaria' },
@@ -174,6 +227,7 @@ async function renderPage(page) {
       case 'leads': await renderLeads(main, { view: 'all' }); break;
       case 'tires': await renderLeads(main, { view: 'tires' }); break;
       case 'tire-base': await renderLeads(main, { view: 'tire_base' }); break;
+      case 'opsynq': await renderLeads(main, { view: 'opsynq' }); break;
       case 'clients': await renderClients(main); break;
       case 'deals': await renderDeals(main); break;
       case 'projects': await renderProjects(main); break;
@@ -1998,12 +2052,49 @@ async function pullDealsSheets() {
   }
 }
 
+function renderOpsynqPlaybook() {
+  const lang = currentLanguage === 'en' ? 'en' : 'ru';
+  return `
+    <div class="card fade-in" id="opsynq-playbook" style="margin-bottom:16px;">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="document.getElementById('opsynq-playbook-body').classList.toggle('opsynq-playbook-collapsed')">
+        <span>${ui('OPSYNQ Sales Flow — сценарий звонков', 'OPSYNQ Sales Flow — call playbook')}</span>
+        <span style="font-size:11px;color:var(--text-muted);font-weight:500;">${ui('свернуть / развернуть', 'collapse / expand')}</span>
+      </div>
+      <div id="opsynq-playbook-body">
+        <div class="opsynq-sla-row">
+          ${OPSYNQ_SLA_TARGETS.map(row => `
+            <div class="opsynq-sla-item">
+              <div class="opsynq-sla-label">${row[lang]}</div>
+              <div class="opsynq-sla-value">${row.target[lang]}</div>
+            </div>
+          `).join('')}
+        </div>
+        <div class="opsynq-call-grid">
+          ${OPSYNQ_CALL_SCRIPT.map(call => `
+            <div class="opsynq-call-card">
+              <div class="opsynq-call-head">
+                <strong>${call.title[lang]}</strong>
+                <span class="badge">${call.duration}</span>
+              </div>
+              <div class="opsynq-call-goal">${call.goal[lang]}</div>
+              <ul class="opsynq-call-lines">
+                ${call.lines.map(line => `<li>${escapeHtml(line[lang])}</li>`).join('')}
+              </ul>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 // ===== LEADS =====
 async function renderLeads(el, filters = {}) {
   if (!Object.keys(filters).length) filters = { view: 'all' };
   const tireMode = filters.view === 'tires' || filters.view === 'tire_base';
   const coldBaseMode = filters.view === 'tire_base';
-  const dailyBriefScope = tireMode ? 'tires' : 'materials';
+  const opsynqMode = filters.view === 'opsynq';
+  const dailyBriefScope = opsynqMode ? 'opsynq' : tireMode ? 'tires' : 'materials';
   currentLeadFilters = filters;
   const params = new URLSearchParams(filters);
   const statusCountFilters = { ...filters };
@@ -2011,7 +2102,7 @@ async function renderLeads(el, filters = {}) {
   statusCountFilters.limit = '5000';
   statusCountFilters.offset = '0';
   const statusCountParams = new URLSearchParams(statusCountFilters);
-  const shouldUseUnifiedLeadUniverse = !tireMode && !coldBaseMode;
+  const shouldUseUnifiedLeadUniverse = !tireMode && !coldBaseMode && !opsynqMode;
   const unifiedLeadUniverseFilters = shouldUseUnifiedLeadUniverse
     ? new URLSearchParams({ view: 'all', limit: '5000', offset: '0' })
     : null;
@@ -2026,7 +2117,7 @@ async function renderLeads(el, filters = {}) {
       content: '',
       updated_at: null,
     })),
-    tireMode ? Promise.resolve({ rows: [] }) : api('/api/contractors?active=1').catch(() => ({ rows: [] })),
+    (tireMode || opsynqMode) ? Promise.resolve({ rows: [] }) : api('/api/contractors?active=1').catch(() => ({ rows: [] })),
     shouldUseUnifiedLeadUniverse ? api(`/api/leads?${unifiedLeadUniverseFilters}`) : Promise.resolve(null),
   ]);
   gmailAccountsCache = gmailStatus.accounts || [];
@@ -2039,6 +2130,8 @@ async function renderLeads(el, filters = {}) {
   if (tireBadge && currentRole === 'admin') tireBadge.textContent = summary.tires || 0;
   const tireBaseBadge = document.getElementById('nav-badge-tire-base');
   if (tireBaseBadge && currentRole === 'admin') tireBaseBadge.textContent = summary.tire_base || 0;
+  const opsynqBadge = document.getElementById('nav-badge-opsynq');
+  if (opsynqBadge && currentRole === 'admin') opsynqBadge.textContent = summary.opsynq || 0;
   const visibleStages = leadStagesForView(filters);
   const canUseUnifiedCounts =
     shouldUseUnifiedLeadUniverse
@@ -2069,21 +2162,24 @@ async function renderLeads(el, filters = {}) {
   el.innerHTML = `
     <div class="page-header fade-in">
       <div class="page-title-block">
-        <h2>${coldBaseMode ? ui('База клиентов', 'Customer database') : tireMode ? 'Tires' : ui('Клиенты', 'Clients')} <span class="page-title-count">${rows.length}</span></h2>
-        ${coldBaseMode || tireMode ? '' : `<div class="page-kicker">${ui('B2B CRM для строительных фирм, дистрибьюторов и объектов', 'B2B CRM for construction firms, distributors and project requests')}</div>`}
+        <h2>${coldBaseMode ? ui('База клиентов', 'Customer database') : opsynqMode ? 'OPSYNQ Sales' : tireMode ? 'Tires' : ui('Клиенты', 'Clients')} <span class="page-title-count">${rows.length}</span></h2>
+        ${coldBaseMode || tireMode ? '' : opsynqMode ? `<div class="page-kicker">Lead → Light Qualification → Demo/Discovery → Solution/Proposal → Closing</div>` : `<div class="page-kicker">${ui('B2B CRM для строительных фирм, дистрибьюторов и объектов', 'B2B CRM for construction firms, distributors and project requests')}</div>`}
       </div>
       <div class="page-header-actions">
+        ${opsynqMode ? `<button class="btn btn-primary" onclick="openNewLeadModal('opsynq')">+ New OPSYNQ lead</button>` : ''}
         ${renderLanguageSwitch()}
       </div>
     </div>
 
     <div id="leads-sync-result" class="sync-result"></div>
 
+    ${opsynqMode ? renderOpsynqPlaybook() : ''}
+
     <div class="qualification-intro daily-brief-banner fade-in" style="margin-top:0;display:flex;justify-content:space-between;align-items:flex-start;gap:14px;">
       <div style="min-width:0;">
-        <div style="font-weight:700;color:#f3f4f6;">${coldBaseMode ? ui('Холодная база клиентов', 'Cold customer database') : ui('Задача от админа на сегодня', 'Admin task for today')}</div>
+        <div style="font-weight:700;color:#f3f4f6;">${coldBaseMode ? ui('Холодная база клиентов', 'Cold customer database') : opsynqMode ? 'Admin task for today' : ui('Задача от админа на сегодня', 'Admin task for today')}</div>
         <div style="font-size:13px;line-height:1.45;color:${dailyBrief.content ? '#d6dcf5' : '#8b97b7'};margin-top:4px;word-break:break-word;">
-          ${escapeHtml(coldBaseMode ? ui('Отдельная база для холодного обзвона по шинам. Эти компании не относятся к тёплым Facebook-лидам.', 'Separate cold outreach database for tires. These companies are not warm Facebook leads.') : (dailyBrief.content || ui('Пока задача не указана.', 'No task has been assigned yet.')))}
+          ${escapeHtml(coldBaseMode ? ui('Отдельная база для холодного обзвона по шинам. Эти компании не относятся к тёплым Facebook-лидам.', 'Separate cold outreach database for tires. These companies are not warm Facebook leads.') : (dailyBrief.content || (opsynqMode ? 'No task has been assigned yet.' : ui('Пока задача не указана.', 'No task has been assigned yet.'))))}
         </div>
       </div>
       ${currentRole === 'admin' && !coldBaseMode ? `
@@ -2096,7 +2192,7 @@ async function renderLeads(el, filters = {}) {
       ` : ''}
     </div>
 
-    ${tireMode ? `` : `<div class="lead-tabs fade-in">
+    ${(tireMode || opsynqMode) ? `` : `<div class="lead-tabs fade-in">
       ${leadTab(ui('Строит. фирмы', 'Construction'), { view: 'builders' }, buildersCount, filters.view === 'builders')}
       ${leadTab(ui('Дистрибьюторы', 'Distributors'), { view: 'distributors' }, distributorsCount, filters.view === 'distributors')}
       ${leadTab(ui('Под объект', 'Projects'), { view: 'objects' }, objectsCount, filters.view === 'objects')}
@@ -2131,22 +2227,22 @@ async function renderLeads(el, filters = {}) {
     </div>
 
     <div class="search-bar fade-in">
-      ${tireMode ? '' : `<button
+      ${(tireMode || opsynqMode) ? '' : `<button
         class="btn ${filters.volume_sort === 'desc' ? 'btn-primary' : 'btn-secondary'}"
         onclick="toggleLeadQuickFilter('volume_sort', 'desc')"
         title="Сначала самые большие объёмы"
       >
         ${ui('По объёму', 'By volume')}
       </button>`}
-      <button
+      ${opsynqMode ? '' : `<button
         class="btn ${filters.premium === '1' ? 'btn-primary' : 'btn-secondary'}"
         onclick="toggleLeadQuickFilter('premium', '1')"
         title="Только premium-лиды"
         style="${filters.premium === '1' ? 'background:#b68a28;border-color:#f6d365;color:#fff7d6;' : 'color:#f6d365;border-color:rgba(246,211,101,.35);'}"
       >
         Premium
-      </button>
-      ${tireMode ? '' : `<button
+      </button>`}
+      ${(tireMode || opsynqMode) ? '' : `<button
         class="btn ${filters.specific_object === '1' ? 'btn-primary' : 'btn-secondary'}"
         onclick="toggleLeadQuickFilter('specific_object', '1')"
         title="Материалы под конкретный объект"
@@ -2179,7 +2275,7 @@ async function renderLeads(el, filters = {}) {
               <th>${ui('Телефон / Email', 'Phone / Email')}</th>
               <th>${ui('Город', 'City')}</th>
               <th>${ui('Статус', 'Status')}</th>
-              ${tireMode ? '' : `<th>${ui('Подр.', 'Contractor')}</th>`}
+              ${(tireMode || opsynqMode) ? '' : `<th>${ui('Подр.', 'Contractor')}</th>`}
               <th>${ui('Каналы', 'Channels')}</th>
               <th>${ui('Тип / интерес', 'Type / interest')}</th>
               <th>${ui('Время', 'Timing')}</th>
@@ -2217,7 +2313,7 @@ async function renderLeads(el, filters = {}) {
                     ><span>📝</span></button>
                   </div>
                 </td>
-                ${tireMode ? '' : `<td style="width:142px;max-width:142px;" onclick="event.stopPropagation();">${renderLeadContractorCell(l)}</td>`}
+                ${(tireMode || opsynqMode) ? '' : `<td style="width:142px;max-width:142px;" onclick="event.stopPropagation();">${renderLeadContractorCell(l)}</td>`}
                 <td onclick="event.stopPropagation();" style="min-width:96px;width:96px;">${renderLeadTableContactActions(l)}</td>
                 <td style="max-width:150px;font-size:11px;color:${l.is_gold_lead ? '#f6d365' : '#aaa'};font-weight:${l.is_gold_lead ? '700' : '400'};line-height:1.2;word-break:break-word;">${l.area_label || l.interest_products || '—'}</td>
                 <td style="width:118px;">${renderLeadTimingCell(l, tireMode)}</td>
@@ -2411,6 +2507,12 @@ function leadStatusTabStyle(status, active) {
     partner_terms_sent: ['#f5f3ff', '#6d28d9', '#ddd6fe'],
     partner_test_order: ['#ecfdf5', '#047857', '#a7f3d0'],
     partner_active: ['#f0fdf4', '#15803d', '#bbf7d0'],
+    opsynq_contacted: ['#f0f9ff', '#0369a1', '#bae6fd'],
+    opsynq_qualified: ['#ecfeff', '#0e7490', '#a5f3fc'],
+    demo_booked: ['#eff6ff', '#1d4ed8', '#bfdbfe'],
+    demo_completed: ['#eef2ff', '#4338ca', '#c7d2fe'],
+    solution_call_booked: ['#f5f3ff', '#6d28d9', '#ddd6fe'],
+    proposal_presented: ['#fffbeb', '#a16207', '#fde68a'],
   };
   const [bg, color, border] = map[status] || ['#f8fafc', '#475569', '#cbd5e1'];
   if (!active) return `background:${bg};color:${color};border-color:${border};`;
@@ -2507,18 +2609,28 @@ function isTireLead(lead = {}) {
   return /(tiers|tires|tyres|tire|шины|гуми)/.test(text);
 }
 
+function isOpsynqLead(lead = {}) {
+  const text = `${lead.lead_type || ''} ${lead.fb_campaign_name || ''} ${lead.fb_ad_name || ''} ${lead.fb_form_id || ''}`.toLowerCase();
+  return /opsynq/.test(text);
+}
+
 function leadStagesForLead(lead = {}) {
+  if (isOpsynqLead(lead)) return OPSYNQ_CRM_STAGES;
   if (isTireLead(lead)) return TIRE_CRM_STAGES;
   return isDistributorLead(lead) ? DISTRIBUTOR_CRM_STAGES : OBJECT_CRM_STAGES;
 }
 
 function leadStagesForView(filters = {}) {
+  if (filters.view === 'opsynq') return OPSYNQ_CRM_STAGES;
   if (filters.view === 'tires') return TIRE_CRM_STAGES;
   return filters.view === 'distributors' ? DISTRIBUTOR_CRM_STAGES : OBJECT_CRM_STAGES;
 }
 
 function leadDisplayStatus(lead = {}) {
   const status = String(lead.status || '').toLowerCase();
+  if (isOpsynqLead(lead)) {
+    return OPSYNQ_CRM_STAGES.includes(status) ? status : 'new';
+  }
   const legacyObject = {
     contacted: 'needs_discovery',
     details: 'needs_discovery',
@@ -3251,6 +3363,7 @@ function isSpecificObjectLead(lead = {}) {
 }
 
 function isConstructionLead(lead = {}) {
+  if (isOpsynqLead(lead)) return false;
   if (String(lead.crm_segment || '').toLowerCase() === 'construction') return true;
   if (isDistributorLead(lead) || isServicesLead(lead) || isTireLead(lead)) return false;
   if (isSpecificObjectLead(lead)) return false;
@@ -5354,19 +5467,22 @@ async function saveDailyBrief(scope = 'materials') {
 function openNewLeadModal(section = 'materials') {
   const tireMode = section === 'tires' || section === 'tires_base';
   const coldBaseMode = section === 'tires_base';
-  openModal(tireMode ? (coldBaseMode ? 'Новый клиент в холодную базу' : 'New tire lead') : 'Нов лид', `
-    <form onsubmit="createLead(event, '${coldBaseMode ? 'tires_base' : tireMode ? 'tires' : 'materials'}')" novalidate>
+  const opsynqMode = section === 'opsynq';
+  const englishMode = tireMode || opsynqMode;
+  openModal(opsynqMode ? 'New OPSYNQ lead' : tireMode ? (coldBaseMode ? 'Новый клиент в холодную базу' : 'New tire lead') : 'Нов лид', `
+    <form onsubmit="createLead(event, '${coldBaseMode ? 'tires_base' : tireMode ? 'tires' : opsynqMode ? 'opsynq' : 'materials'}')" novalidate>
       ${tireMode ? `
         <input type="hidden" name="lead_type" value="${coldBaseMode ? 'tire_cold_base' : 'tire_inquiry'}">
         <input type="hidden" name="crm_segment" value="objects">
       ` : ''}
+      ${opsynqMode ? `<input type="hidden" name="lead_type" value="opsynq">` : ''}
       <div class="form-grid">
-        <div class="form-group"><label>${tireMode ? 'Company / customer' : 'Компания'}</label><input name="company_name" required></div>
-        <div class="form-group"><label>${tireMode ? 'Contact person' : 'Контакт'}</label><input name="contact_name"></div>
+        <div class="form-group"><label>${englishMode ? 'Company / customer' : 'Компания'}</label><input name="company_name" required></div>
+        <div class="form-group"><label>${englishMode ? 'Contact person' : 'Контакт'}</label><input name="contact_name"></div>
         <div class="form-group"><label>Email</label><input name="email" type="email"></div>
-        <div class="form-group"><label>${tireMode ? 'Phone' : 'Телефон'}</label><input name="phone"></div>
-        <div class="form-group"><label>${tireMode ? 'City' : 'Град'}</label><input name="city"></div>
-        <div class="form-group">
+        <div class="form-group"><label>${englishMode ? 'Phone' : 'Телефон'}</label><input name="phone"></div>
+        <div class="form-group"><label>${englishMode ? 'City' : 'Град'}</label><input name="city"></div>
+        ${opsynqMode ? '' : `<div class="form-group">
           <label>${tireMode ? 'Customer type' : 'Тип фирма'}</label>
           <select name="company_type">
             ${tireMode ? `
@@ -5381,8 +5497,8 @@ function openNewLeadModal(section = 'materials') {
             `}
             <option value="other">${tireMode ? 'Other' : 'Друго'}</option>
           </select>
-        </div>
-        ${tireMode ? '' : `<div class="form-group">
+        </div>`}
+        ${tireMode || opsynqMode ? '' : `<div class="form-group">
           <label>Воронка продаж</label>
           <select name="crm_segment">
             <option value="construction">Строительная фирма</option>
@@ -5391,33 +5507,33 @@ function openNewLeadModal(section = 'materials') {
           </select>
         </div>`}
         <div class="form-group">
-          <label>${tireMode ? 'Source' : 'Източник'}</label>
+          <label>${englishMode ? 'Source' : 'Източник'}</label>
           <select name="source">
-            ${coldBaseMode ? '' : `<option value="facebook" ${tireMode ? 'selected' : ''}>Facebook</option>`}
+            ${coldBaseMode ? '' : `<option value="facebook" ${englishMode ? 'selected' : ''}>Facebook</option>`}
             ${coldBaseMode ? '<option value="tire_cold_base" selected>Cold base</option>' : ''}
-            <option value="website" ${tireMode ? '' : 'selected'}>${tireMode ? 'Website' : 'Сайт'}</option>
-            <option value="phone">${tireMode ? 'Phone' : 'Телефон'}</option>
+            <option value="website" ${englishMode ? '' : 'selected'}>${englishMode ? 'Website' : 'Сайт'}</option>
+            <option value="phone">${englishMode ? 'Phone' : 'Телефон'}</option>
             <option value="email">Email</option>
-            <option value="chatbot">${tireMode ? 'Chatbot' : 'Чатбот'}</option>
+            ${opsynqMode ? '<option value="referral">Referral</option>' : `<option value="chatbot">${englishMode ? 'Chatbot' : 'Чатбот'}</option>`}
           </select>
         </div>
         <div class="form-group">
-          <label>${tireMode ? 'Priority' : 'Приоритет'}</label>
+          <label>${englishMode ? 'Priority' : 'Приоритет'}</label>
           <select name="priority">
-            <option value="medium">${tireMode ? 'Medium' : 'Среден'}</option>
-            <option value="high">${tireMode ? 'High' : 'Висок'}</option>
-            <option value="hot">${tireMode ? 'Hot' : 'Горещ'}</option>
-            <option value="low">${tireMode ? 'Low' : 'Нисък'}</option>
+            <option value="medium">${englishMode ? 'Medium' : 'Среден'}</option>
+            <option value="high">${englishMode ? 'High' : 'Висок'}</option>
+            <option value="hot">${englishMode ? 'Hot' : 'Горещ'}</option>
+            <option value="low">${englishMode ? 'Low' : 'Нисък'}</option>
           </select>
         </div>
-        <div class="form-group"><label>${coldBaseMode ? 'Fleet / short note' : tireMode ? 'Tires / wheels of interest' : 'Продукти (интерес)'}</label><input name="interest_products" value="${coldBaseMode ? '' : tireMode ? 'Tires' : ''}" placeholder="${coldBaseMode ? 'Например: 50 LKW / fleet / transport' : tireMode ? 'Michelin, Dunlop, Goodyear, wheels...' : 'HB-PU500, PAK-01...'}"></div>
-        <div class="form-group"><label>${tireMode ? 'Estimated value (BGN)' : 'Стойност (лв)'}</label><input name="estimated_value" type="number"></div>
-        <div class="form-group full"><label>${tireMode ? 'Notes' : 'Бележки'}</label><textarea name="notes" rows="2" placeholder="${coldBaseMode ? 'Website, company profile, cold call notes...' : tireMode ? 'Vehicle, tire size, season, quantity, wheels required...' : ''}"></textarea></div>
+        <div class="form-group"><label>${coldBaseMode ? 'Fleet / short note' : opsynqMode ? 'Main pain point' : tireMode ? 'Tires / wheels of interest' : 'Продукти (интерес)'}</label><input name="interest_products" value="${coldBaseMode || opsynqMode ? '' : tireMode ? 'Tires' : ''}" placeholder="${coldBaseMode ? 'Например: 50 LKW / fleet / transport' : opsynqMode ? 'What they want to improve...' : tireMode ? 'Michelin, Dunlop, Goodyear, wheels...' : 'HB-PU500, PAK-01...'}"></div>
+        <div class="form-group"><label>${opsynqMode ? 'Estimated deal value (EUR)' : englishMode ? 'Estimated value (BGN)' : 'Стойност (лв)'}</label><input name="estimated_value" type="number"></div>
+        <div class="form-group full"><label>${englishMode ? 'Notes' : 'Бележки'}</label><textarea name="notes" rows="2" placeholder="${coldBaseMode ? 'Website, company profile, cold call notes...' : opsynqMode ? 'How they manage this today, decision maker, booked demo slot...' : tireMode ? 'Vehicle, tire size, season, quantity, wheels required...' : ''}"></textarea></div>
       </div>
       <div id="new-lead-result" class="sync-result"></div>
       <div class="modal-footer" style="padding:12px 0 0;border-top:1px solid var(--border);margin-top:12px;">
-        <button type="button" class="btn btn-secondary" onclick="closeModal()">${tireMode ? 'Cancel' : 'Отказ'}</button>
-        <button id="new-lead-submit" type="submit" class="btn btn-primary">${tireMode ? 'Create lead' : '💾 Създай'}</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">${englishMode ? 'Cancel' : 'Отказ'}</button>
+        <button id="new-lead-submit" type="submit" class="btn btn-primary">${englishMode ? 'Create lead' : '💾 Създай'}</button>
       </div>
     </form>
   `);
@@ -5428,6 +5544,7 @@ async function createLead(e, section = 'materials') {
   const form = e.target;
   const result = document.getElementById('new-lead-result');
   const submit = document.getElementById('new-lead-submit');
+  const englishMode = ['tires', 'tires_base', 'opsynq'].includes(section);
   const data = Object.fromEntries(new FormData(form));
   Object.keys(data).forEach((key) => {
     if (typeof data[key] === 'string') {
@@ -5438,29 +5555,29 @@ async function createLead(e, section = 'materials') {
   data.estimated_value = data.estimated_value ? parseFloat(data.estimated_value) : null;
   if (!data.company_name) {
     result.className = 'sync-result show err';
-    result.textContent = section === 'tires' || section === 'tires_base' ? 'Company or customer name is required.' : 'Компанията е задължителна.';
+    result.textContent = englishMode ? 'Company or customer name is required.' : 'Компанията е задължителна.';
     return;
   }
   if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
     result.className = 'sync-result show err';
-    result.textContent = section === 'tires' || section === 'tires_base' ? 'Enter a valid email address.' : 'Въведете валиден email.';
+    result.textContent = englishMode ? 'Enter a valid email address.' : 'Въведете валиден email.';
     return;
   }
   submit.disabled = true;
-  submit.textContent = section === 'tires' || section === 'tires_base' ? 'Creating...' : 'Създаване...';
+  submit.textContent = englishMode ? 'Creating...' : 'Създаване...';
   result.className = 'sync-result show';
-  result.textContent = section === 'tires' || section === 'tires_base' ? 'Saving lead...' : 'Запазване...';
+  result.textContent = englishMode ? 'Saving lead...' : 'Запазване...';
   try {
     await api('/api/leads', { method: 'POST', body: data });
     result.className = 'sync-result show ok';
-    result.textContent = section === 'tires' || section === 'tires_base' ? 'Lead created successfully.' : 'Лидът е създаден.';
+    result.textContent = englishMode ? 'Lead created successfully.' : 'Лидът е създаден.';
     closeModal();
-    navigate(section === 'tires' ? 'tires' : section === 'tires_base' ? 'tire-base' : 'leads');
+    navigate(section === 'tires' ? 'tires' : section === 'tires_base' ? 'tire-base' : section === 'opsynq' ? 'opsynq' : 'leads');
   } catch (err) {
     result.className = 'sync-result show err';
-    result.textContent = ((section === 'tires' || section === 'tires_base') ? 'Could not create lead: ' : 'Грешка: ') + err.message;
+    result.textContent = (englishMode ? 'Could not create lead: ' : 'Грешка: ') + err.message;
     submit.disabled = false;
-    submit.textContent = section === 'tires' || section === 'tires_base' ? 'Create lead' : '💾 Създай';
+    submit.textContent = englishMode ? 'Create lead' : '💾 Създай';
   }
 }
 
@@ -8486,7 +8603,9 @@ function statusLabel(s) {
     negotiation: 'Negotiation', invoice_sent: 'Invoice sent', purchase: 'Payment received', won: 'Won', lost: 'Lost',
     partner_new: 'New partner', partner_qualification: 'Qualification', partner_negotiation: 'Negotiation',
     partner_meeting: 'Meeting held', partner_terms_sent: 'Terms sent', partner_test_order: 'Test order',
-    partner_active: 'Active distributor'
+    partner_active: 'Active distributor',
+    opsynq_contacted: 'Contacted', opsynq_qualified: 'Qualified', demo_booked: 'Demo booked',
+    demo_completed: 'Demo completed', solution_call_booked: 'Solution call booked', proposal_presented: 'Proposal presented',
   } : {
     new: 'Новый',
     contacted: 'Связались',
@@ -8510,7 +8629,13 @@ function statusLabel(s) {
     partner_meeting: 'Встреча проведена',
     partner_terms_sent: 'Условия направлены',
     partner_test_order: 'Тестовый заказ',
-    partner_active: 'Активный дистрибьютор'
+    partner_active: 'Активный дистрибьютор',
+    opsynq_contacted: 'На связи',
+    opsynq_qualified: 'Квалифицирован',
+    demo_booked: 'Demo забронировано',
+    demo_completed: 'Demo проведено',
+    solution_call_booked: 'Solution call забронирован',
+    proposal_presented: 'Proposal отправлен',
   };
   return map[s] || s;
 }

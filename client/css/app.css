@@ -307,6 +307,7 @@ body.mobile-nav-open {
 .nav-icon-payments { --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2'/%3E%3Cpath d='M3 10h18M7 15h4'/%3E%3C/svg%3E"); }
 .nav-icon-settings { --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z'/%3E%3Cpath d='M19.4 15a1.8 1.8 0 0 0 .36 2l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1 1.63V21a2 2 0 1 1-4 0v-.09a1.8 1.8 0 0 0-1-1.63 1.8 1.8 0 0 0-2 .36l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.63-1H3a2 2 0 1 1 0-4h.09a1.8 1.8 0 0 0 1.63-1 1.8 1.8 0 0 0-.36-2l-.06-.06A2 2 0 1 1 7.13 3.9l.06.06a1.8 1.8 0 0 0 2 .36h.01A1.8 1.8 0 0 0 10 2.69V2a2 2 0 1 1 4 0v.09c0 .7.4 1.34 1.03 1.63a1.8 1.8 0 0 0 2-.36l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.8 1.8 0 0 0-.36 2c.29.63.93 1.03 1.63 1.03H21a2 2 0 1 1 0 4h-.09c-.7 0-1.34.4-1.63 1.03Z'/%3E%3C/svg%3E"); }
 .nav-icon-pipeline { --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 4h16M7 4v5l5 4 5-4V4M12 13v7M8 20h8'/%3E%3C/svg%3E"); }
+.nav-icon-opsynq { --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3'/%3E%3C/svg%3E"); }
 
 .nav-badge {
   margin-left: auto;
@@ -527,6 +528,13 @@ tbody tr:hover td { background: rgba(61,111,196,0.06); }
 .badge-won { background: rgba(74,222,128,0.15); color: var(--green); }
 .badge-lost { background: rgba(248,113,113,0.15); color: var(--red); }
 
+.badge-opsynq_contacted { background: rgba(95,168,214,0.15); color: var(--blue); }
+.badge-opsynq_qualified { background: rgba(87,171,156,0.18); color: var(--cyan); }
+.badge-demo_booked { background: rgba(99,102,241,0.15); color: var(--brand-light); }
+.badge-demo_completed { background: rgba(124,109,224,0.16); color: var(--purple); }
+.badge-solution_call_booked { background: rgba(156,136,196,0.18); color: var(--purple); }
+.badge-proposal_presented { background: rgba(211,165,63,0.16); color: var(--yellow); }
+
 .badge-hot { background: rgba(248,113,113,0.2); color: var(--red); }
 .badge-high { background: rgba(251,191,36,0.15); color: var(--yellow); }
 .badge-medium { background: rgba(99,102,241,0.1); color: var(--brand-light); }
@@ -590,6 +598,14 @@ tbody tr:hover td { background: rgba(61,111,196,0.06); }
 .lead-inline-status-purchase { background-color: rgba(74,222,128,0.18); color: var(--green); }
 .lead-inline-status-won { background-color: rgba(74,222,128,0.15); color: var(--green); }
 .lead-inline-status-lost { background-color: rgba(248,113,113,0.15); color: var(--red); }
+
+/* OPSYNQ Sales Flow stages */
+.lead-inline-status-opsynq_contacted { background-color: rgba(95,168,214,0.15); color: var(--blue); }
+.lead-inline-status-opsynq_qualified { background-color: rgba(87,171,156,0.18); color: var(--cyan); }
+.lead-inline-status-demo_booked { background-color: rgba(99,102,241,0.15); color: var(--brand-light); }
+.lead-inline-status-demo_completed { background-color: rgba(124,109,224,0.16); color: var(--purple); }
+.lead-inline-status-solution_call_booked { background-color: rgba(156,136,196,0.18); color: var(--purple); }
+.lead-inline-status-proposal_presented { background-color: rgba(211,165,63,0.16); color: var(--yellow); }
 
 .lead-status-cell {
   display: flex;
@@ -2966,4 +2982,95 @@ tr.lead-row-new:hover {
   scrollbar-width: none;
 }
 .lead-status-tabs::-webkit-scrollbar { display: none; }
+
+/* ===== OPSYNQ SALES PLAYBOOK ===== */
+#opsynq-playbook-body {
+  margin-top: 14px;
+  overflow: hidden;
+}
+
+#opsynq-playbook-body.opsynq-playbook-collapsed {
+  display: none;
+}
+
+.opsynq-sla-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.opsynq-sla-item {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card2);
+}
+
+.opsynq-sla-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.opsynq-sla-value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.opsynq-call-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.opsynq-call-card {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--brand);
+  border-radius: 6px;
+  background: var(--bg-card2);
+}
+
+.opsynq-call-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.opsynq-call-head strong {
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.opsynq-call-goal {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.opsynq-call-lines {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.opsynq-call-lines li + li {
+  margin-top: 4px;
+}
+
+@media (max-width: 768px) {
+  .opsynq-sla-row,
+  .opsynq-call-grid {
+    grid-template-columns: 1fr;
+  }
+}
 

@@ -7,6 +7,8 @@ const { ensureWonLeadOperations } = require('../services/orderOperations');
 const tireColdBaseSeed = require('../data/tire_cold_base_seed.json');
 const OBJECT_CRM_STAGES = ['new', 'needs_discovery', 'offer_preparation', 'offer_sent', 'contractor_assigned', 'negotiation', 'invoice_sent', 'purchase', 'won', 'lost'];
 const DISTRIBUTOR_CRM_STAGES = ['partner_new', 'partner_qualification', 'partner_negotiation', 'partner_meeting', 'partner_terms_sent', 'partner_test_order', 'partner_active', 'lost'];
+// OPSYNQ Sales Flow: Lead -> Light Qualification -> Demo/Discovery -> Solution/Proposal -> Closing
+const OPSYNQ_CRM_STAGES = ['new', 'opsynq_contacted', 'opsynq_qualified', 'demo_booked', 'demo_completed', 'solution_call_booked', 'proposal_presented', 'negotiation', 'won', 'lost'];
 const CRM_STAGES = [...new Set([...OBJECT_CRM_STAGES, ...DISTRIBUTOR_CRM_STAGES])];
 const LEGACY_STATUS_MAP = {
   contacted: 'needs_discovery',
@@ -212,6 +214,7 @@ function normalizeCrmStatus(status, segment = 'objects') {
   const normalized = String(status || '').trim().toLowerCase();
   if (!normalized) return segment === 'distributor' ? 'partner_new' : 'new';
   if (DISTRIBUTOR_CRM_STAGES.includes(normalized)) return normalized;
+  if (OPSYNQ_CRM_STAGES.includes(normalized)) return normalized;
   const mapped = LEGACY_STATUS_MAP[normalized] || normalized;
   if (segment === 'distributor') {
     const distributorMap = {
@@ -564,12 +567,21 @@ const TIRES_LEAD_SQL = `(
     )
   )
 )`;
+const OPSYNQ_LEAD_SQL = `(
+  lower(coalesce(leads.lead_type, '')) IN ('opsynq', 'opsynq_inquiry')
+  OR (
+    leads.source = 'facebook'
+    AND lower(concat_ws(' ', coalesce(leads.fb_campaign_name, ''), coalesce(leads.fb_ad_name, ''), coalesce(leads.fb_form_id, '')))
+      ~ 'opsynq'
+  )
+)`;
 const CONSTRUCTION_LEAD_SQL = `(
   NOT ${DISTRIBUTOR_LEAD_SQL}
   AND NOT ${SERVICE_LEAD_SQL}
   AND NOT ${TIRES_LEAD_SQL}
   AND NOT ${TIRE_COLD_BASE_SQL}
   AND NOT ${SPECIFIC_OBJECT_LEAD_SQL}
+  AND NOT ${OPSYNQ_LEAD_SQL}
 )`;
 const TOUCHED_TODAY_SQL = `EXISTS (
   SELECT 1
@@ -850,7 +862,7 @@ router.get('/', async (req, res) => {
     const where = [];
     const params = [];
 
-    if (view === 'tires' && auth.getRoleFromRequest(req) !== 'admin') {
+    if ((view === 'tires' || view === 'opsynq') && auth.getRoleFromRequest(req) !== 'admin') {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
@@ -891,6 +903,10 @@ router.get('/', async (req, res) => {
       where.push(TIRES_LEAD_SQL);
     }
 
+    if (view === 'opsynq') {
+      where.push(OPSYNQ_LEAD_SQL);
+    }
+
     if (view === 'tire_base') {
       where.push(TIRE_COLD_BASE_SQL);
     }
@@ -898,6 +914,7 @@ router.get('/', async (req, res) => {
     if (view === 'all') {
       where.push(`NOT ${TIRES_LEAD_SQL}`);
       where.push(`NOT ${TIRE_COLD_BASE_SQL}`);
+      where.push(`NOT ${OPSYNQ_LEAD_SQL}`);
     }
 
     if (search) {
@@ -1064,7 +1081,7 @@ router.get('/', async (req, res) => {
 router.get('/summary', async (req, res) => {
   try {
     await ensureTireColdBaseSeed();
-    const totalRes = await db.query(`SELECT COUNT(*)::int as count FROM leads WHERE NOT ${TIRES_LEAD_SQL} AND NOT ${TIRE_COLD_BASE_SQL}`);
+    const totalRes = await db.query(`SELECT COUNT(*)::int as count FROM leads WHERE NOT ${TIRES_LEAD_SQL} AND NOT ${TIRE_COLD_BASE_SQL} AND NOT ${OPSYNQ_LEAD_SQL}`);
     const byStatusRes = await db.query(`
       SELECT ${NORMALIZED_STATUS_SQL} as status, COUNT(*)::int as count
       FROM leads
@@ -1096,6 +1113,7 @@ router.get('/summary', async (req, res) => {
       WHERE DATE(created_at) = CURRENT_DATE
         AND NOT ${TIRES_LEAD_SQL}
         AND NOT ${TIRE_COLD_BASE_SQL}
+        AND NOT ${OPSYNQ_LEAD_SQL}
     `);
 
     const weekRes = await db.query(`
@@ -1104,6 +1122,7 @@ router.get('/summary', async (req, res) => {
       WHERE created_at >= NOW() - INTERVAL '7 days'
         AND NOT ${TIRES_LEAD_SQL}
         AND NOT ${TIRE_COLD_BASE_SQL}
+        AND NOT ${OPSYNQ_LEAD_SQL}
     `);
 
     const materialsRes = await db.query(`
@@ -1122,6 +1141,7 @@ router.get('/summary', async (req, res) => {
         AND NOT ${SERVICE_LEAD_SQL}
         AND NOT ${TIRES_LEAD_SQL}
         AND NOT ${TIRE_COLD_BASE_SQL}
+        AND NOT ${OPSYNQ_LEAD_SQL}
     `);
     const buildersRes = await db.query(`
       SELECT COUNT(*)::int as count FROM leads
@@ -1129,6 +1149,7 @@ router.get('/summary', async (req, res) => {
         AND NOT ${SERVICE_LEAD_SQL}
         AND NOT ${TIRES_LEAD_SQL}
         AND NOT ${TIRE_COLD_BASE_SQL}
+        AND NOT ${OPSYNQ_LEAD_SQL}
     `);
     const objectsRes = await db.query(`
       SELECT COUNT(*)::int as count FROM leads
@@ -1136,6 +1157,7 @@ router.get('/summary', async (req, res) => {
         AND NOT ${SERVICE_LEAD_SQL}
         AND NOT ${TIRES_LEAD_SQL}
         AND NOT ${TIRE_COLD_BASE_SQL}
+        AND NOT ${OPSYNQ_LEAD_SQL}
     `);
     const tiresRes = await db.query(`
       SELECT COUNT(*)::int as count FROM leads
@@ -1144,6 +1166,10 @@ router.get('/summary', async (req, res) => {
     const tireBaseRes = await db.query(`
       SELECT COUNT(*)::int as count FROM leads
       WHERE ${TIRE_COLD_BASE_SQL}
+    `);
+    const opsynqRes = await db.query(`
+      SELECT COUNT(*)::int as count FROM leads
+      WHERE ${OPSYNQ_LEAD_SQL}
     `);
 
     const bySource = bySourceRes.rows;
@@ -1160,6 +1186,7 @@ router.get('/summary', async (req, res) => {
       objects: objectsRes.rows[0]?.count || 0,
       tires: tiresRes.rows[0]?.count || 0,
       tire_base: tireBaseRes.rows[0]?.count || 0,
+      opsynq: opsynqRes.rows[0]?.count || 0,
       today: todayRes.rows[0]?.count || 0,
       week: weekRes.rows[0]?.count || 0,
       followups_due: (await db.query(`
@@ -1168,6 +1195,7 @@ router.get('/summary', async (req, res) => {
         WHERE ${DAILY_CALLS_WHERE_SQL}
           AND NOT ${TIRES_LEAD_SQL}
           AND NOT ${TIRE_COLD_BASE_SQL}
+          AND NOT ${OPSYNQ_LEAD_SQL}
       `)).rows[0]?.count || 0,
       statuses: byStatus,
       sources: bySource,
@@ -1589,7 +1617,8 @@ router.post('/', async (req, res) => {
   try {
     const b = normalizeLeadPayload(req.body);
     const isManualTireLead = ['tire_inquiry', 'tires'].includes(String(b.lead_type || '').toLowerCase());
-    if (isManualTireLead && auth.getRoleFromRequest(req) !== 'admin') {
+    const isManualOpsynqLead = ['opsynq', 'opsynq_inquiry'].includes(String(b.lead_type || '').toLowerCase());
+    if ((isManualTireLead || isManualOpsynqLead) && auth.getRoleFromRequest(req) !== 'admin') {
       return res.status(403).json({ error: 'Admin access required' });
     }
     const crmSegment = inferCrmSegment(b);
