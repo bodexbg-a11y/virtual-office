@@ -2611,7 +2611,7 @@ function isTireLead(lead = {}) {
 
 function isOpsynqLead(lead = {}) {
   const text = `${lead.lead_type || ''} ${lead.fb_campaign_name || ''} ${lead.fb_ad_name || ''} ${lead.fb_form_id || ''}`.toLowerCase();
-  return /opsynq/.test(text);
+  return /opsyn[qc]/.test(text);
 }
 
 function leadStagesForLead(lead = {}) {

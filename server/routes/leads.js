@@ -572,7 +572,7 @@ const OPSYNQ_LEAD_SQL = `(
   OR (
     leads.source = 'facebook'
     AND lower(concat_ws(' ', coalesce(leads.fb_campaign_name, ''), coalesce(leads.fb_ad_name, ''), coalesce(leads.fb_form_id, '')))
-      ~ 'opsynq'
+      ~ 'opsyn[qc]'
   )
 )`;
 const CONSTRUCTION_LEAD_SQL = `(
