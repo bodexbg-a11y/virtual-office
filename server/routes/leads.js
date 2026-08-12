@@ -567,12 +567,21 @@ const TIRES_LEAD_SQL = `(
     )
   )
 )`;
+// Only one FB campaign (OPSYNQ) is active right now, so every fresh FB lead
+// counts as OPSYNQ without needing a name match. Gated by date so it never
+// retroactively reclassifies the existing construction/materials leads.
+const OPSYNQ_NEW_LEADS_CUTOFF = '2026-08-08 00:00:00';
 const OPSYNQ_LEAD_SQL = `(
   lower(coalesce(leads.lead_type, '')) IN ('opsynq', 'opsynq_inquiry')
   OR (
     leads.source = 'facebook'
-    AND lower(concat_ws(' ', coalesce(leads.fb_campaign_name, ''), coalesce(leads.fb_ad_name, ''), coalesce(leads.fb_form_id, '')))
-      ~ 'opsyn[qc]'
+    AND NOT ${TIRES_LEAD_SQL}
+    AND NOT ${TIRE_COLD_BASE_SQL}
+    AND (
+      lower(concat_ws(' ', coalesce(leads.fb_campaign_name, ''), coalesce(leads.fb_ad_name, ''), coalesce(leads.fb_form_id, '')))
+        ~ 'opsyn[qc]'
+      OR leads.created_at >= '${OPSYNQ_NEW_LEADS_CUTOFF}'
+    )
   )
 )`;
 const CONSTRUCTION_LEAD_SQL = `(

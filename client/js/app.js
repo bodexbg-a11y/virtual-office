@@ -2609,9 +2609,15 @@ function isTireLead(lead = {}) {
   return /(tiers|tires|tyres|tire|шины|гуми)/.test(text);
 }
 
+const OPSYNQ_NEW_LEADS_CUTOFF = new Date('2026-08-08T00:00:00Z').getTime();
+
 function isOpsynqLead(lead = {}) {
   const text = `${lead.lead_type || ''} ${lead.fb_campaign_name || ''} ${lead.fb_ad_name || ''} ${lead.fb_form_id || ''}`.toLowerCase();
-  return /opsyn[qc]/.test(text);
+  if (/opsyn[qc]/.test(text)) return true;
+  if (String(lead.source || '').toLowerCase() !== 'facebook') return false;
+  if (isTireLead(lead)) return false;
+  const created = lead.created_at ? new Date(lead.created_at).getTime() : NaN;
+  return Number.isFinite(created) && created >= OPSYNQ_NEW_LEADS_CUTOFF;
 }
 
 function leadStagesForLead(lead = {}) {
