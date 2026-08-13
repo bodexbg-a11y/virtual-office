@@ -73,6 +73,7 @@ function requireCrm(req, res, next) {
     '/health',
     '/gmail/oauth/callback',
     '/google-ads/webhook',
+    '/website-leads/webhook',
   ]);
   if (publicPaths.has(req.path)) return next();
   if (!getCrmSession(req)) {

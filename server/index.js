@@ -33,6 +33,7 @@ app.use('/api/projects', require('./routes/projects'));
 app.use('/api/contractors', require('./routes/contractors'));
 app.use('/api/construction-firms', require('./routes/constructionFirms'));
 app.use('/api/google-ads', require('./routes/googleAdsLeads'));
+app.use('/api/website-leads', require('./routes/websiteLeads'));
 
 // Health check
 app.get('/api/health', (req, res) => {
