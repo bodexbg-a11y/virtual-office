@@ -4845,7 +4845,9 @@ async function syncFB() {
     const r1 = await api('/api/facebook/sync/campaigns', { method: 'POST' });
     const r2 = await api('/api/facebook/sync/leads', { method: 'POST' });
     el.className = 'sync-result show ok';
-    el.textContent = `✅ Синхронизация успешна! ${r1.demo ? '(Demo mode)' : `Кампании: ${r1.campaigns || 0}, Нови лидове: ${r2.new_leads || 0}`}`;
+    el.textContent = r1.demo
+      ? '✅ Синхронизация успешна! (Demo mode)'
+      : `✅ Кампании: ${r1.campaigns || 0} | Страници: ${r2.pages ?? '—'} | Форми: ${r2.forms ?? '—'} | Лидове в тези форми: ${r2.leads_checked ?? '—'} | Нови: ${r2.new_leads || 0} | Обновени: ${r2.updated_leads || 0} | Пропуснати (вече в базата): ${r2.skipped_existing || 0} | Пропуснати (стари/без съвпадение): ${r2.skipped_legacy_unmatched || 0}`;
     setTimeout(() => renderFacebook(document.getElementById('main')), 1500);
   } catch (err) {
     el.className = 'sync-result show err';
